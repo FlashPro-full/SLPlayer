@@ -1,0 +1,33 @@
+<?xml version='1.0' encoding='utf-8'?>
+<PluginConfig>
+    <!-- 节目节点 -->
+    <HD_OrdinaryScene_Plugin Priority="1" Default="1" Index="1"/>
+    <GlobalScene Priority="1" Default="0" Index="2"/>
+    <!-- 区域节点 -->
+    <HD_Frame_Plugin Priority="1" Default="1" Index="1"/>
+    <!-- 内容节点 -->
+    <HD_Video_Plugin Priority="1" Default="1" Index="1"/>
+    <HD_Photo_Plugin Priority="2" Default="1" Index="1"/>
+    <HD_Text_Plugin Priority="3" Default="1" Index="1"/>
+    <HD_Gif_Plugin Priority="3" Default="0" Index="2"/>
+    <HD_SingleLineText_Plugin Priority="3" Default="0" Index="3"/>
+    <HD_animationText_Plugin Priority="3" Default="0" Index="4"/>
+    <HD_Text3D_Plugin Priority="3" Default="0" Index="5"/>
+    <HD_Clock_Plugin Priority="4" Default="0" Index="1"/>
+    <HD_CALENDAR_Plugin Priority="4" Default="0" Index="2"/>
+    <HD_Time_Plugin Priority="4" Default="0" Index="3"/>
+    <HD_Weather_Plugin Priority="4" Default="0" Index="4"/>
+    <HD_Sensor_Plugin Priority="4" Default="0" Index="5"/>
+    <HD_LIVESTREAM_Plugin Priority="4" Default="0" Index="6"/>
+    <HD_Web_Plugin Priority="4" Default="0" Index="7"/>
+    <HD_HDMI_IN_Plugin Priority="4" Default="0" Index="8"/>
+    <HD_Neon_Plugin Priority="4" Default="0" Index="9"/>
+    <HD_WPS_Plugin Priority="4" Default="0" Index="10"/>
+    <HD_TABLE_Plugin Priority="4" Default="0" Index="11"/>
+    <HD_Document_Plugin Priority="4" Default="0" Index="12"/>
+    <HD_QRCODE_Plugin Priority="4" Default="0" Index="13"/>
+    <HD_EWATCH_Plugin Priority="4" Default="0" Index="14"/>
+    <HD_Temperature_Plugin Priority="4" Default="0" Index="15"/>
+    <HD_Humidity_Plugin Priority="4" Default="0" Index="16"/>
+    <HD_Controller_Plugin Priority="4" Default="0" Index="17"/>
+</PluginConfig>
