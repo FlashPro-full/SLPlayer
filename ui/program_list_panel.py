@@ -194,7 +194,22 @@ class ProgramListPanel(QWidget):
         self.close_btn.setToolTip(tr("program_list.delete"))
     
     def refresh_programs(self):
-        """Refresh the program list"""
+        """Refresh the program list with performance optimizations"""
+        if not self.program_manager:
+            return
+        
+        # Use throttling to avoid excessive refreshes
+        if hasattr(self, '_refresh_timer'):
+            self._refresh_timer.stop()
+        
+        # Schedule refresh with small delay to batch multiple calls
+        self._refresh_timer = QTimer()
+        self._refresh_timer.setSingleShot(True)
+        self._refresh_timer.timeout.connect(self._do_refresh_programs)
+        self._refresh_timer.start(50)  # 50ms debounce
+    
+    def _do_refresh_programs(self):
+        """Internal method to perform the actual refresh"""
         if not self.program_manager:
             return
         
@@ -204,30 +219,38 @@ class ProgramListPanel(QWidget):
         
         self._refreshing = True
         self.tree.blockSignals(True)
-        self.tree.clear()
         
-        screens = {}
-        for program in self.program_manager.programs:
-            screen_name = None
-            working_file = program.properties.get("working_file_path", "")
-            if working_file:
-                from pathlib import Path
-                try:
-                    file_path = Path(working_file)
-                    screen_name = file_path.stem
-                except Exception:
-                    pass
+        # Use cache for screen name lookups
+        from core.screen_manager import ScreenManager
+        from core.cache import cache
+        
+        # Check if we can use cached screen structure
+        programs_hash = hash(tuple(p.id for p in self.program_manager.programs))
+        cache_key = f"program_list_structure:{programs_hash}"
+        cached_structure = cache.get(cache_key)
+        
+        if cached_structure and cached_structure.get('programs_hash') == programs_hash:
+            # Use cached structure
+            screens = cached_structure.get('screens', {})
+        else:
+            # Build screen structure
+            screens = {}
+            for program in self.program_manager.programs:
+                # Use ScreenManager to get screen name - handles all cases properly
+                screen_name = ScreenManager.get_screen_name_from_program(program)
+                
+                if screen_name not in screens:
+                    screens[screen_name] = []
+                screens[screen_name].append(program)
             
-            if not screen_name:
-                if "screen" in program.properties and "screen_name" in program.properties["screen"]:
-                    screen_name = program.properties["screen"]["screen_name"]
-            
-            if not screen_name:
-                screen_name = "Screen4" if hash(program.id) % 2 == 0 else "Screen5"
-            
-            if screen_name not in screens:
-                screens[screen_name] = []
-            screens[screen_name].append(program)
+            # Cache the structure
+            cache.set(cache_key, {
+                'screens': screens,
+                'programs_hash': programs_hash
+            }, ttl=60)  # Cache for 60 seconds
+        
+        # Clear and rebuild tree
+        self.tree.clear()
         
         current_item = None
         for screen_name, programs in screens.items():

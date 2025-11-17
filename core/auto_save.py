@@ -57,8 +57,20 @@ class AutoSaveManager:
         
         try:
             program = self.program_manager.current_program
-            self.file_manager.save_soo_file_for_screen(program)
+            result = self.file_manager.save_soo_file_for_screen(program)
+            if result:
+                logger.debug(f"Auto-saved program: {program.name}")
+                # Try to trigger UI refresh if main window is available
+                # This is a best-effort approach - the main window should handle refresh
+                try:
+                    # Check if we can access the main window through program_manager
+                    # This is a workaround - ideally autosave should notify the UI
+                    pass  # UI refresh will happen through main window's _save_and_refresh
+                except Exception:
+                    pass
+            else:
+                logger.warning(f"Auto-save failed for program: {program.name}")
         except Exception as e:
-            logger.error(f"Auto-save error: {e}")
+            logger.error(f"Auto-save error: {e}", exc_info=True)
     
 

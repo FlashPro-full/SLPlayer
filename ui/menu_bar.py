@@ -102,6 +102,18 @@ class MenuBar(QMenuBar):
         control_menu = self.addMenu(tr("menu.control"))
         self.menus["control"] = control_menu
         
+        discover_action = QAction("🔍 Discover Controllers", self)
+        discover_action.triggered.connect(self.discover_controllers_requested.emit)
+        control_menu.addAction(discover_action)
+        self.actions["control.discover"] = discover_action
+        
+        dashboard_action = QAction("📊 Dashboard", self)
+        dashboard_action.triggered.connect(self.dashboard_requested.emit)
+        control_menu.addAction(dashboard_action)
+        self.actions["control.dashboard"] = dashboard_action
+        
+        control_menu.addSeparator()
+        
         device_info_action = QAction("📱 Controller Information", self)
         device_info_action.triggered.connect(self.device_info_requested.emit)
         control_menu.addAction(device_info_action)
@@ -205,7 +217,7 @@ class MenuBar(QMenuBar):
         from PyQt5.QtWidgets import QFileDialog
         file_path, _ = QFileDialog.getOpenFileName(
             self, "Open Program", "",
-            "Program Files (*.json *.slp);;All Files (*)"
+            "Program Files (*.soo);;All Files (*)"
         )
         if file_path:
             self.open_program_requested.emit(file_path)

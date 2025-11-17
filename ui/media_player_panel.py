@@ -42,11 +42,12 @@ class MediaPlayerPanel(QWidget):
         
         if self.current_program and "screen" in self.current_program.properties:
             screen_props = self.current_program.properties["screen"]
-            screen_width = screen_props.get("width", self.current_program.width)
-            screen_height = screen_props.get("height", self.current_program.height)
+            # NEVER use program.width/height (PC canvas) - only use screen_properties (controller screen)
+            screen_width = screen_props.get("width")
+            screen_height = screen_props.get("height")
             rotate = screen_props.get("rotate", 0)
             
-            if screen_width > 0 and screen_height > 0:
+            if screen_width and screen_height and screen_width > 0 and screen_height > 0:
                 scale_x = width / max(screen_width, 1)
                 scale_y = height / max(screen_height, 1)
                 scale = min(scale_x, scale_y) * 0.9

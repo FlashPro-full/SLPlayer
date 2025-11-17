@@ -50,8 +50,19 @@ class FileManager:
             screen_name = soo_path.stem
             logger.info(f"Loading .soo file '{soo_path.name}' as screen '{screen_name}'")
             
+            # Ensure screen_properties has required fields
             screen_properties["screen_name"] = screen_name
             screen_properties["working_file_path"] = str(soo_path)
+            
+            # CRITICAL: Validate that width/height exist in screen_properties (controller screen dimensions)
+            # If missing, log a warning - these should always be set from screen settings dialog or controller
+            if "width" not in screen_properties or "height" not in screen_properties:
+                logger.warning(
+                    f"Screen '{screen_name}' missing width/height in screen_properties. "
+                    f"Width: {screen_properties.get('width', 'MISSING')}, "
+                    f"Height: {screen_properties.get('height', 'MISSING')}. "
+                    f"This should be the actual controller screen resolution, not PC canvas size."
+                )
             
             programs_added = 0
             for prog_data in programs_data:
@@ -183,15 +194,26 @@ class FileManager:
             screen_properties["screen_name"] = screen_name
             
             # Merge screen properties from all programs in this screen
-            # Priority: Use screen properties from programs, NOT program.width/height (which is PC canvas size)
+            # CRITICAL: Use screen properties from programs, NEVER program.width/height (which is PC canvas size)
+            # The screen_properties["width"] and ["height"] MUST be the actual controller screen dimensions
             for p in screen_programs:
                 p_screen_props = p.properties.get("screen", {})
                 # Only set width/height if not already set, and ONLY from screen properties
-                # Do NOT use p.width/p.height as those are PC canvas dimensions, not controller screen dimensions
-                if "width" not in screen_properties and "width" in p_screen_props:
-                    screen_properties["width"] = p_screen_props["width"]
-                if "height" not in screen_properties and "height" in p_screen_props:
-                    screen_properties["height"] = p_screen_props["height"]
+                # Do NOT use p.width/p.height as those are PC canvas dimensions (1920x1080), not controller screen dimensions
+                if "width" not in screen_properties:
+                    screen_width = p_screen_props.get("width")
+                    if screen_width and isinstance(screen_width, (int, str)):
+                        try:
+                            screen_properties["width"] = int(screen_width)
+                        except (ValueError, TypeError):
+                            pass
+                if "height" not in screen_properties:
+                    screen_height = p_screen_props.get("height")
+                    if screen_height and isinstance(screen_height, (int, str)):
+                        try:
+                            screen_properties["height"] = int(screen_height)
+                        except (ValueError, TypeError):
+                            pass
                 # Other properties can be merged
                 if "rotate" not in screen_properties and "rotate" in p_screen_props:
                     screen_properties["rotate"] = p_screen_props["rotate"]

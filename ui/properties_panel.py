@@ -31,9 +31,16 @@ class PropertiesPanel(QWidget):
         self.init_ui()
     
     def _trigger_autosave(self):
-        """Trigger autosave if main window and autosave manager exist"""
-        if self.main_window and hasattr(self.main_window, 'auto_save_manager'):
-            self.main_window.auto_save_manager.save_current_program()
+        """Trigger autosave and refresh UI if main window exists"""
+        if self.main_window and self.current_program:
+            # Use main window's save_and_refresh to ensure UI is updated
+            if hasattr(self.main_window, '_save_and_refresh'):
+                self.main_window._save_and_refresh(self.current_program)
+            elif hasattr(self.main_window, 'auto_save_manager'):
+                self.main_window.auto_save_manager.save_current_program()
+                # Trigger UI refresh
+                if hasattr(self.main_window, 'program_list_panel'):
+                    self.main_window.program_list_panel.refresh_programs()
     
     def init_ui(self):
         """Initialize the UI"""
@@ -946,9 +953,14 @@ class PropertiesPanel(QWidget):
                 controller_type = model
         self.screen_controller_type_input.setText(controller_type if controller_type else "N/A")
         
-        width = first_program.properties.get("screen", {}).get("width", first_program.width)
-        height = first_program.properties.get("screen", {}).get("height", first_program.height)
-        self.screen_size_input.setText(f"{width} x {height}")
+        # NEVER use program.width/height (PC canvas) - only use screen_properties (controller screen)
+        screen_props = first_program.properties.get("screen", {})
+        width = screen_props.get("width")
+        height = screen_props.get("height")
+        if width and height:
+            self.screen_size_input.setText(f"{width} x {height}")
+        else:
+            self.screen_size_input.setText("Not set")
         
         working_file_path = first_program.properties.get("working_file_path", "")
         if working_file_path:

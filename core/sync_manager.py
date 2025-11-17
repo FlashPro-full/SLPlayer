@@ -86,11 +86,46 @@ class SyncManager:
             # Import media (if supported)
             # Note: Actual media files would need to be downloaded separately
             
-            # Import time, brightness, power schedule, network
+            # Import time, brightness, power schedule, network, and CRITICALLY: screen resolution
             device_info = controller.get_device_info()
             if device_info:
                 imported_data["brightness"] = device_info.get("brightness")
                 imported_data["network"] = device_info.get("network")
+                
+                # CRITICAL: Extract controller screen resolution from device_info
+                # This is the actual LED display resolution, not PC canvas size
+                resolution = (
+                    device_info.get("display_resolution") or
+                    device_info.get("resolution") or
+                    device_info.get("screen_resolution") or
+                    device_info.get("screen_size")
+                )
+                
+                screen_resolution = {}
+                if resolution:
+                    if isinstance(resolution, str) and "x" in resolution.lower():
+                        try:
+                            parts = resolution.lower().replace(" ", "").split("x")
+                            if len(parts) == 2:
+                                screen_resolution["width"] = int(parts[0])
+                                screen_resolution["height"] = int(parts[1])
+                        except (ValueError, IndexError):
+                            pass
+                    elif isinstance(resolution, dict):
+                        screen_resolution["width"] = resolution.get("width") or resolution.get("w")
+                        screen_resolution["height"] = resolution.get("height") or resolution.get("h")
+                
+                # Also try direct width/height fields
+                if not screen_resolution:
+                    ctrl_width = device_info.get("width") or device_info.get("screen_width")
+                    ctrl_height = device_info.get("height") or device_info.get("screen_height")
+                    if ctrl_width and ctrl_height:
+                        screen_resolution["width"] = int(ctrl_width)
+                        screen_resolution["height"] = int(ctrl_height)
+                
+                if screen_resolution:
+                    imported_data["screen_resolution"] = screen_resolution
+                    logger.info(f"Imported controller screen resolution: {screen_resolution.get('width')}x{screen_resolution.get('height')}")
             
             # Update local database
             self.local_db.update(imported_data)
