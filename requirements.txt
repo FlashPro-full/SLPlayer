@@ -1,9 +1,8 @@
 # SLPlayer - LED Display Controller Program Manager
 # Python Dependencies
 
-# GUI Framework
-PyQt6>=6.6.0
-PyQt6-Qt6>=6.6.0
+# GUI Framework (PyQt5 for Qt 5.6 compatibility)
+PyQt5>=5.15.0
 
 # Media Processing
 Pillow>=10.0.0

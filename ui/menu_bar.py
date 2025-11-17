@@ -1,33 +1,43 @@
 """
 Menu bar component
 """
-from PyQt6.QtWidgets import QMenuBar, QMessageBox
-from PyQt6.QtCore import pyqtSignal
-from PyQt6.QtGui import QAction, QKeySequence
+from PyQt5.QtWidgets import QMenuBar, QMessageBox, QAction, QFileDialog
+from PyQt5.QtCore import pyqtSignal
+from PyQt5.QtGui import QKeySequence
+from utils.logger import get_logger
+from config.i18n import tr, set_language
+
+logger = get_logger(__name__)
 
 
 class MenuBar(QMenuBar):
     """Application menu bar"""
     
-    # Signals
     new_program_requested = pyqtSignal()
-    new_from_template_requested = pyqtSignal(str)
     open_program_requested = pyqtSignal(str)
     save_program_requested = pyqtSignal(str)
+    exit_requested = pyqtSignal()
+    
+    screen_settings_requested = pyqtSignal()
+    sync_settings_requested = pyqtSignal()
+    
+    device_info_requested = pyqtSignal()
+    clear_program_requested = pyqtSignal()
     connect_requested = pyqtSignal()
     disconnect_requested = pyqtSignal()
     upload_requested = pyqtSignal()
     download_requested = pyqtSignal()
-    preview_requested = pyqtSignal()
+    
+    language_changed = pyqtSignal(str)
+    about_requested = pyqtSignal()
     dashboard_requested = pyqtSignal()
     discover_controllers_requested = pyqtSignal()
     
     def __init__(self, parent=None):
         super().__init__(parent)
-        # Set menubar color to distinguish it
         self.setStyleSheet("""
             QMenuBar {
-                background-color: #E8EAF6;
+                background-color: #E5E5E5;
                 padding: 2px;
             }
             QMenuBar::item {
@@ -36,270 +46,189 @@ class MenuBar(QMenuBar):
                 border-radius: 3px;
             }
             QMenuBar::item:selected {
-                background-color: #C5CAE9;
+                background-color: #D6D6D6;
             }
             QMenuBar::item:pressed {
-                background-color: #9FA8DA;
+                background-color: #C5C5C5;
             }
         """)
+        self.menus = {}
+        self.actions = {}
         self.init_menus()
     
     def init_menus(self):
-        """Initialize menu items"""
-        # File menu
-        self.file_menu = self.addMenu("File")
-        file_menu = self.file_menu
+        """Initialize menu items per draft"""
+        file_menu = self.addMenu(tr("menu.file"))
+        self.menus["file"] = file_menu
         
-        new_action = QAction("New", self)
-        new_action.setShortcut(QKeySequence.StandardKey.New)
+        new_action = QAction(tr("action.new"), self)
+        new_action.setShortcut(QKeySequence.New)
         new_action.triggered.connect(self.new_program_requested.emit)
         file_menu.addAction(new_action)
+        self.actions["file.new"] = new_action
         
-        # New from Template submenu
-        template_menu = file_menu.addMenu("New from Template")
-        from core.templates import TemplateManager
-        templates = TemplateManager.get_templates()
-        for template in templates:
-            template_action = QAction(f"{template['icon']} {template['name']}", self)
-            template_action.setToolTip(template['description'])
-            template_action.triggered.connect(lambda checked, t=template['name']: self.new_from_template_requested.emit(t))
-            template_menu.addAction(template_action)
-        
-        open_action = QAction("Open", self)
-        open_action.setShortcut(QKeySequence.StandardKey.Open)
+        open_action = QAction(tr("action.open"), self)
+        open_action.setShortcut(QKeySequence.Open)
         open_action.triggered.connect(self.on_open)
         file_menu.addAction(open_action)
+        self.actions["file.open"] = open_action
         
-        save_action = QAction("Save", self)
-        save_action.setShortcut(QKeySequence.StandardKey.Save)
+        save_action = QAction(tr("action.save"), self)
+        save_action.setShortcut(QKeySequence.Save)
         save_action.triggered.connect(self.on_save)
         file_menu.addAction(save_action)
-        
-        save_as_action = QAction("Save As...", self)
-        save_as_action.setShortcut(QKeySequence.StandardKey.SaveAs)
-        save_as_action.triggered.connect(self.on_save_as)
-        file_menu.addAction(save_as_action)
+        self.actions["file.save"] = save_action
         
         file_menu.addSeparator()
-        
-        exit_action = QAction("Exit", self)
-        exit_action.setShortcut(QKeySequence.StandardKey.Quit)
-        exit_action.triggered.connect(self.parent().close)
+        exit_action = QAction(tr("action.exit"), self)
+        exit_action.setShortcut(QKeySequence.Quit)
+        exit_action.triggered.connect(self.on_exit)
         file_menu.addAction(exit_action)
+        self.actions["file.exit"] = exit_action
         
-        # Setting menu
-        setting_menu = self.addMenu("Setting")
+        setting_menu = self.addMenu(tr("menu.setting"))
+        self.menus["setting"] = setting_menu
         
-        preferences_action = QAction("Preferences", self)
-        preferences_action.triggered.connect(self.on_preferences)
-        setting_menu.addAction(preferences_action)
+        screen_action = QAction(tr("action.screen_setting"), self)
+        screen_action.triggered.connect(self.screen_settings_requested.emit)
+        setting_menu.addAction(screen_action)
+        self.actions["setting.screen"] = screen_action
         
-        display_settings_action = QAction("Display Settings", self)
-        display_settings_action.triggered.connect(self.on_display_settings)
-        setting_menu.addAction(display_settings_action)
+        sync_action = QAction(tr("action.sync_setting"), self)
+        sync_action.triggered.connect(self.sync_settings_requested.emit)
+        setting_menu.addAction(sync_action)
+        self.actions["setting.sync"] = sync_action
         
-        controller_settings_action = QAction("Controller Settings", self)
-        controller_settings_action.triggered.connect(self.on_controller_settings)
-        setting_menu.addAction(controller_settings_action)
+        control_menu = self.addMenu(tr("menu.control"))
+        self.menus["control"] = control_menu
         
-        setting_menu.addSeparator()
+        device_info_action = QAction("📱 Controller Information", self)
+        device_info_action.triggered.connect(self.device_info_requested.emit)
+        control_menu.addAction(device_info_action)
+        self.actions["control.device_info"] = device_info_action
         
-        dashboard_action = QAction("Dashboard", self)
-        dashboard_action.triggered.connect(self.dashboard_requested.emit)
-        setting_menu.addAction(dashboard_action)
+        clear_action = QAction(tr("action.clear_program"), self)
+        clear_action.triggered.connect(self.clear_program_requested.emit)
+        control_menu.addAction(clear_action)
+        self.actions["control.clear"] = clear_action
         
-        # Control menu
-        control_menu = self.addMenu("Control")
-        
-        discover_action = QAction("Discover Controllers...", self)
-        discover_action.triggered.connect(self.on_discover_controllers)
-        control_menu.addAction(discover_action)
-        
-        control_menu.addSeparator()
-        
-        connect_action = QAction("Connect", self)
-        connect_action.triggered.connect(self.on_connect)
-        control_menu.addAction(connect_action)
-        
-        disconnect_action = QAction("Disconnect", self)
-        disconnect_action.triggered.connect(self.on_disconnect)
-        control_menu.addAction(disconnect_action)
-        
-        control_menu.addSeparator()
-        
-        upload_action = QAction("Upload", self)
-        upload_action.triggered.connect(self.on_upload)
+        upload_action = QAction(tr("action.upload"), self)
+        upload_action.triggered.connect(self.upload_requested.emit)
         control_menu.addAction(upload_action)
+        self.actions["control.upload"] = upload_action
         
-        download_action = QAction("Download", self)
-        download_action.triggered.connect(self.on_download)
+        download_action = QAction(tr("action.download"), self)
+        download_action.triggered.connect(self.download_requested.emit)
         control_menu.addAction(download_action)
+        self.actions["control.download"] = download_action
         
-        test_connection_action = QAction("Test Connection", self)
-        test_connection_action.triggered.connect(self.on_test_connection)
-        control_menu.addAction(test_connection_action)
+        language_menu = self.addMenu(tr("menu.language"))
+        self.menus["language"] = language_menu
         
-        control_menu.addSeparator()
+        self.lang_actions = {}
+        for label, code in [("English", "en"), ("italiano", "it"), ("中文", "zh"), ("polski", "pl")]:
+            act = QAction(label, self)
+            act.setCheckable(True)
+            act.triggered.connect(lambda checked, c=code: self.on_language_change(c))
+            language_menu.addAction(act)
+            self.lang_actions[code] = act
+        self.set_language_checked("en")
         
-        preview_action = QAction("Preview", self)
-        preview_action.setShortcut("F5")
-        preview_action.triggered.connect(self.preview_requested.emit)
-        control_menu.addAction(preview_action)
-        
-        # Language menu
-        language_menu = self.addMenu("Language")
-        
-        english_action = QAction("English", self)
-        english_action.setCheckable(True)
-        english_action.setChecked(True)
-        english_action.triggered.connect(lambda: self.on_language_change("en"))
-        language_menu.addAction(english_action)
-        
-        chinese_action = QAction("中文", self)
-        chinese_action.setCheckable(True)
-        chinese_action.triggered.connect(lambda: self.on_language_change("zh"))
-        language_menu.addAction(chinese_action)
-        
-        # Help menu
-        help_menu = self.addMenu("Help")
-        
-        user_manual_action = QAction("User Manual", self)
-        user_manual_action.triggered.connect(self.on_user_manual)
-        help_menu.addAction(user_manual_action)
-        
-        about_action = QAction("About", self)
+        help_menu = self.addMenu(tr("menu.help"))
+        self.menus["help"] = help_menu
+        about_action = QAction(tr("action.about"), self)
         about_action.triggered.connect(self.on_about)
         help_menu.addAction(about_action)
-        
-        # Update recent files menu
-        self.update_recent_files_menu()
+        self.actions["help.about"] = about_action
     
-    def on_open_recent(self, file_path: str):
-        """Handle opening a recent file"""
-        self.open_program_requested.emit(file_path)
+    def on_display_settings(self):
+        try:
+            from ui.screen_settings_dialog import ScreenSettingsDialog
+            dlg = ScreenSettingsDialog(self)
+            if dlg.exec():
+                main_window = self.parent()
+                if main_window and hasattr(main_window, 'program_manager'):
+                    program = main_window.program_manager.current_program
+                    if program:
+                        rotate = int(dlg.rotate_combo.currentText() if dlg.rotate_combo.currentText().isdigit() else 0)
+                        if "screen" not in program.properties:
+                            program.properties["screen"] = {}
+                        program.properties["screen"]["rotate"] = rotate
+        except Exception:
+            pass
+    
+    def set_language_checked(self, code: str):
+        for c, act in self.lang_actions.items():
+            act.setChecked(c == code)
+    
+    def refresh_texts(self):
+        """Refresh menu and actions texts based on current language."""
+        if "file" in self.menus:
+            self.menus["file"].setTitle(tr("menu.file"))
+        if "setting" in self.menus:
+            self.menus["setting"].setTitle(tr("menu.setting"))
+        if "control" in self.menus:
+            self.menus["control"].setTitle(tr("menu.control"))
+        if "language" in self.menus:
+            self.menus["language"].setTitle(tr("menu.language"))
+        if "help" in self.menus:
+            self.menus["help"].setTitle(tr("menu.help"))
+        a = self.actions
+        if "file.new" in a: a["file.new"].setText(tr("action.new"))
+        if "file.open" in a: a["file.open"].setText(tr("action.open"))
+        if "file.save" in a: a["file.save"].setText(tr("action.save"))
+        if "file.exit" in a: a["file.exit"].setText(tr("action.exit"))
+        if "setting.screen" in a: a["setting.screen"].setText(tr("action.screen_setting"))
+        if "setting.sync" in a: a["setting.sync"].setText(tr("action.sync_setting"))
+        if "control.device_info" in a: a["control.device_info"].setText("📱 Controller Information")
+        if "control.clear" in a: a["control.clear"].setText(tr("action.clear_program"))
+        if "control.upload" in a: a["control.upload"].setText(tr("action.upload"))
+        if "control.download" in a: a["control.download"].setText(tr("action.download"))
+        if "help.about" in a: a["help.about"].setText(tr("action.about"))
+    
+    def set_actions_enabled_for_screen(self, has_screen: bool):
+        """
+        Enable/disable menu items depending on whether a controller screen/program exists.
+        Requirement: disable all related items except Screen Setting before adding a screen.
+        """
+        if "file.save" in self.actions:
+            self.actions["file.save"].setEnabled(has_screen)
+        if "setting.screen" in self.actions:
+            self.actions["setting.screen"].setEnabled(True)
+        if "setting.sync" in self.actions:
+            self.actions["setting.sync"].setEnabled(has_screen)
+        for key in ["control.device_info", "control.clear", "control.upload", "control.download"]:
+            if key in self.actions:
+                self.actions[key].setEnabled(has_screen)
     
     def on_open(self):
-        """Handle open file"""
-        from PyQt6.QtWidgets import QFileDialog
+        from PyQt5.QtWidgets import QFileDialog
         file_path, _ = QFileDialog.getOpenFileName(
             self, "Open Program", "",
-            "Program Files (*.json);;All Files (*)"
+            "Program Files (*.json *.slp);;All Files (*)"
         )
         if file_path:
             self.open_program_requested.emit(file_path)
-            # Add to recent files
-            self.add_to_recent_files(file_path)
-    
-    def add_to_recent_files(self, file_path: str):
-        """Add file to recent files list"""
-        from config.settings import settings
-        recent = settings.get("recent_files", [])
-        if file_path in recent:
-            recent.remove(file_path)
-        recent.insert(0, file_path)
-        # Keep only last 10 files
-        recent = recent[:10]
-        settings.set("recent_files", recent)
-        self.update_recent_files_menu()
-    
-    def update_recent_files_menu(self):
-        """Update recent files menu items"""
-        from config.settings import settings
-        recent = settings.get("recent_files", [])
-        
-        # Get file menu
-        file_menu = self.actions()[0].menu() if self.actions() else None
-        if not file_menu:
-            # Find file menu by iterating
-            for action in self.actions():
-                if action.text() == "File":
-                    file_menu = action.menu()
-                    break
-        
-        if not file_menu:
-            return
-        
-        # Clear existing recent file actions
-        for action in self.recent_file_actions:
-            file_menu.removeAction(action)
-        self.recent_file_actions.clear()
-        
-        if recent:
-            file_menu.addSeparator()
-            for file_path in recent:
-                from pathlib import Path
-                file_name = Path(file_path).name
-                action = file_menu.addAction(file_name)
-                action.setData(file_path)
-                action.triggered.connect(lambda checked, path=file_path: self.on_open_recent(path))
-                self.recent_file_actions.append(action)
     
     def on_save(self):
-        """Handle save file"""
-        # TODO: Implement file dialog
         self.save_program_requested.emit("")
     
-    def on_save_as(self):
-        """Handle save as file"""
-        # TODO: Implement file dialog
-        self.save_program_requested.emit("")
-    
-    def on_preferences(self):
-        """Handle preferences"""
-        QMessageBox.information(self, "Preferences", "Preferences dialog - To be implemented")
-    
-    def on_display_settings(self):
-        """Handle display settings"""
-        QMessageBox.information(self, "Display Settings", "Display settings dialog - To be implemented")
-    
-    def on_controller_settings(self):
-        """Handle controller settings"""
-        QMessageBox.information(self, "Controller Settings", "Controller settings dialog - To be implemented")
-    
-    # Signals for controller operations
-    connect_requested = pyqtSignal()
-    disconnect_requested = pyqtSignal()
-    upload_requested = pyqtSignal()
-    download_requested = pyqtSignal()
-    
-    def on_connect(self):
-        """Handle connect to controller"""
-        self.connect_requested.emit()
-    
-    def on_disconnect(self):
-        """Handle disconnect from controller"""
-        self.disconnect_requested.emit()
-    
-    def on_upload(self):
-        """Handle upload program"""
-        self.upload_requested.emit()
-    
-    def on_download(self):
-        """Handle download program"""
-        self.download_requested.emit()
-    
-    def on_test_connection(self):
-        """Handle test connection"""
-        from ui.controller_dialog import ControllerDialog
-        dialog = ControllerDialog(self)
-        if dialog.exec():
-            controller = dialog.get_controller()
-            if controller and controller.test_connection():
-                QMessageBox.information(self, "Success", "Connection test successful!")
-            else:
-                QMessageBox.warning(self, "Failed", "Connection test failed")
+    def on_exit(self):
+        try:
+            self.parent().close()
+        except Exception:
+            self.exit_requested.emit()
     
     def on_language_change(self, language: str):
-        """Handle language change"""
-        # TODO: Implement language switching
-        print(f"Language changed to: {language}")
-    
-    def on_user_manual(self):
-        """Handle user manual"""
-        QMessageBox.information(self, "User Manual", "User manual - To be implemented")
+        from config.settings import settings
+        settings.set("language", language)
+        set_language(language)
+        self.set_language_checked(language)
+        self.refresh_texts()
+        self.language_changed.emit(language)
+        logger.info(f"Language changed to: {language}")
     
     def on_about(self):
-        """Handle about dialog"""
         from config.constants import APP_NAME, APP_VERSION
         QMessageBox.about(self, "About", f"{APP_NAME} v{APP_VERSION}\n\nLED Display Controller Program Manager")
 

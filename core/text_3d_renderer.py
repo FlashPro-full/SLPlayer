@@ -2,9 +2,16 @@
 3D text rendering using PyOpenGL
 """
 from typing import Optional, Dict, Any
-from PyQt6.QtOpenGL import QOpenGLWidget
-from PyQt6.QtOpenGLWidgets import QOpenGLWidget as QOpenGLWidgetCompat
-from PyQt6.QtGui import QFont, QFontMetrics
+# QOpenGLWidget is in QtOpenGLWidgets in PyQt5
+try:
+    from PyQt5.QtOpenGLWidgets import QOpenGLWidget
+except ImportError:
+    # Fallback for older PyQt5 versions
+    try:
+        from PyQt5.QtWidgets import QOpenGLWidget
+    except ImportError:
+        QOpenGLWidget = None
+from PyQt5.QtGui import QFont, QFontMetrics
 from utils.logger import get_logger
 
 logger = get_logger(__name__)

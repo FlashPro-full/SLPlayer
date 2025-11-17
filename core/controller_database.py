@@ -1,0 +1,532 @@
+"""
+Controller database module for storing controller connection information
+Uses SQLite to track controllers that have connected to the PC
+"""
+import sqlite3
+from pathlib import Path
+from typing import Optional, Dict, List, Any
+from datetime import datetime
+from utils.logger import get_logger
+from utils.app_data import get_app_data_dir
+
+logger = get_logger(__name__)
+
+
+class ControllerDatabase:
+    """Database for storing controller connection information"""
+    
+    def __init__(self, db_path: Optional[Path] = None):
+        """
+        Initialize controller database.
+        
+        Args:
+            db_path: Path to database file (defaults to AppData/Local/SLPlayer/controllers.db)
+        """
+        if db_path is None:
+            # Prefer saving controllers.db in the application root (same level folder),
+            # fall back to AppData if not writable.
+            try:
+                app_root = Path(__file__).resolve().parents[1]  # project root
+                preferred = app_root / "controllers.db"
+                # Ensure we can create the file or its directory
+                app_root.mkdir(parents=True, exist_ok=True)
+                # Try touching the file to verify write permission
+                preferred.touch(exist_ok=True)
+                db_path = preferred
+            except Exception:
+                # Fallback to user AppData
+                db_path = get_app_data_dir() / "controllers.db"
+        
+        self.db_path = db_path
+        self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        self._init_database()
+    
+    def _init_database(self):
+        """Initialize SQLite database with controllers table"""
+        try:
+            conn = sqlite3.connect(str(self.db_path))
+            cursor = conn.cursor()
+            
+            # Create controllers table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS controllers (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    controller_id TEXT UNIQUE NOT NULL,
+                    ip_address TEXT NOT NULL,
+                    port INTEGER NOT NULL,
+                    controller_type TEXT NOT NULL,
+                    device_name TEXT,
+                    mac_address TEXT,
+                    firmware_version TEXT,
+                    display_resolution TEXT,
+                    model TEXT,
+                    serial_number TEXT,
+                    first_connected TEXT NOT NULL,
+                    last_connected TEXT NOT NULL,
+                    connection_count INTEGER DEFAULT 1,
+                    total_connection_time INTEGER DEFAULT 0,
+                    last_disconnected TEXT,
+                    is_active INTEGER DEFAULT 1,
+                    notes TEXT
+                )
+            """)
+
+            # Create controller_models table to store brand/model specifications
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS controller_models (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    brand TEXT NOT NULL,                 -- e.g., 'NovaStar', 'Huidu'
+                    model TEXT NOT NULL,                 -- e.g., 'HD-C15', 'T6'
+                    suggested_range TEXT,
+                    max_width INTEGER,
+                    max_height INTEGER,
+                    storage_capacity TEXT,
+                    gray_scale TEXT,
+                    communication_interface TEXT,
+                    other TEXT,
+                    UNIQUE(brand, model)
+                )
+            """)
+
+            # Table to store screen parameter selections/history
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS screen_parameters (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    created_at TEXT NOT NULL,
+                    brand TEXT,
+                    model TEXT,
+                    width INTEGER,
+                    height INTEGER,
+                    rotate INTEGER,
+                    controller_id TEXT
+                )
+            """)
+            
+            # Create indexes for faster queries
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_controller_id ON controllers(controller_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_ip_address ON controllers(ip_address)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_last_connected ON controllers(last_connected)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_is_active ON controllers(is_active)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_models_brand ON controller_models(brand)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_models_brand_model ON controller_models(brand, model)")
+            
+            conn.commit()
+            conn.close()
+            logger.info("Controller database initialized")
+        except Exception as e:
+            logger.exception(f"Error initializing controller database: {e}")
+    
+    def add_or_update_controller(self, controller_id: str, ip_address: str, port: int,
+                                 controller_type: str, device_info: Optional[Dict] = None) -> bool:
+        """
+        Add a new controller or update existing one on connection.
+        
+        Args:
+            controller_id: Unique controller ID (e.g., "HD-M30-00123456")
+            ip_address: Controller IP address
+            port: Controller port
+            controller_type: Controller type (e.g., "novastar", "huidu")
+            device_info: Optional device information dictionary
+        
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            conn = sqlite3.connect(str(self.db_path))
+            cursor = conn.cursor()
+            
+            # Extract device info
+            device_name = device_info.get("name") if device_info else None
+            mac_address = device_info.get("mac_address") if device_info else None
+            firmware_version = device_info.get("firmware_version") or device_info.get("version") if device_info else None
+            display_resolution = device_info.get("display_resolution") or device_info.get("resolution") if device_info else None
+            model = device_info.get("model") or device_info.get("model_number") if device_info else None
+            serial_number = device_info.get("serial_number") or device_info.get("serial") if device_info else None
+            
+            now = datetime.now().isoformat()
+            
+            # Check if controller already exists
+            cursor.execute("SELECT id, connection_count FROM controllers WHERE controller_id = ?", 
+                          (controller_id,))
+            existing = cursor.fetchone()
+            
+            if existing:
+                # Update existing controller
+                controller_db_id, connection_count = existing
+                new_count = connection_count + 1
+                
+                cursor.execute("""
+                    UPDATE controllers 
+                    SET ip_address = ?,
+                        port = ?,
+                        controller_type = ?,
+                        device_name = ?,
+                        mac_address = COALESCE(?, mac_address),
+                        firmware_version = COALESCE(?, firmware_version),
+                        display_resolution = COALESCE(?, display_resolution),
+                        model = COALESCE(?, model),
+                        serial_number = COALESCE(?, serial_number),
+                        last_connected = ?,
+                        connection_count = ?,
+                        is_active = 1
+                    WHERE controller_id = ?
+                """, (
+                    ip_address, port, controller_type, device_name,
+                    mac_address, firmware_version, display_resolution,
+                    model, serial_number, now, new_count, controller_id
+                ))
+                
+                logger.info(f"Updated controller {controller_id} in database (connection #{new_count})")
+            else:
+                # Insert new controller
+                cursor.execute("""
+                    INSERT INTO controllers (
+                        controller_id, ip_address, port, controller_type,
+                        device_name, mac_address, firmware_version,
+                        display_resolution, model, serial_number,
+                        first_connected, last_connected, connection_count, is_active
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1)
+                """, (
+                    controller_id, ip_address, port, controller_type,
+                    device_name, mac_address, firmware_version,
+                    display_resolution, model, serial_number,
+                    now, now
+                ))
+                
+                logger.info(f"Added new controller {controller_id} to database")
+            
+            conn.commit()
+            conn.close()
+            return True
+        except Exception as e:
+            logger.exception(f"Error adding/updating controller in database: {e}")
+            return False
+    
+    def mark_controller_disconnected(self, controller_id: str) -> bool:
+        """
+        Mark controller as disconnected.
+        
+        Args:
+            controller_id: Controller ID to mark as disconnected
+        
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            conn = sqlite3.connect(str(self.db_path))
+            cursor = conn.cursor()
+            
+            now = datetime.now().isoformat()
+            
+            cursor.execute("""
+                UPDATE controllers 
+                SET is_active = 0,
+                    last_disconnected = ?
+                WHERE controller_id = ?
+            """, (now, controller_id))
+            
+            conn.commit()
+            conn.close()
+            
+            logger.info(f"Marked controller {controller_id} as disconnected")
+            return True
+        except Exception as e:
+            logger.exception(f"Error marking controller as disconnected: {e}")
+            return False
+    
+    def get_controller(self, controller_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Get controller information by ID.
+        
+        Args:
+            controller_id: Controller ID to look up
+        
+        Returns:
+            Dictionary with controller info or None if not found
+        """
+        try:
+            conn = sqlite3.connect(str(self.db_path))
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            
+            cursor.execute("SELECT * FROM controllers WHERE controller_id = ?", (controller_id,))
+            row = cursor.fetchone()
+            conn.close()
+            
+            if row:
+                return dict(row)
+            return None
+        except Exception as e:
+            logger.exception(f"Error getting controller from database: {e}")
+            return None
+    
+    def get_all_controllers(self, active_only: bool = False) -> List[Dict[str, Any]]:
+        """
+        Get all controllers from database.
+        
+        Args:
+            active_only: If True, only return currently active controllers
+        
+        Returns:
+            List of controller dictionaries
+        """
+        try:
+            conn = sqlite3.connect(str(self.db_path))
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            
+            if active_only:
+                cursor.execute("SELECT * FROM controllers WHERE is_active = 1 ORDER BY last_connected DESC")
+            else:
+                cursor.execute("SELECT * FROM controllers ORDER BY last_connected DESC")
+            
+            rows = cursor.fetchall()
+            conn.close()
+            
+            return [dict(row) for row in rows]
+        except Exception as e:
+            logger.exception(f"Error getting all controllers from database: {e}")
+            return []
+    
+    def get_controllers_by_type(self, controller_type: str) -> List[Dict[str, Any]]:
+        """
+        Get all controllers of a specific type.
+        
+        Args:
+            controller_type: Controller type (e.g., "novastar", "huidu")
+        
+        Returns:
+            List of controller dictionaries
+        """
+        try:
+            conn = sqlite3.connect(str(self.db_path))
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            
+            cursor.execute("SELECT * FROM controllers WHERE controller_type = ? ORDER BY last_connected DESC", 
+                          (controller_type,))
+            rows = cursor.fetchall()
+            conn.close()
+            
+            return [dict(row) for row in rows]
+        except Exception as e:
+            logger.exception(f"Error getting controllers by type from database: {e}")
+            return []
+    
+    def search_controllers(self, query: str) -> List[Dict[str, Any]]:
+        """
+        Search controllers by ID, name, IP address, or model.
+        
+        Args:
+            query: Search query string
+        
+        Returns:
+            List of matching controller dictionaries
+        """
+        try:
+            conn = sqlite3.connect(str(self.db_path))
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            
+            search_pattern = f"%{query}%"
+            cursor.execute("""
+                SELECT * FROM controllers 
+                WHERE controller_id LIKE ? 
+                   OR device_name LIKE ? 
+                   OR ip_address LIKE ?
+                   OR model LIKE ?
+                ORDER BY last_connected DESC
+            """, (search_pattern, search_pattern, search_pattern, search_pattern))
+            
+            rows = cursor.fetchall()
+            conn.close()
+            
+            return [dict(row) for row in rows]
+        except Exception as e:
+            logger.exception(f"Error searching controllers in database: {e}")
+            return []
+    
+    def delete_controller(self, controller_id: str) -> bool:
+        """
+        Delete controller from database.
+        
+        Args:
+            controller_id: Controller ID to delete
+        
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            conn = sqlite3.connect(str(self.db_path))
+            cursor = conn.cursor()
+            
+            cursor.execute("DELETE FROM controllers WHERE controller_id = ?", (controller_id,))
+            
+            conn.commit()
+            conn.close()
+            
+            logger.info(f"Deleted controller {controller_id} from database")
+            return True
+        except Exception as e:
+            logger.exception(f"Error deleting controller from database: {e}")
+            return False
+    
+    def get_connection_statistics(self) -> Dict[str, Any]:
+        """
+        Get connection statistics.
+        
+        Returns:
+            Dictionary with statistics
+        """
+        try:
+            conn = sqlite3.connect(str(self.db_path))
+            cursor = conn.cursor()
+            
+            # Total controllers
+            cursor.execute("SELECT COUNT(*) FROM controllers")
+            total_controllers = cursor.fetchone()[0]
+            
+            # Active controllers
+            cursor.execute("SELECT COUNT(*) FROM controllers WHERE is_active = 1")
+            active_controllers = cursor.fetchone()[0]
+            
+            # Total connections
+            cursor.execute("SELECT SUM(connection_count) FROM controllers")
+            total_connections = cursor.fetchone()[0] or 0
+            
+            # Controllers by type
+            cursor.execute("""
+                SELECT controller_type, COUNT(*) 
+                FROM controllers 
+                GROUP BY controller_type
+            """)
+            by_type = {row[0]: row[1] for row in cursor.fetchall()}
+            
+            conn.close()
+            
+            return {
+                "total_controllers": total_controllers,
+                "active_controllers": active_controllers,
+                "total_connections": total_connections,
+                "by_type": by_type
+            }
+        except Exception as e:
+            logger.exception(f"Error getting connection statistics: {e}")
+            return {
+                "total_controllers": 0,
+                "active_controllers": 0,
+                "total_connections": 0,
+                "by_type": {}
+            }
+
+    # -------- Controller models (brand/model specs) --------
+    def upsert_controller_model(self, brand: str, model: str, specs: Dict[str, Any]) -> bool:
+        """Insert or update a controller model specification."""
+        try:
+            conn = sqlite3.connect(str(self.db_path))
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO controller_models
+                    (brand, model, suggested_range, max_width, max_height, storage_capacity, gray_scale, communication_interface, other)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(brand, model) DO UPDATE SET
+                    suggested_range=excluded.suggested_range,
+                    max_width=excluded.max_width,
+                    max_height=excluded.max_height,
+                    storage_capacity=excluded.storage_capacity,
+                    gray_scale=excluded.gray_scale,
+                    communication_interface=excluded.communication_interface,
+                    other=excluded.other
+            """, (
+                brand, model,
+                specs.get("range"), specs.get("max_w"), specs.get("max_h"),
+                specs.get("storage"), specs.get("gray"), specs.get("iface"), specs.get("other")
+            ))
+            conn.commit()
+            conn.close()
+            return True
+        except Exception as e:
+            logger.exception(f"Error upserting controller model: {e}")
+            return False
+
+    def get_models_by_brand(self, brand: str) -> List[Dict[str, Any]]:
+        """Return all models for a given brand."""
+        try:
+            conn = sqlite3.connect(str(self.db_path))
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM controller_models WHERE brand = ? ORDER BY model", (brand,))
+            rows = cursor.fetchall()
+            conn.close()
+            return [dict(r) for r in rows]
+        except Exception as e:
+            logger.exception(f"Error getting models by brand: {e}")
+            return []
+
+    def get_model_spec(self, brand: str, model: str) -> Optional[Dict[str, Any]]:
+        """Return spec row for brand/model."""
+        try:
+            conn = sqlite3.connect(str(self.db_path))
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM controller_models WHERE brand = ? AND model = ?", (brand, model))
+            row = cursor.fetchone()
+            conn.close()
+            return dict(row) if row else None
+        except Exception as e:
+            logger.exception(f"Error getting model spec: {e}")
+            return None
+
+    def seed_models_if_empty(self, seeds: Dict[str, Dict[str, Any]]) -> None:
+        """Seed initial models if the controller_models table is empty."""
+        try:
+            conn = sqlite3.connect(str(self.db_path))
+            cursor = conn.cursor()
+            cursor.execute("SELECT COUNT(*) FROM controller_models")
+            count = cursor.fetchone()[0] or 0
+            conn.close()
+            if count > 0:
+                return
+            for (brand, model), specs in seeds.items():
+                self.upsert_controller_model(brand, model, specs)
+            logger.info("Seeded controller_models table with default entries")
+        except Exception as e:
+            logger.exception(f"Error seeding controller models: {e}")
+
+    # -------- Screen parameters (user selections) --------
+    def save_screen_parameters(self, params: Dict[str, Any]) -> bool:
+        """Save selected screen parameters to DB."""
+        try:
+            conn = sqlite3.connect(str(self.db_path))
+            cursor = conn.cursor()
+            now = datetime.now().isoformat()
+            cursor.execute("""
+                INSERT INTO screen_parameters (created_at, brand, model, width, height, rotate, controller_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (
+                now,
+                params.get("brand"),
+                params.get("model"),
+                int(params.get("width")) if params.get("width") is not None else None,
+                int(params.get("height")) if params.get("height") is not None else None,
+                int(params.get("rotate")) if params.get("rotate") is not None else None,
+                params.get("controller_id"),
+            ))
+            conn.commit()
+            conn.close()
+            return True
+        except Exception as e:
+            logger.exception(f"Error saving screen parameters: {e}")
+            return False
+
+
+# Global controller database instance
+_controller_db_instance: Optional[ControllerDatabase] = None
+
+def get_controller_database() -> ControllerDatabase:
+    """Get global controller database instance"""
+    global _controller_db_instance
+    if _controller_db_instance is None:
+        _controller_db_instance = ControllerDatabase()
+    return _controller_db_instance
+

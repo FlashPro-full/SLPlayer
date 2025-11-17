@@ -59,8 +59,10 @@ def set_taskbar_icon(window_handle, icon_path: Path):
                 shell32 = ctypes.windll.shell32
                 # ExtractIconEx can also be used, but LoadImage is simpler
                 pass
-            except:
-                pass
+            except Exception as e:
+                from utils.logger import get_logger
+                logger = get_logger(__name__)
+                logger.debug(f"Alternative icon loading method failed: {e}")
                 
     except Exception as e:
         from utils.logger import get_logger

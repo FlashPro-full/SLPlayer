@@ -6,8 +6,8 @@ import hashlib
 from pathlib import Path
 from typing import Optional, Dict, List, Tuple
 from datetime import datetime
-from PyQt6.QtGui import QPixmap, QImage, QColor
-from PyQt6.QtCore import QSize, Qt
+from PyQt5.QtGui import QPixmap, QImage, QColor
+from PyQt5.QtCore import QSize, Qt
 
 from utils.logger import get_logger
 from config.constants import SUPPORTED_IMAGE_FORMATS, SUPPORTED_VIDEO_FORMATS
@@ -21,7 +21,8 @@ class MediaLibrary:
     def __init__(self, db_path: Optional[Path] = None):
         """Initialize media library"""
         if db_path is None:
-            db_path = Path.home() / ".slplayer" / "media_library.db"
+            from utils.app_data import get_app_data_dir
+            db_path = get_app_data_dir() / "media_library.db"
         
         self.db_path = db_path
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -105,11 +106,12 @@ class MediaLibrary:
             elif file_type == "video":
                 # Generate thumbnail for video (first frame)
                 try:
-                    from PyQt6.QtMultimedia import QMediaPlayer
-                    from PyQt6.QtCore import QUrl
+                    from PyQt5.QtMultimedia import QMediaPlayer, QMediaContent
+                    from PyQt5.QtCore import QUrl
                     
                     player = QMediaPlayer()
-                    player.setSource(QUrl.fromLocalFile(str(file_path)))
+                    media_content = QMediaContent(QUrl.fromLocalFile(str(file_path)))
+                    player.setMedia(media_content)
                     
                     # Wait for media to load (simplified - in production use signals)
                     # For now, we'll create a placeholder
@@ -120,7 +122,7 @@ class MediaLibrary:
                 except Exception as e:
                     logger.warning(f"Could not generate video thumbnail: {e}")
                     # Create placeholder
-                    from PyQt6.QtGui import QColor
+                    from PyQt5.QtGui import QColor
                     placeholder = QPixmap(200, 150)
                     placeholder.fill(QColor(50, 50, 50))
                     placeholder.save(str(thumbnail_path), "PNG")

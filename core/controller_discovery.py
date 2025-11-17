@@ -5,7 +5,7 @@ import socket
 import threading
 import time
 from typing import List, Dict, Optional, Callable
-from PyQt6.QtCore import QObject, pyqtSignal
+from PyQt5.QtCore import QObject, pyqtSignal
 from utils.logger import get_logger
 
 logger = get_logger(__name__)

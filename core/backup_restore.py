@@ -70,7 +70,7 @@ class BackupRestore:
                 from core.schedule_manager import ScheduleManager
                 schedule_manager = ScheduleManager()
                 # Load schedules if they exist
-                schedule_file = Path.home() / ".slplayer" / "schedules.json"
+                schedule_file = get_app_data_dir() / "schedules.json"
                 if schedule_file.exists():
                     with open(schedule_file, 'r', encoding='utf-8') as f:
                         backup_data["schedules"] = json.load(f)
@@ -128,7 +128,8 @@ class BackupRestore:
             
             # Restore schedules
             if "schedules" in backup_data:
-                schedule_file = Path.home() / ".slplayer" / "schedules.json"
+                ensure_app_data_dir()
+                schedule_file = get_app_data_dir() / "schedules.json"
                 schedule_file.parent.mkdir(parents=True, exist_ok=True)
                 with open(schedule_file, 'w', encoding='utf-8') as f:
                     json.dump(backup_data["schedules"], f, indent=2, ensure_ascii=False)

@@ -3,7 +3,7 @@ Media processor for handling various media types
 """
 from typing import Optional, Dict, List
 from pathlib import Path
-from PyQt6.QtGui import QPixmap, QImage
+from PyQt5.QtGui import QPixmap, QImage
 from config.constants import ContentType
 from utils.logger import get_logger
 

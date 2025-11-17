@@ -60,3 +60,15 @@ SUPPORTED_IMAGE_FORMATS = ["png", "jpg", "jpeg", "gif", "bmp"]
 # Supported video formats
 SUPPORTED_VIDEO_FORMATS = ["mp4", "avi", "mov", "mkv", "wmv"]
 
+# Animation settings
+ANIMATION_FPS = 30  # Frames per second for animations
+ANIMATION_TIMER_INTERVAL = 33  # Milliseconds (1000/30 ≈ 33ms for 30 FPS)
+
+# Emoji rendering settings
+DEFAULT_EMOJI_SIZE = 64  # Default pixel size for emoji rendering
+
+# Toolbar font sizes
+TOOLBAR_FONT_SIZE_SMALL = 12  # Small font size for toolbar buttons
+TOOLBAR_FONT_SIZE_MEDIUM = 14  # Medium font size for toolbar buttons and menu items
+TOOLBAR_FONT_SIZE_LARGE = 18  # Large font size for emojis in menu items
+

@@ -15,7 +15,8 @@ class SyncManager:
     """Manages synchronization between PC and controller with diff comparison"""
     
     def __init__(self):
-        self.local_db_path = Path.home() / ".slplayer" / "local_db.json"
+        from utils.app_data import get_app_data_dir
+        self.local_db_path = get_app_data_dir() / "local_db.json"
         self.local_db: Dict = {}
         self.load_local_db()
     

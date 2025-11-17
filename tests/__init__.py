@@ -1,4 +1,0 @@
-"""
-SLPlayer Test Suite
-"""
-

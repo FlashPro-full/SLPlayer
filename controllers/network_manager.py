@@ -4,7 +4,7 @@ Network communication manager for controllers
 import socket
 import struct
 import time
-from typing import Optional, Tuple, bytes
+from typing import Optional, Tuple
 from threading import Lock
 
 

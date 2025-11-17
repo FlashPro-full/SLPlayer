@@ -1,14 +1,18 @@
 """
-Login dialog for user authentication and license validation
+License activation dialog for SLPlayer
 """
-from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
-                             QLineEdit, QPushButton, QMessageBox, QCheckBox,
-                             QProgressBar, QTextEdit)
-from PyQt6.QtCore import Qt, QThread, pyqtSignal
-from PyQt6.QtGui import QFont
+from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
+                             QLineEdit, QPushButton, QMessageBox, QCheckBox, QWidget)
+from PyQt5.QtCore import Qt, QThread, pyqtSignal, QTimer
 from pathlib import Path
 import json
 from typing import Optional
+from utils.logger import get_logger
+from utils.app_data import get_credentials_file, ensure_app_data_dir
+from ui.widgets.toast import ToastManager
+from ui.widgets.loading_spinner import LoadingWidget
+
+logger = get_logger(__name__)
 
 
 class ActivationThread(QThread):
@@ -30,8 +34,6 @@ class ActivationThread(QThread):
             )
             self.activation_complete.emit(result)
         except Exception as e:
-            from utils.logger import get_logger
-            logger = get_logger(__name__)
             logger.exception(f"Error in activation thread: {e}")
             self.activation_complete.emit({
                 'success': False,
@@ -40,79 +42,106 @@ class ActivationThread(QThread):
             })
 
 
-class LoginDialog(QDialog):
-    """Login dialog with user authentication and license activation"""
+class LicenseDialog(QDialog):
+    """License activation dialog - only handles license activation, no authentication"""
     
     def __init__(self, parent=None, controller_id: Optional[str] = None):
         super().__init__(parent)
-        self.setWindowTitle("SLPlayer - Login")
-        self.setMinimumWidth(400)
+        self.setWindowTitle("SLPlayer - License Activation")
+        self.setMinimumWidth(450)
         self.setModal(True)
         self.license_valid = False
+        
+        # For testing: Use default controller ID if not provided
+        if controller_id is None:
+            # Default test controller ID
+            controller_id = "HD-M30-00123456"
+        
         self.controller_id = controller_id
         self.activation_thread = None
         self.init_ui()
-        self.load_saved_credentials()
+        self.load_saved_email()
         
-        # Check if license activation is needed
+        # Check if license already exists for this controller
         if controller_id:
             self.check_license_status()
     
     def init_ui(self):
-        """Initialize login UI"""
+        """Initialize license activation UI"""
         layout = QVBoxLayout(self)
         layout.setSpacing(15)
         layout.setContentsMargins(30, 30, 30, 30)
         
+        layout.addSpacing(10)
+        
         # Title
-        title = QLabel("SLPlayer")
-        title_font = QFont()
-        title_font.setPointSize(20)
-        title_font.setBold(True)
-        title.setFont(title_font)
-        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(title)
+        title_label = QLabel("License Activation")
+        title_label.setStyleSheet("font-size: 16pt; font-weight: bold; color: #333;")
+        layout.addWidget(title_label)
         
-        subtitle = QLabel("LED Display Controller Program Manager")
-        subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        subtitle.setStyleSheet("color: #666;")
-        layout.addWidget(subtitle)
+        layout.addSpacing(10)
         
-        layout.addSpacing(20)
+        # Device ID (always shown)
+        try:
+            from utils.device_id import get_device_id
+            current_device_id = get_device_id()
+            
+            device_layout = QVBoxLayout()
+            device_layout.setContentsMargins(0, 0, 0, 0)
+            device_layout.setSpacing(5)
+            
+            device_label = QLabel("PC Device ID:")
+            device_layout.addWidget(device_label)
+            
+            device_id_label = QLabel(current_device_id)
+            device_id_label.setStyleSheet("font-weight: bold; color: #4CAF50; font-size: 11pt; padding: 8px; background-color: #F5F5F5; border: 1px solid #CCC; border-radius: 4px; font-family: monospace;")
+            device_layout.addWidget(device_id_label)
+            
+            layout.addLayout(device_layout)
+            layout.addSpacing(10)
+        except Exception as e:
+            logger.warning(f"Could not get device ID: {e}")
         
-        # Username
-        username_label = QLabel("Username:")
-        layout.addWidget(username_label)
+        # Controller ID (always shown)
+        controller_layout = QVBoxLayout()
+        controller_layout.setContentsMargins(0, 0, 0, 0)
+        controller_layout.setSpacing(5)
         
-        self.username_input = QLineEdit()
-        self.username_input.setPlaceholderText("Enter username")
-        layout.addWidget(self.username_input)
+        controller_label = QLabel("Controller ID:")
+        controller_layout.addWidget(controller_label)
         
-        # Password
-        password_label = QLabel("Password:")
-        layout.addWidget(password_label)
+        if self.controller_id:
+            controller_id_label = QLabel(self.controller_id)
+            controller_id_label.setStyleSheet("font-weight: bold; color: #2196F3; font-size: 12pt; padding: 8px; background-color: #F5F5F5; border: 1px solid #CCC; border-radius: 4px;")
+        else:
+            controller_id_label = QLabel("Not connected")
+            controller_id_label.setStyleSheet("font-weight: normal; color: #666; font-size: 11pt; padding: 8px; background-color: #F5F5F5; border: 1px solid #CCC; border-radius: 4px; font-style: italic;")
         
-        self.password_input = QLineEdit()
-        self.password_input.setPlaceholderText("Enter password")
-        self.password_input.setEchoMode(QLineEdit.EchoMode.Password)
-        layout.addWidget(self.password_input)
+        controller_layout.addWidget(controller_id_label)
+        layout.addLayout(controller_layout)
+        layout.addSpacing(10)
         
-        # Email (for license activation)
+        # Email input
         email_label = QLabel("Email:")
         layout.addWidget(email_label)
         
         self.email_input = QLineEdit()
         self.email_input.setPlaceholderText("your.email@example.com")
+        self.email_input.returnPressed.connect(self.on_activate_license)
         layout.addWidget(self.email_input)
+        
+        # Set minimum width for email input
+        min_width = self.email_input.fontMetrics().boundingRect(self.email_input.placeholderText()).width() + 40
+        self.email_input.setMinimumWidth(min_width)
         
         # License activation section (shown if controller_id is provided)
         if self.controller_id:
             self.activation_section = QVBoxLayout()
-            self.activation_label = QLabel(f"Controller ID: {self.controller_id}")
-            self.activation_label.setStyleSheet("font-weight: bold; color: #2196F3;")
-            self.activation_section.addWidget(self.activation_label)
+            self.activation_section.setContentsMargins(0, 0, 0, 0)
+            self.activation_section.setSpacing(10)
             
             self.activate_btn = QPushButton("Activate License")
+            self.activate_btn.setDefault(True)
             self.activate_btn.clicked.connect(self.on_activate_license)
             self.activation_section.addWidget(self.activate_btn)
             
@@ -121,14 +150,26 @@ class LoginDialog(QDialog):
             self.activation_status.setStyleSheet("color: #666; font-size: 10pt;")
             self.activation_section.addWidget(self.activation_status)
             
-            self.activation_progress = QProgressBar()
-            self.activation_progress.setVisible(False)
-            self.activation_section.addWidget(self.activation_progress)
+            # Loading widget
+            self.activation_loading = LoadingWidget(self, text="Activating license...")
+            self.activation_section.addWidget(self.activation_loading, alignment=Qt.AlignCenter)
             
             layout.addLayout(self.activation_section)
+        else:
+            # No controller ID - show helpful message
+            no_controller_info = QLabel(
+                "To activate a license, you need to connect to a controller first.\n\n"
+                "Please:\n"
+                "1. Connect to your LED display controller\n"
+                "2. Or discover controllers from the Control menu\n"
+                "3. Then return here to activate your license"
+            )
+            no_controller_info.setWordWrap(True)
+            no_controller_info.setStyleSheet("color: #666; font-size: 10pt; padding: 10px; background-color: #F5F5F5; border: 1px solid #CCC; border-radius: 4px;")
+            layout.addWidget(no_controller_info)
         
-        # Remember credentials
-        self.remember_check = QCheckBox("Remember credentials")
+        # Remember email checkbox
+        self.remember_check = QCheckBox("Remember email")
         self.remember_check.setChecked(True)
         layout.addWidget(self.remember_check)
         
@@ -138,16 +179,15 @@ class LoginDialog(QDialog):
         button_layout = QHBoxLayout()
         button_layout.addStretch()
         
-        login_btn = QPushButton("Login")
-        login_btn.setDefault(True)
-        login_btn.setMinimumWidth(100)
-        login_btn.clicked.connect(self.on_login)
-        button_layout.addWidget(login_btn)
-        
-        cancel_btn = QPushButton("Cancel")
-        cancel_btn.setMinimumWidth(100)
-        cancel_btn.clicked.connect(self.reject)
-        button_layout.addWidget(cancel_btn)
+        if self.controller_id:
+            # Do not show Cancel button on the first license page when controller is provided
+            pass
+        else:
+            # If no controller_id, allow closing to connect/discover controllers first
+            close_btn = QPushButton("Close")
+            close_btn.setMinimumWidth(100)
+            close_btn.clicked.connect(self.reject)
+            button_layout.addWidget(close_btn)
         
         layout.addLayout(button_layout)
         
@@ -183,23 +223,26 @@ class LoginDialog(QDialog):
             QPushButton:pressed {
                 background-color: #1565C0;
             }
+            QPushButton:disabled {
+                background-color: #CCC;
+                color: #666;
+            }
             QCheckBox {
                 font-size: 10pt;
                 color: #666;
             }
         """)
     
-    def load_saved_credentials(self):
-        """Load saved credentials if available"""
-        config_file = Path.home() / ".slplayer" / "credentials.json"
+    def load_saved_email(self):
+        """Load saved email if available"""
+        config_file = get_credentials_file()
         if config_file.exists():
             try:
                 with open(config_file, 'r', encoding='utf-8') as f:
                     data = json.load(f)
                     if data.get("remember", False):
-                        self.username_input.setText(data.get("username", ""))
-                        self.password_input.setText(data.get("password", ""))
-                        self.email_input.setText(data.get("email", ""))
+                        if not self.email_input.text():
+                            self.email_input.setText(data.get("email", ""))
                         self.remember_check.setChecked(True)
             except:
                 pass
@@ -207,6 +250,9 @@ class LoginDialog(QDialog):
     def check_license_status(self):
         """Check if license already exists for this controller"""
         if not self.controller_id:
+            # No controller ID - user needs to connect to a controller first
+            # Per specification: "If file missing or invalid → must go online to activate"
+            # But activation requires a controller_id, so show helpful message
             return
         
         try:
@@ -215,33 +261,52 @@ class LoginDialog(QDialog):
             
             if license_manager.has_valid_license(self.controller_id):
                 self.activation_status.setText("✓ License already activated")
-                self.activation_status.setStyleSheet("color: green; font-size: 10pt;")
+                self.activation_status.setStyleSheet("color: green; font-size: 10pt; font-weight: bold;")
                 self.activate_btn.setEnabled(False)
                 self.license_valid = True
+                
+                # Auto-close after a delay if license is already valid
+                QTimer.singleShot(2000, self.accept)
             else:
-                self.activation_status.setText("License not activated. Please activate to continue.")
+                # Per specification: "If file missing or invalid → must go online to activate"
+                self.activation_status.setText("License not activated. Enter your email and click 'Activate License' to activate online.")
                 self.activation_status.setStyleSheet("color: orange; font-size: 10pt;")
         except Exception as e:
-            from utils.logger import get_logger
-            logger = get_logger(__name__)
             logger.warning(f"Error checking license status: {e}")
+            # Per specification: "If file missing or invalid → must go online to activate"
+            self.activation_status.setText("Could not check license status. Please connect to a controller and activate online.")
+            self.activation_status.setStyleSheet("color: orange; font-size: 10pt;")
+    
+    def on_cancel_clicked(self):
+        """Handle cancel button click"""
+        # Close dialog directly without confirmation
+        self.reject()
     
     def on_activate_license(self):
         """Handle license activation"""
         if not self.controller_id:
-            QMessageBox.warning(self, "No Controller", "No controller ID available")
+            from PyQt5.QtWidgets import QMessageBox
+            QMessageBox.warning(
+                self, "No Controller",
+                "No controller ID available.\n\n"
+                "To activate a license:\n"
+                "1. Connect to your LED display controller\n"
+                "2. Or discover controllers from the Control menu\n"
+                "3. Then return here to activate your license"
+            )
             return
         
         email = self.email_input.text().strip()
         if not email or '@' not in email:
-            QMessageBox.warning(self, "Invalid Email", "Please enter a valid email address")
+            ToastManager.warning(self, "Please enter a valid email address", duration=3000)
+            self.email_input.setFocus()
             return
         
-        # Disable button and show progress
+        # Disable button and show loading
         self.activate_btn.setEnabled(False)
-        self.activation_progress.setVisible(True)
-        self.activation_progress.setRange(0, 0)  # Indeterminate
+        self.activation_loading.start()
         self.activation_status.setText("Activating license...")
+        self.activation_status.setStyleSheet("color: #666; font-size: 10pt;")
         
         try:
             from core.license_manager import LicenseManager
@@ -257,28 +322,66 @@ class LoginDialog(QDialog):
             self.activation_thread.activation_complete.connect(self.on_activation_complete)
             self.activation_thread.start()
         except Exception as e:
-            self.activation_progress.setVisible(False)
+            self.activation_loading.stop()
             self.activate_btn.setEnabled(True)
-            QMessageBox.warning(self, "Activation Error", f"Could not start activation: {e}")
+            ToastManager.error(self, f"Could not start activation: {e}", duration=4000)
     
     def on_activation_complete(self, result: dict):
         """Handle activation result"""
-        self.activation_progress.setVisible(False)
+        self.activation_loading.stop()
         self.activate_btn.setEnabled(True)
         
         if result.get('success'):
-            self.activation_status.setText("✓ License activated successfully!")
-            self.activation_status.setStyleSheet("color: green; font-size: 10pt;")
-            self.activate_btn.setEnabled(False)
-            self.license_valid = True
-            QMessageBox.information(self, "Success", "License activated successfully!")
+            # Verify the license after activation to ensure it's valid
+            try:
+                from core.license_manager import LicenseManager
+                from utils.device_id import get_device_id
+                
+                license_manager = LicenseManager()
+                device_id = get_device_id()
+                
+                # Verify the license matches controller and device
+                if license_manager.verify_license_offline(self.controller_id, device_id):
+                    self.activation_status.setText("✓ License activated successfully!")
+                    self.activation_status.setStyleSheet("color: green; font-size: 10pt; font-weight: bold;")
+                    self.activate_btn.setEnabled(False)
+                    self.license_valid = True
+                    
+                    # Save email if requested
+                    if self.remember_check.isChecked():
+                        self.save_email()
+                    
+                    ToastManager.success(self, "License activated successfully!", duration=3000)
+                    
+                    # Auto-close after showing success message
+                    QTimer.singleShot(1500, self.accept)
+                else:
+                    # License was saved but verification failed
+                    self.activation_status.setText("✗ License verification failed")
+                    self.activation_status.setStyleSheet("color: red; font-size: 10pt;")
+                    ToastManager.error(
+                        self,
+                        "License was activated but verification failed. Please contact support.",
+                        duration=5000
+                    )
+                    logger.error(f"License verification failed after activation for controller {self.controller_id}")
+            except Exception as e:
+                logger.exception(f"Error verifying license after activation: {e}")
+                self.activation_status.setText("✗ License verification error")
+                self.activation_status.setStyleSheet("color: red; font-size: 10pt;")
+                ToastManager.error(
+                    self,
+                    f"Error verifying license: {e}",
+                    duration=5000
+                )
         else:
             error_code = result.get('code', 'UNKNOWN')
             error_message = result.get('message', 'Unknown error')
             actions = result.get('actions', [])
             
-            # Handle specific error codes
+            # Handle specific error codes with toast messages
             if error_code == 'TRANSFER_REQUIRED':
+                ToastManager.warning(self, error_message, duration=5000)
                 msg = f"{error_message}\n\nWould you like to request a transfer?"
                 reply = QMessageBox.question(
                     self, "Transfer Required", msg,
@@ -288,12 +391,13 @@ class LoginDialog(QDialog):
                     self.request_transfer()
             
             elif error_code == 'DISPLAY_ALREADY_ASSIGNED':
+                ToastManager.error(self, error_message, duration=5000)
                 msg = f"{error_message}\n\n"
                 if actions:
                     action_text = "\n".join([f"- {a.get('label', '')}" for a in actions])
                     msg += f"Available actions:\n{action_text}"
                 
-                reply = QMessageBox.question(
+                QMessageBox.information(
                     self, "Display Already Assigned", msg,
                     QMessageBox.StandardButton.Ok
                 )
@@ -306,19 +410,31 @@ class LoginDialog(QDialog):
                             pass
             
             elif error_code == 'LICENSE_REVOKED':
-                QMessageBox.warning(self, "License Revoked", error_message)
-            
+                ToastManager.error(self, "License is revoked. Contact Starled Italia.", duration=5000)
+                self.activation_status.setText("✗ License is revoked")
+                self.activation_status.setStyleSheet("color: red; font-size: 10pt;")
+            elif error_code == 'NETWORK_ERROR':
+                ToastManager.error(self, f"Network error: {error_message}", duration=5000)
+                self.activation_status.setText(f"✗ Network error: {error_message}")
+                self.activation_status.setStyleSheet("color: red; font-size: 10pt;")
+            elif error_code == 'SERVER_KEY_MISSING':
+                ToastManager.error(self, "Server configuration error. Contact support.", duration=5000)
+                self.activation_status.setText("✗ Server error")
+                self.activation_status.setStyleSheet("color: red; font-size: 10pt;")
+            elif error_code == 'MISSING_PARAMS':
+                ToastManager.warning(self, "Missing required information. Please check your input.", duration=4000)
+                self.activation_status.setText("✗ Missing information")
+                self.activation_status.setStyleSheet("color: red; font-size: 10pt;")
             else:
-                QMessageBox.warning(self, "Activation Failed", f"{error_code}: {error_message}")
-            
-            self.activation_status.setText(f"✗ Activation failed: {error_message}")
-            self.activation_status.setStyleSheet("color: red; font-size: 10pt;")
+                ToastManager.error(self, f"Activation failed: {error_message}", duration=5000)
+                self.activation_status.setText(f"✗ Activation failed: {error_message}")
+                self.activation_status.setStyleSheet("color: red; font-size: 10pt;")
     
     def request_transfer(self):
         """Request license transfer"""
         email = self.email_input.text().strip()
         if not email:
-            QMessageBox.warning(self, "Email Required", "Please enter your email address")
+            ToastManager.warning(self, "Please enter your email address", duration=3000)
             return
         
         try:
@@ -326,82 +442,39 @@ class LoginDialog(QDialog):
             license_manager = LicenseManager()
             
             if license_manager.request_transfer(self.controller_id, email):
-                QMessageBox.information(
-                    self, "Transfer Requested",
-                    "Transfer request has been sent. Please contact Starled Italia for approval."
+                ToastManager.success(
+                    self,
+                    "Transfer request has been sent. Please contact Starled Italia for approval.",
+                    duration=5000
+                )
+            else:
+                ToastManager.error(
+                    self,
+                    "Failed to send transfer request. Please try again or contact support.",
+                    duration=5000
                 )
         except Exception as e:
-            QMessageBox.warning(self, "Error", f"Could not request transfer: {e}")
+            ToastManager.error(self, f"Could not request transfer: {e}", duration=5000)
     
-    def save_credentials(self):
-        """Save credentials if remember is checked"""
+    def save_email(self):
+        """Save email if remember is checked"""
         if not self.remember_check.isChecked():
             return
         
-        config_file = Path.home() / ".slplayer" / "credentials.json"
+        ensure_app_data_dir()
+        config_file = get_credentials_file()
         config_file.parent.mkdir(parents=True, exist_ok=True)
         
         try:
+            credentials = {
+                "email": self.email_input.text(),
+                "remember": True
+            }
+            
             with open(config_file, 'w', encoding='utf-8') as f:
-                json.dump({
-                    "username": self.username_input.text(),
-                    "password": self.password_input.text(),
-                    "email": self.email_input.text(),
-                    "remember": True
-                }, f, indent=2)
-        except:
-            pass
-    
-    def on_login(self):
-        """Handle login"""
-        username = self.username_input.text().strip()
-        password = self.password_input.text()
-        
-        # Simple validation (can be enhanced with actual authentication)
-        if not username:
-            QMessageBox.warning(self, "Login Failed", "Please enter a username")
-            return
-        
-        # Check license if controller_id is provided
-        if self.controller_id:
-            if not self.license_valid:
-                # Check again in case it was just activated
-                try:
-                    from core.license_manager import LicenseManager
-                    license_manager = LicenseManager()
-                    if license_manager.has_valid_license(self.controller_id):
-                        self.license_valid = True
-                    else:
-                        reply = QMessageBox.question(
-                            self, "License Required",
-                            "License not activated for this controller. Do you want to activate now?",
-                            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-                        )
-                        if reply == QMessageBox.StandardButton.Yes:
-                            # Don't block here - let user activate in dialog
-                            # They can try again after activation
-                            pass
-                        else:
-                            QMessageBox.warning(
-                                self, "License Required",
-                                "You must activate a license to use SLPlayer with this controller."
-                            )
-                            return
-                except Exception as e:
-                    from utils.logger import get_logger
-                    logger = get_logger(__name__)
-                    logger.warning(f"License check error: {e}")
-                    # Continue anyway (graceful degradation)
-        
-        # Save credentials if requested
-        if self.remember_check.isChecked():
-            self.save_credentials()
-        
-        self.accept()
-    
-    def get_username(self) -> str:
-        """Get entered username"""
-        return self.username_input.text()
+                json.dump(credentials, f, indent=2)
+        except Exception as e:
+            logger.warning(f"Failed to save email: {e}")
     
     def get_email(self) -> str:
         """Get entered email"""
@@ -411,3 +484,5 @@ class LoginDialog(QDialog):
         """Check if license is valid"""
         return self.license_valid
 
+# Backward compatibility alias
+LoginDialog = LicenseDialog

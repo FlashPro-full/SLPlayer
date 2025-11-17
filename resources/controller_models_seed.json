@@ -1,0 +1,11 @@
+[
+  { "brand": "NovaStar", "model": "T3",  "range": "320 × 256", "max_w": 1024, "max_h": 512,  "storage": "4 GB",  "gray": "65536", "iface": "Ethernet / Wi‑Fi / U‑disk",       "other": "Taurus series" },
+  { "brand": "NovaStar", "model": "T6",  "range": "512 × 384", "max_w": 2048, "max_h": 1024, "storage": "8 GB",  "gray": "65536", "iface": "Ethernet / Wi‑Fi / 4G / U‑disk", "other": "Taurus series" },
+  { "brand": "NovaStar", "model": "T8",  "range": "640 × 512", "max_w": 4096, "max_h": 2048, "storage": "16 GB", "gray": "65536", "iface": "Ethernet / Wi‑Fi / 4G / U‑disk", "other": "Taurus series" },
+  { "brand": "NovaStar", "model": "TB3", "range": "384 × 320", "max_w": 2048, "max_h": 1024, "storage": "8 GB",  "gray": "65536", "iface": "Ethernet / Wi‑Fi / U‑disk",      "other": "Taurus TB" },
+  { "brand": "Huidu", "model": "HD-C15","range": "384 × 320", "max_w": 1024, "max_h": 512,  "storage": "4 GB",  "gray": "256 ~ 65536", "iface": "Wired / U‑disk / 3G / 4G / Wi‑Fi", "other": "Single/Dual color & small full-color" },
+  { "brand": "Huidu", "model": "HD-C16","range": "512 × 384", "max_w": 1024, "max_h": 1024, "storage": "8 GB",  "gray": "256 ~ 65536", "iface": "Wired / U‑disk / Wi‑Fi",         "other": "Full-color" },
+  { "brand": "Huidu", "model": "HD-M30","range": "320 × 320", "max_w": 1024, "max_h": 512,  "storage": "4 GB",  "gray": "256 ~ 65536", "iface": "Wired / U‑disk",                 "other": "Monochrome" },
+  { "brand": "Huidu", "model": "HD-M50","range": "512 × 256", "max_w": 1024, "max_h": 1024, "storage": "8 GB",  "gray": "256 ~ 65536", "iface": "Wired / U‑disk",                 "other": "Monochrome" }
+]
+

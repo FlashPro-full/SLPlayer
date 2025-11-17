@@ -2,6 +2,7 @@
 Program management - Create, load, save programs
 """
 import json
+import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -17,7 +18,8 @@ class Program:
     
     def __init__(self, name: str = "New Program", width: int = DEFAULT_CANVAS_WIDTH, 
                  height: int = DEFAULT_CANVAS_HEIGHT):
-        self.id = f"program_{datetime.now().timestamp()}"
+        # Use UUID for unique IDs instead of timestamp to avoid collisions
+        self.id = f"program_{uuid.uuid4().hex[:12]}"
         self.name = name
         self.width = width
         self.height = height
@@ -26,7 +28,8 @@ class Program:
         self.elements: List[Dict] = []
         self.properties = {
             "frame": {"enabled": False, "style": "---"},
-            "background_music": {"enabled": False, "file": "", "volume": 0}
+            "background_music": {"enabled": False, "file": "", "volume": 0},
+            "checked": True
         }
         self.play_mode = {
             "mode": "play_times",  # "play_times" or "fixed_length"
@@ -66,6 +69,8 @@ class Program:
         self.modified = data.get("modified", datetime.now().isoformat())
         self.elements = data.get("elements", [])
         self.properties = data.get("properties", self.properties)
+        if "checked" not in self.properties:
+            self.properties["checked"] = True
         self.play_mode = data.get("play_mode", self.play_mode)
         self.play_control = data.get("play_control", self.play_control)
         self.duration = data.get("duration", 0.0)
@@ -78,9 +83,23 @@ class ProgramManager:
         self.programs: List[Program] = []
         self.current_program: Optional[Program] = None
     
-    def create_program(self, name: str = "New Program", width: int = DEFAULT_CANVAS_WIDTH,
+    def create_program(self, name: str = None, width: int = DEFAULT_CANVAS_WIDTH,
                       height: int = DEFAULT_CANVAS_HEIGHT) -> Program:
-        """Create a new program"""
+        """Create a new program.
+        
+        If name is not provided, auto-generate 'Program N' where N is the next
+        available number based on existing programs.
+        """
+        if not name:
+            # Determine next sequential program number
+            existing_names = [p.name for p in self.programs]
+            n = 1
+            while True:
+                candidate = f"Program {n}"
+                if candidate not in existing_names:
+                    name = candidate
+                    break
+                n += 1
         program = Program(name, width, height)
         self.programs.append(program)
         self.current_program = program

@@ -21,8 +21,8 @@ class Styles:
         "text_primary": "#212121",
         "text_secondary": "#757575",
         "divider": "#BDBDBD",
-        "toolbar_bg": "#C5C5C5",
-        "menubar_bg": "#E8EAF6",
+        "toolbar_bg": "#D6D6D6",
+        "menubar_bg": "#E5E5E5",
     }
     
     # Main window styles
@@ -44,7 +44,7 @@ class Styles:
             border-radius: 3px;
         }}
         QMenuBar::item:selected {{
-            background-color: {COLORS["primary_light"]};
+            background-color: {COLORS["background"]};
         }}
         QMenu {{
             background-color: {COLORS["surface"]};
@@ -56,7 +56,7 @@ class Styles:
             border-radius: 2px;
         }}
         QMenu::item:selected {{
-            background-color: {COLORS["primary_light"]};
+            background-color: {COLORS["background"]};
         }}
     """
     
@@ -74,12 +74,12 @@ class Styles:
             font-size: 14px;
         }}
         QToolButton:hover {{
-            background-color: {COLORS["primary_light"]};
-            border: 1px solid {COLORS["primary"]};
+            background-color: {COLORS["background"]};
+            border: 1px solid {COLORS["divider"]};
         }}
         QToolButton:pressed {{
-            background-color: {COLORS["primary"]};
-            color: white;
+            background-color: {COLORS["divider"]};
+            color: {COLORS["text_primary"]};
         }}
     """
     
@@ -165,7 +165,7 @@ class Styles:
             border-radius: 2px;
         }}
         QTreeWidget::item:selected {{
-            background-color: {COLORS["primary_light"]};
+            background-color: {COLORS["background"]};
             color: {COLORS["text_primary"]};
         }}
         QTreeWidget::item:hover {{

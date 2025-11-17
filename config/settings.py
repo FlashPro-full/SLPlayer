@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, Dict
 
 from utils.logger import get_logger
+from utils.app_data import get_app_data_dir, get_settings_file
 
 logger = get_logger(__name__)
 
@@ -15,8 +16,8 @@ class Settings:
     """Manages application settings"""
     
     def __init__(self):
-        self.config_dir = Path.home() / ".slplayer"
-        self.config_file = self.config_dir / "settings.json"
+        self.config_dir = get_app_data_dir()
+        self.config_file = get_settings_file()
         self.default_settings = {
             "window": {
                 "width": 1400,
@@ -59,6 +60,8 @@ class Settings:
                     # Merge with defaults to ensure all keys exist
                     settings = self.default_settings.copy()
                     settings.update(loaded)
+                    # Validate settings types
+                    settings = self._validate_settings(settings)
                     return settings
             except json.JSONDecodeError as e:
                 logger.warning(f"Invalid JSON in settings file, using defaults: {e}")
@@ -105,6 +108,52 @@ class Settings:
             settings = settings[k]
         settings[keys[-1]] = value
         self.save_settings()
+    
+    def _validate_settings(self, settings: Dict[str, Any]) -> Dict[str, Any]:
+        """Validate settings types and fix invalid values"""
+        validated = self.default_settings.copy()
+        validated.update(settings)
+        
+        # Validate window settings
+        if "window" in validated and isinstance(validated["window"], dict):
+            window = validated["window"]
+            for key in ["width", "height", "x", "y"]:
+                if key in window:
+                    try:
+                        validated["window"][key] = int(window[key])
+                    except (ValueError, TypeError):
+                        logger.warning(f"Invalid window.{key}, using default")
+                        validated["window"][key] = self.default_settings["window"][key]
+        
+        # Validate canvas settings
+        if "canvas" in validated and isinstance(validated["canvas"], dict):
+            canvas = validated["canvas"]
+            if "width" in canvas or "height" in canvas:
+                if "width" in canvas:
+                    try:
+                        validated["canvas"]["width"] = int(canvas["width"])
+                    except (ValueError, TypeError):
+                        validated["canvas"]["width"] = self.default_settings.get("canvas", {}).get("width", 1920)
+                if "height" in canvas:
+                    try:
+                        validated["canvas"]["height"] = int(canvas["height"])
+                    except (ValueError, TypeError):
+                        validated["canvas"]["height"] = self.default_settings.get("canvas", {}).get("height", 1080)
+        
+        # Validate auto_save
+        if "auto_save" in validated:
+            validated["auto_save"] = bool(validated["auto_save"])
+        
+        # Validate auto_save_interval
+        if "auto_save_interval" in validated:
+            try:
+                validated["auto_save_interval"] = int(validated["auto_save_interval"])
+                if validated["auto_save_interval"] < 1:
+                    validated["auto_save_interval"] = 300
+            except (ValueError, TypeError):
+                validated["auto_save_interval"] = 300
+        
+        return validated
 
 
 # Global settings instance

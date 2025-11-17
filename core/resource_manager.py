@@ -3,7 +3,7 @@ Resource manager for loading images and assets from resources folder
 """
 from pathlib import Path
 from typing import Optional, List
-from PyQt6.QtGui import QPixmap, QImage
+from PyQt5.QtGui import QPixmap, QImage
 
 
 class ResourceManager:

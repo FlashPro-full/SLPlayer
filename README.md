@@ -11,7 +11,6 @@ A comprehensive media program management system for LED display controllers (Nov
 - [Usage](#usage)
 - [Project Structure](#project-structure)
 - [License System](#license-system)
-- [Testing](#testing)
 - [Requirements](#requirements)
 - [Configuration](#configuration)
 - [Support](#support)
@@ -124,7 +123,6 @@ SLPlayer is a professional-grade application for managing LED display content. I
 - ✅ Enhanced Controller ID (with fallback methods)
 - ✅ Email Transfer Requests
 - ✅ First Launch Network Setup
-- ✅ Testing Framework
 
 #### ⚠️ Protocol-Dependent (Requires Documentation)
 - ⚠️ Full controller data reading (IP, model, firmware, resolution) - Framework ready, needs protocol docs
@@ -241,7 +239,6 @@ python main.py
 SLPlayer/
 ├── main.py                      # Application entry point
 ├── requirements.txt             # Python dependencies
-├── pytest.ini                   # Pytest configuration
 │
 ├── config/                      # Configuration
 │   ├── constants.py            # Constants and enums
@@ -283,12 +280,6 @@ SLPlayer/
 │   ├── device_id.py            # Device ID generation
 │   ├── logger.py                # Logging system
 │   └── ntp_sync.py             # NTP time sync
-│
-├── tests/                       # Test suite
-│   ├── conftest.py             # Test fixtures
-│   ├── test_device_id.py       # Device ID tests
-│   ├── test_license_verifier.py # License tests
-│   └── test_base_controller.py # Controller tests
 │
 ├── resources/                   # Resources
 │   ├── app.ico                 # Application icon
@@ -353,40 +344,6 @@ Add SMTP settings to `~/.slplayer/settings.json` for email transfer requests:
 
 ---
 
-## 🧪 Testing
-
-### Running Tests
-
-```bash
-# Run all tests
-pytest
-
-# Run specific test file
-pytest tests/test_device_id.py
-
-# Run with verbose output
-pytest -v
-
-# Run with coverage (requires pytest-cov)
-pytest --cov=. --cov-report=html
-```
-
-### Test Coverage
-
-Current test coverage includes:
-- Device ID generation and persistence
-- License file parsing and verification
-- Controller ID fallback methods
-- Controller connection status
-
-### Adding Tests
-
-Create test files in `tests/` directory:
-- File naming: `test_<module_name>.py`
-- Use fixtures from `conftest.py`
-- Follow pytest conventions
-
----
 
 ## 📦 Requirements
 
@@ -394,12 +351,11 @@ Create test files in `tests/` directory:
 
 See `requirements.txt` for complete list. Key dependencies:
 
-- **PyQt6** (6.6.0+) - GUI framework
+- **PyQt5** (5.15.0+) - GUI framework
 - **Pillow** (10.0.0+) - Image processing
 - **opencv-python** (4.8.0+) - Video processing
 - **cryptography** (41.0.0+) - License verification
 - **requests** (2.31.0+) - HTTP requests
-- **pytest** (7.4.0+) - Testing framework
 
 ### System Requirements
 
@@ -506,7 +462,6 @@ This project is proprietary software. See license agreement for details.
 - Enhanced Controller ID
 - Email transfer requests
 - First launch setup
-- Testing framework
 
 ### In Progress ⚠️
 - Protocol-specific implementations (requires documentation)
