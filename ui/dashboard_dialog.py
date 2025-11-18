@@ -63,9 +63,9 @@ class DashboardDialog(QDialog):
         
         # Controllers table
         self.table = QTableWidget()
-        self.table.setColumnCount(7)
+        self.table.setColumnCount(9)
         self.table.setHorizontalHeaderLabels([
-            "IP Address", "Port", "Type", "Name", "Firmware", "Resolution", "Status"
+            "IP Address", "Port", "Type", "Name", "Model", "Firmware", "Resolution", "Display Name", "Status"
         ])
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.table.setSelectionBehavior(QTableWidget.SelectRows)
@@ -128,13 +128,15 @@ class DashboardDialog(QDialog):
             self.table.setItem(row, 0, QTableWidgetItem(controller.ip))
             self.table.setItem(row, 1, QTableWidgetItem(str(controller.port)))
             self.table.setItem(row, 2, QTableWidgetItem(controller.controller_type.upper()))
-            self.table.setItem(row, 3, QTableWidgetItem(controller.name))
-            self.table.setItem(row, 4, QTableWidgetItem(controller.firmware_version or "Unknown"))
-            self.table.setItem(row, 5, QTableWidgetItem(controller.display_resolution or "Unknown"))
+            self.table.setItem(row, 3, QTableWidgetItem(controller.name or "Unknown"))
+            self.table.setItem(row, 4, QTableWidgetItem(controller.model or "Unknown"))
+            self.table.setItem(row, 5, QTableWidgetItem(controller.firmware_version or "Unknown"))
+            self.table.setItem(row, 6, QTableWidgetItem(controller.display_resolution or "Unknown"))
+            self.table.setItem(row, 7, QTableWidgetItem(controller.display_name or "Unknown"))
             
             # Try to connect and get status
             status_item = QTableWidgetItem("Checking...")
-            self.table.setItem(row, 6, status_item)
+            self.table.setItem(row, 8, status_item)
             
             # Try connection in background
             self.check_controller_status(controller, row)
@@ -161,24 +163,28 @@ class DashboardDialog(QDialog):
                     if "name" in device_info:
                         controller_info.name = device_info["name"]
                     
-                    # Update table
+                    # Update table with device info
                     if controller_info.firmware_version:
-                        self.table.item(row, 4).setText(controller_info.firmware_version)
+                        self.table.item(row, 5).setText(controller_info.firmware_version)
                     if controller_info.display_resolution:
-                        self.table.item(row, 5).setText(controller_info.display_resolution)
+                        self.table.item(row, 6).setText(controller_info.display_resolution)
                     if controller_info.name:
                         self.table.item(row, 3).setText(controller_info.name)
+                    if "model" in device_info:
+                        self.table.item(row, 4).setText(device_info.get("model", "Unknown"))
+                    if "display_name" in device_info:
+                        self.table.item(row, 7).setText(device_info.get("display_name", "Unknown"))
                 
-                self.table.item(row, 6).setText("Connected")
-                self.table.item(row, 6).setForeground(Qt.darkGreen)
+                self.table.item(row, 8).setText("Connected")
+                self.table.item(row, 8).setForeground(Qt.darkGreen)
                 controller.disconnect()
             else:
-                self.table.item(row, 6).setText("Disconnected")
-                self.table.item(row, 6).setForeground(Qt.red)
+                self.table.item(row, 8).setText("Disconnected")
+                self.table.item(row, 8).setForeground(Qt.red)
         except Exception as e:
             logger.error(f"Error checking controller status: {e}")
-            self.table.item(row, 6).setText("Error")
-            self.table.item(row, 6).setForeground(Qt.red)
+            self.table.item(row, 8).setText("Error")
+            self.table.item(row, 8).setForeground(Qt.red)
     
     def on_table_double_click(self, index):
         """Handle table double-click"""

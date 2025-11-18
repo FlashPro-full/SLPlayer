@@ -138,4 +138,22 @@ class ScreenManager:
             if program_screen_name == screen_name:
                 screen_programs.append(program)
         return screen_programs
+    
+    @staticmethod
+    def get_all_screen_names(programs: List[Program]) -> set:
+        """
+        Get all unique screen names from programs.
+        
+        Args:
+            programs: List of all programs
+            
+        Returns:
+            Set of unique screen names
+        """
+        screen_names = set()
+        for program in programs:
+            screen_name = ScreenManager.get_screen_name_from_program(program)
+            if screen_name:
+                screen_names.add(screen_name)
+        return screen_names
 

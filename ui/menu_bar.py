@@ -27,6 +27,11 @@ class MenuBar(QMenuBar):
     disconnect_requested = pyqtSignal()
     upload_requested = pyqtSignal()
     download_requested = pyqtSignal()
+    time_power_brightness_requested = pyqtSignal()
+    network_config_requested = pyqtSignal()
+    diagnostics_requested = pyqtSignal()
+    import_requested = pyqtSignal()
+    export_requested = pyqtSignal()
     
     language_changed = pyqtSignal(str)
     about_requested = pyqtSignal()
@@ -114,6 +119,26 @@ class MenuBar(QMenuBar):
         
         control_menu.addSeparator()
         
+        # Time/Power/Brightness
+        time_power_action = QAction("⏰ Time / Power / Brightness", self)
+        time_power_action.triggered.connect(self.time_power_brightness_requested.emit)
+        control_menu.addAction(time_power_action)
+        self.actions["control.time_power"] = time_power_action
+        
+        # Network Configuration
+        network_config_action = QAction("🌐 Network Configuration", self)
+        network_config_action.triggered.connect(self.network_config_requested.emit)
+        control_menu.addAction(network_config_action)
+        self.actions["control.network"] = network_config_action
+        
+        # Diagnostics
+        diagnostics_action = QAction("🔧 Diagnostics & Logs", self)
+        diagnostics_action.triggered.connect(self.diagnostics_requested.emit)
+        control_menu.addAction(diagnostics_action)
+        self.actions["control.diagnostics"] = diagnostics_action
+        
+        control_menu.addSeparator()
+        
         device_info_action = QAction("📱 Controller Information", self)
         device_info_action.triggered.connect(self.device_info_requested.emit)
         control_menu.addAction(device_info_action)
@@ -133,6 +158,19 @@ class MenuBar(QMenuBar):
         download_action.triggered.connect(self.download_requested.emit)
         control_menu.addAction(download_action)
         self.actions["control.download"] = download_action
+        
+        control_menu.addSeparator()
+        
+        # Import/Export
+        import_action = QAction("📥 Import from Controller", self)
+        import_action.triggered.connect(self.import_requested.emit)
+        control_menu.addAction(import_action)
+        self.actions["control.import"] = import_action
+        
+        export_action = QAction("📤 Export / Publish", self)
+        export_action.triggered.connect(self.export_requested.emit)
+        control_menu.addAction(export_action)
+        self.actions["control.export"] = export_action
         
         language_menu = self.addMenu(tr("menu.language"))
         self.menus["language"] = language_menu
@@ -166,8 +204,8 @@ class MenuBar(QMenuBar):
                         if "screen" not in program.properties:
                             program.properties["screen"] = {}
                         program.properties["screen"]["rotate"] = rotate
-        except Exception:
-            pass
+        except Exception as e:
+            logger.error(f"Error in on_display_settings: {e}", exc_info=True)
     
     def set_language_checked(self, code: str):
         for c, act in self.lang_actions.items():

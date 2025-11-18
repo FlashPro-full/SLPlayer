@@ -73,8 +73,9 @@ def main():
         controller_id, valid_license_found = startup_service.verify_license_at_startup()
         license_must_be_activated = not valid_license_found
         
-        # Show license activation dialog if needed
-        if not skip_license:
+        # Show license activation dialog only if needed
+        if not skip_license and not valid_license_found:
+            # Only show dialog if no valid license was found
             from ui.login_dialog import LoginDialog
             login_dialog = LoginDialog(controller_id=controller_id)
             
@@ -97,11 +98,13 @@ def main():
             if controller_id and license_must_be_activated:
                 if not startup_service.check_license_after_activation(controller_id):
                     sys.exit(1)
+        elif valid_license_found:
+            logger.info(f"Valid license found for controller: {controller_id} - skipping activation dialog")
         else:
             logger.info("License dialog skipped via command-line argument")
         
-        # Final license verification
-        if controller_id and not skip_license:
+        # Final license verification (only if we didn't already verify)
+        if controller_id and not skip_license and not valid_license_found:
             if not startup_service.check_license_after_activation(controller_id):
                 sys.exit(1)
         

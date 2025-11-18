@@ -30,6 +30,8 @@ class Program:
             "frame": {"enabled": False, "style": "---"},
             "background_music": {"enabled": False, "file": "", "volume": 0},
             "checked": True
+            # Note: screen properties (width, height) should be set from screen/controller settings,
+            # not from program canvas dimensions. They will be set when screen is configured.
         }
         self.play_mode = {
             "mode": "play_times",  # "play_times" or "fixed_length"
@@ -71,6 +73,8 @@ class Program:
         self.properties = data.get("properties", self.properties)
         if "checked" not in self.properties:
             self.properties["checked"] = True
+        # Note: Screen properties (width, height) should come from screen/controller settings,
+        # not from program canvas dimensions. They are set when screen is configured.
         self.play_mode = data.get("play_mode", self.play_mode)
         self.play_control = data.get("play_control", self.play_control)
         self.duration = data.get("duration", 0.0)

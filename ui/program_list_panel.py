@@ -1,31 +1,26 @@
 """
-Program list panel with checkboxes for multi-selection
+Program list panel with three-level hierarchy: Screen -> Program -> Content
 """
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QTreeWidget, QTreeWidgetItem, 
-                             QToolButton, QHBoxLayout, QCheckBox, QMenu)
-from PyQt5.QtCore import pyqtSignal, Qt, QPoint, QTimer
+                             QToolButton, QHBoxLayout, QCheckBox, QMenu, QInputDialog)
+from PyQt5.QtCore import pyqtSignal, Qt, QPoint, QTimer, QEvent
 from PyQt5.QtGui import QMouseEvent, QContextMenuEvent
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional, Dict, List
+from datetime import datetime
+
 if TYPE_CHECKING:
     from core.program_manager import ProgramManager
 
 from core.program_manager import ProgramManager
+from core.screen_manager import ScreenManager
 from config.i18n import tr
 
 
 class ProgramListPanel(QWidget):
-    """Program list panel with management tools and checkboxes"""
+    """Program list panel with three-level hierarchy: Screen -> Program -> Content"""
     
-    program_selected = pyqtSignal(str)
+    # Screen signals
     screen_selected = pyqtSignal(str)
-    new_program_requested = pyqtSignal()
-    delete_program_requested = pyqtSignal(str)
-    program_renamed = pyqtSignal(str, str)
-    program_duplicated = pyqtSignal(str)
-    program_moved = pyqtSignal(str, int)
-    program_activated = pyqtSignal(str, bool)
-    program_checked = pyqtSignal(str, bool)
-    
     screen_renamed = pyqtSignal(str, str)
     screen_deleted = pyqtSignal(str)
     new_screen_requested = pyqtSignal()
@@ -35,14 +30,33 @@ class ProgramListPanel(QWidget):
     screen_close_requested = pyqtSignal(str)
     screen_paste_requested = pyqtSignal(str)
     
+    # Program signals
+    program_selected = pyqtSignal(str)
+    new_program_requested = pyqtSignal()  # For creating new program without screen context
+    program_renamed = pyqtSignal(str, str)
+    delete_program_requested = pyqtSignal(str)
+    program_deleted = pyqtSignal(str)  # Alias for compatibility
+    program_duplicated = pyqtSignal(str)
+    program_moved = pyqtSignal(str, int)
+    program_activated = pyqtSignal(str, bool)
+    program_checked = pyqtSignal(str, bool)
     program_copy_requested = pyqtSignal(str)
     program_paste_requested = pyqtSignal(str)
-    program_add_content_requested = pyqtSignal(str, str)
+    program_add_content_requested = pyqtSignal(str, str)  # program_id, content_type
+    
+    # Content signals
+    content_selected = pyqtSignal(str, str)  # program_id, element_id
+    content_renamed = pyqtSignal(str, str, str)  # program_id, element_id, new_name
+    content_deleted = pyqtSignal(str, str)  # program_id, element_id
+    content_add_requested = pyqtSignal(str, str)  # program_id, content_type
     
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.program_manager: ProgramManager = None
+        self.program_manager: Optional[ProgramManager] = None
         self._refreshing = False
+        self._last_selected_screen = None
+        self._last_selected_program = None
+        self._last_selected_content = None
         self.init_ui()
     
     def set_program_manager(self, program_manager: ProgramManager):
@@ -56,6 +70,7 @@ class ProgramListPanel(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
         
+        # Toolbar
         toolbar_widget = QWidget()
         toolbar_widget.setStyleSheet("""
             QWidget {
@@ -65,11 +80,11 @@ class ProgramListPanel(QWidget):
         toolbar_layout = QHBoxLayout(toolbar_widget)
         toolbar_layout.setContentsMargins(4, 2, 4, 2)
         toolbar_layout.setSpacing(2)
-        
         toolbar_layout.addStretch()
         
+        # Select all checkbox
         self.select_all_checkbox = QCheckBox()
-        self.select_all_checkbox.setToolTip("Select/Deselect all programs in selected screen")
+        self.select_all_checkbox.setToolTip("Select/Deselect active program or all programs in active screen")
         self.select_all_checkbox.setTristate(True)
         self.select_all_checkbox.stateChanged.connect(self.on_select_all_changed)
         self.select_all_checkbox.setStyleSheet("""
@@ -79,6 +94,7 @@ class ProgramListPanel(QWidget):
         """)
         toolbar_layout.addWidget(self.select_all_checkbox)
         
+        # Toolbar buttons
         self.copy_btn = QToolButton()
         self.copy_btn.setText("📑")
         self.copy_btn.setToolTip("Copy")
@@ -151,6 +167,7 @@ class ProgramListPanel(QWidget):
         
         layout.addWidget(toolbar_widget)
         
+        # Tree widget
         self.tree = QTreeWidget()
         self.tree.setHeaderHidden(True)
         self.tree.setSelectionMode(QTreeWidget.SingleSelection)
@@ -158,8 +175,12 @@ class ProgramListPanel(QWidget):
         self.tree.setExpandsOnDoubleClick(False)
         self.tree.setContextMenuPolicy(Qt.CustomContextMenu)
         self.tree.customContextMenuRequested.connect(self._on_context_menu)
-        self._original_mouse_press_event = self.tree.mousePressEvent
-        self.tree.mousePressEvent = self._tree_mouse_press_event
+        self.tree.setItemsExpandable(True)
+        self.tree.setSelectionBehavior(QTreeWidget.SelectItems)
+        self.tree.itemSelectionChanged.connect(self._on_selection_changed)
+        self.tree.currentItemChanged.connect(self._on_current_item_changed)
+        self.tree.installEventFilter(self)
+        
         self.tree.setStyleSheet("""
             QTreeWidget {
                 background-color: #FFFFFF;
@@ -181,28 +202,20 @@ class ProgramListPanel(QWidget):
                 background-color: #F5F5F5;
             }
         """)
+        
         self.tree.itemClicked.connect(self.on_item_clicked)
         self.tree.itemChanged.connect(self.on_item_changed)
+        self.tree.itemDoubleClicked.connect(self._on_item_double_clicked)
         layout.addWidget(self.tree, stretch=1)
-    
-    def refresh_texts(self):
-        """Refresh localized tooltips/texts."""
-        self.copy_btn.setToolTip("Copy")
-        self.paste_btn.setToolTip("Paste")
-        self.up_btn.setToolTip(tr("program_list.move_up"))
-        self.down_btn.setToolTip(tr("program_list.move_down"))
-        self.close_btn.setToolTip(tr("program_list.delete"))
     
     def refresh_programs(self):
         """Refresh the program list with performance optimizations"""
         if not self.program_manager:
             return
         
-        # Use throttling to avoid excessive refreshes
         if hasattr(self, '_refresh_timer'):
             self._refresh_timer.stop()
         
-        # Schedule refresh with small delay to batch multiple calls
         self._refresh_timer = QTimer()
         self._refresh_timer.setSingleShot(True)
         self._refresh_timer.timeout.connect(self._do_refresh_programs)
@@ -213,136 +226,209 @@ class ProgramListPanel(QWidget):
         if not self.program_manager:
             return
         
-        current_program_id = None
-        if self.program_manager.current_program:
-            current_program_id = self.program_manager.current_program.id
-        
         self._refreshing = True
         self.tree.blockSignals(True)
         
-        # Use cache for screen name lookups
-        from core.screen_manager import ScreenManager
-        from core.cache import cache
-        
-        # Check if we can use cached screen structure
-        programs_hash = hash(tuple(p.id for p in self.program_manager.programs))
-        cache_key = f"program_list_structure:{programs_hash}"
-        cached_structure = cache.get(cache_key)
-        
-        if cached_structure and cached_structure.get('programs_hash') == programs_hash:
-            # Use cached structure
-            screens = cached_structure.get('screens', {})
-        else:
-            # Build screen structure
-            screens = {}
-            for program in self.program_manager.programs:
-                # Use ScreenManager to get screen name - handles all cases properly
-                screen_name = ScreenManager.get_screen_name_from_program(program)
-                
-                if screen_name not in screens:
-                    screens[screen_name] = []
-                screens[screen_name].append(program)
-            
-            # Cache the structure
-            cache.set(cache_key, {
-                'screens': screens,
-                'programs_hash': programs_hash
-            }, ttl=60)  # Cache for 60 seconds
+        # Build screen structure
+        screens = {}
+        for program in self.program_manager.programs:
+            screen_name = ScreenManager.get_screen_name_from_program(program)
+            if screen_name not in screens:
+                screens[screen_name] = []
+            screens[screen_name].append(program)
         
         # Clear and rebuild tree
         self.tree.clear()
         
-        current_item = None
+        # Build a map of items for easy lookup
+        item_map = {}  # {program_id: program_item, (program_id, element_id): element_item}
+        screen_item_map = {}  # {screen_name: screen_item}
+        
         for screen_name, programs in screens.items():
+            # Level 1: Screen
             screen_item = QTreeWidgetItem(self.tree)
             screen_item.setText(0, f"🖥 {screen_name}")
-            screen_item.setData(0, Qt.UserRole, None)
+            screen_item.setData(0, Qt.UserRole, "screen")
+            screen_item.setData(0, Qt.UserRole + 1, screen_name)  # Store screen name
             screen_item.setChildIndicatorPolicy(QTreeWidgetItem.ChildIndicatorPolicy.ShowIndicator)
+            screen_item.setFlags(Qt.ItemIsSelectable | Qt.ItemIsEnabled)
+            screen_item_map[screen_name] = screen_item
             
             for program in programs:
+                # Level 2: Program
                 program_item = QTreeWidgetItem(screen_item)
-                is_activated = program.properties.get("activation", {}).get("enabled", True)
-                program.properties["checked"] = True
-                is_checked = True
+                is_checked = program.properties.get("checked", True)
+                program.properties["checked"] = is_checked
                 program_item.setText(0, f"💽 {program.name}")
-                program_item.setData(0, Qt.UserRole, program.id)
-                program_item.setData(0, Qt.UserRole + 1, is_checked)
-                program_item.setCheckState(0, Qt.Checked)
+                program_item.setData(0, Qt.UserRole, "program")
+                program_item.setData(0, Qt.UserRole + 1, program.id)
+                program_item.setData(0, Qt.UserRole + 2, is_checked)
+                program_item.setCheckState(0, Qt.Checked if is_checked else Qt.Unchecked)
                 program_item.setFlags(program_item.flags() | Qt.ItemIsEditable | Qt.ItemIsUserCheckable)
-                program_item.setChildIndicatorPolicy(QTreeWidgetItem.ChildIndicatorPolicy.DontShowIndicator)
+                program_item.setChildIndicatorPolicy(QTreeWidgetItem.ChildIndicatorPolicy.ShowIndicator)
+                item_map[program.id] = program_item
                 
-                if program.id == current_program_id:
-                    current_item = program_item
+                # Level 3: Content elements
+                for element in program.elements:
+                    element_item = QTreeWidgetItem(program_item)
+                    element_type = element.get("type", "unknown")
+                    element_name = element.get("name", element_type)
+                    element_id = element.get("id", "")
+                    
+                    # Icon based on content type
+                    icon_map = {
+                        "video": "🎞",
+                        "image": "🌄",
+                        "picture": "🌄",
+                        "photo": "🌄",
+                        "text": "🔠",
+                        "singleline_text": "🔤",
+                        "animation": "🎇",
+                        "3d_text": "🧊",
+                        "clock": "🕓",
+                        "calendar": "🗓",
+                        "timing": "⌛️",
+                        "weather": "🌦",
+                        "neon": "🪄",
+                        "wps": "📚",
+                        "table": "📅",
+                        "office": "🗃",
+                        "digital_watch": "📟",
+                        "html": "🌐",
+                        "livestream": "🎥",
+                        "qrcode": "🧿"
+                    }
+                    icon = icon_map.get(element_type, "📄")
+                    element_item.setText(0, f"{icon} {element_name}")
+                    element_item.setData(0, Qt.UserRole, "content")
+                    element_item.setData(0, Qt.UserRole + 1, program.id)
+                    element_item.setData(0, Qt.UserRole + 2, element_id)
+                    element_item.setFlags(Qt.ItemIsSelectable | Qt.ItemIsEnabled | Qt.ItemIsEditable)
+                    element_item.setChildIndicatorPolicy(QTreeWidgetItem.ChildIndicatorPolicy.DontShowIndicator)
+                    item_map[(program.id, element_id)] = element_item
         
         self.tree.expandAll()
         self.tree.blockSignals(False)
         self._refreshing = False
         
-        if not current_item and self.program_manager.programs:
-            first_program = self.program_manager.programs[0]
-            for i in range(self.tree.topLevelItemCount()):
-                screen_item = self.tree.topLevelItem(i)
-                for j in range(screen_item.childCount()):
-                    program_item = screen_item.child(j)
-                    if program_item.data(0, Qt.UserRole) == first_program.id:
-                        current_item = program_item
-                        break
-                if current_item:
-                    break
+        # Restore selection based on user's last selection (not current_program_id)
+        current_item = None
         
+        # Priority 1: Restore previously selected content
+        if self._last_selected_content:
+            target_program_id, target_element_id = self._last_selected_content
+            current_item = item_map.get((target_program_id, target_element_id))
+        
+        # Priority 2: Restore previously selected program
+        if not current_item and self._last_selected_program:
+            current_item = item_map.get(self._last_selected_program)
+        
+        # Priority 3: Restore previously selected screen
+        if not current_item and self._last_selected_screen:
+            current_item = screen_item_map.get(self._last_selected_screen)
+        
+        # Priority 4: If no previous selection, select the top program in the first screen
+        if not current_item:
+            # Find the first screen
+            if self.tree.topLevelItemCount() > 0:
+                first_screen_item = self.tree.topLevelItem(0)
+                # Find the first program under the first screen
+                if first_screen_item and first_screen_item.childCount() > 0:
+                    current_item = first_screen_item.child(0)
+        
+        # Set selection if we have an item
         if current_item:
             self.tree.setCurrentItem(current_item)
             current_item.setSelected(True)
             self.tree.scrollToItem(current_item)
-            program_id = current_item.data(0, Qt.UserRole)
-            if program_id:
-                QTimer.singleShot(10, lambda pid=program_id: self.program_selected.emit(pid))
+            QTimer.singleShot(10, lambda: self._emit_item_signal(current_item))
         
         self._update_select_all_checkbox()
     
-    def _tree_mouse_press_event(self, event: QMouseEvent):
-        """Custom mouse press event to handle arrow clicks for screen items"""
-        item = self.tree.itemAt(event.pos())
-        if item:
-            program_id = item.data(0, Qt.UserRole)
-            if not program_id:
-                visual_rect = self.tree.visualItemRect(item)
-                indent = self.tree.indentation()
-                arrow_width = indent + 10
-                item_x = visual_rect.x()
-                click_x = event.pos().x()
-                if click_x >= item_x and click_x <= item_x + arrow_width:
-                    self._original_mouse_press_event(event)
-                else:
-                    self.tree.setCurrentItem(item)
-                    item.setSelected(True)
-                    self.tree.scrollToItem(item)
-                    screen_name = item.text(0).replace("🖥 ", "")
-                    self.screen_selected.emit(screen_name)
-                    return
-            else:
-                self._original_mouse_press_event(event)
-        else:
-            self._original_mouse_press_event(event)
+    def _on_selection_changed(self):
+        """Handle selection change"""
+        selected_items = self.tree.selectedItems()
+        if not selected_items:
+            return
+        item = selected_items[0]
+        self._emit_item_signal(item)
+    
+    def _on_current_item_changed(self, current: QTreeWidgetItem, previous: QTreeWidgetItem):
+        """Handle current item change"""
+        if current:
+            if not current.isSelected():
+                current.setSelected(True)
+            QTimer.singleShot(0, lambda: self._emit_item_signal(current))
+    
+    def eventFilter(self, obj, event):
+        """Event filter to handle mouse clicks"""
+        if obj == self.tree and event.type() == QEvent.MouseButtonPress:
+            mouse_event = event
+            item = self.tree.itemAt(mouse_event.pos())
+            if item:
+                item_type = item.data(0, Qt.UserRole)
+                if item_type == "screen":
+                    visual_rect = self.tree.visualItemRect(item)
+                    arrow_width = 20
+                    item_x = visual_rect.x()
+                    click_x = mouse_event.pos().x()
+                    
+                    if not (item.childCount() > 0 and click_x >= item_x and click_x <= item_x + arrow_width):
+                        self.tree.setCurrentItem(item)
+                        item.setSelected(True)
+                        return False
+        return super().eventFilter(obj, event)
+    
+    def _emit_item_signal(self, item: QTreeWidgetItem):
+        """Emit the appropriate signal for the item"""
+        if not item:
+            return
+        
+        try:
+            item_type = item.data(0, Qt.UserRole)
+            
+            if item_type == "screen":
+                screen_name = item.data(0, Qt.UserRole + 1)
+                self._last_selected_screen = screen_name
+                self._last_selected_program = None
+                self._last_selected_content = None
+                self.screen_selected.emit(screen_name)
+                self._update_select_all_checkbox()
+            elif item_type == "program":
+                program_id = item.data(0, Qt.UserRole + 1)
+                self._last_selected_program = program_id
+                self._last_selected_screen = None
+                self._last_selected_content = None
+                self.program_selected.emit(program_id)
+                self._update_select_all_checkbox()
+            elif item_type == "content":
+                program_id = item.data(0, Qt.UserRole + 1)
+                element_id = item.data(0, Qt.UserRole + 2)
+                self._last_selected_content = (program_id, element_id)
+                self._last_selected_screen = None
+                self._last_selected_program = None
+                self.content_selected.emit(program_id, element_id)
+                self._update_select_all_checkbox()
+        except Exception as e:
+            pass
+    
+    def _on_item_double_clicked(self, item: QTreeWidgetItem, column: int):
+        """Handle double click - expand/collapse"""
+        if item is None:
+            return
+        
+        item_type = item.data(0, Qt.UserRole)
+        if item_type == "screen":
+            item.setExpanded(not item.isExpanded())
     
     def on_item_clicked(self, item: QTreeWidgetItem, column: int):
         """Handle item click"""
         if item is None:
             return
         
-        program_id = item.data(0, Qt.UserRole)
-        if program_id:
-            self.tree.setCurrentItem(item)
-            item.setSelected(True)
-            self.tree.scrollToItem(item)
-            self.program_selected.emit(program_id)
-            self._update_select_all_checkbox()
-        else:
-            self.tree.setCurrentItem(item)
-            item.setSelected(True)
-            self.tree.scrollToItem(item)
-            screen_name = item.text(0).replace("🖥 ", "")
-            self.screen_selected.emit(screen_name)
+        self.tree.setCurrentItem(item)
+        item.setSelected(True)
+        self._emit_item_signal(item)
     
     def _on_context_menu(self, position: QPoint):
         """Handle context menu request"""
@@ -350,72 +436,12 @@ class ProgramListPanel(QWidget):
         if item is None:
             return
         
-        program_id = item.data(0, Qt.UserRole)
-        if program_id:
-            menu = QMenu(self)
-            
-            rename_action = menu.addAction("📝 Rename")
-            rename_action.triggered.connect(lambda: self._on_program_rename_context(program_id))
-            
-            delete_action = menu.addAction("❌ Delete")
-            delete_action.triggered.connect(lambda: self._on_program_delete_context(program_id))
-            
-            menu.addSeparator()
-            
-            add_program_action = menu.addAction("💽 Add Program")
-            add_program_action.triggered.connect(lambda: self._on_program_add_program(program_id))
-            
-            menu.addSeparator()
-            
-            add_text_action = menu.addAction("🔠 Add Text")
-            add_text_action.triggered.connect(lambda: self._on_program_add_content(program_id, "text"))
-            
-            add_singleline_action = menu.addAction("🔤 Add SingleLineText")
-            add_singleline_action.triggered.connect(lambda: self._on_program_add_content(program_id, "singleline_text"))
-            
-            add_animation_action = menu.addAction("🎇 Add Animation")
-            add_animation_action.triggered.connect(lambda: self._on_program_add_content(program_id, "animation"))
-            
-            add_clock_action = menu.addAction("🕓 Add Clock")
-            add_clock_action.triggered.connect(lambda: self._on_program_add_content(program_id, "clock"))
-            
-            add_calendar_action = menu.addAction("🗓 Add Calendar")
-            add_calendar_action.triggered.connect(lambda: self._on_program_add_content(program_id, "calendar"))
-            
-            add_timing_action = menu.addAction("⌛️ Add Timing")
-            add_timing_action.triggered.connect(lambda: self._on_program_add_content(program_id, "timing"))
-            
-            add_html_action = menu.addAction("🌐 Add HTML")
-            add_html_action.triggered.connect(lambda: self._on_program_add_content(program_id, "html"))
-            
-            add_livestream_action = menu.addAction("🎥 LiveStream")
-            add_livestream_action.triggered.connect(lambda: self._on_program_add_content(program_id, "livestream"))
-            
-            add_weather_action = menu.addAction("🌦 Add Weather")
-            add_weather_action.triggered.connect(lambda: self._on_program_add_content(program_id, "weather"))
-            
-            add_neon_action = menu.addAction("🪄 Add Neon")
-            add_neon_action.triggered.connect(lambda: self._on_program_add_content(program_id, "neon"))
-            
-            add_qrcode_action = menu.addAction("🧿 QR code")
-            add_qrcode_action.triggered.connect(lambda: self._on_program_add_content(program_id, "qrcode"))
-            
-            add_digitalwatch_action = menu.addAction("📟 Digital Watch")
-            add_digitalwatch_action.triggered.connect(lambda: self._on_program_add_content(program_id, "digital_watch"))
-            
-            menu.addSeparator()
-            
-            copy_action = menu.addAction("📑 Copy")
-            copy_action.triggered.connect(lambda: self._on_program_copy(program_id))
-            
-            paste_action = menu.addAction("📋 Paste")
-            paste_action.triggered.connect(lambda: self._on_program_paste(program_id))
-            
-            menu.exec_(self.tree.mapToGlobal(position))
-        else:
-            screen_name = item.text(0).replace("🖥 ", "")
-            
-            menu = QMenu(self)
+        item_type = item.data(0, Qt.UserRole)
+        menu = QMenu(self)
+        
+        if item_type == "screen":
+            # Screen context menu
+            screen_name = item.data(0, Qt.UserRole + 1)
             
             rename_action = menu.addAction("📝 Rename")
             rename_action.triggered.connect(lambda: self._on_screen_rename(screen_name))
@@ -425,7 +451,7 @@ class ProgramListPanel(QWidget):
             
             menu.addSeparator()
             
-            new_screen_action = menu.addAction("🖥 New screen")
+            new_screen_action = menu.addAction("🖥 New Screen")
             new_screen_action.triggered.connect(self._on_new_screen)
             
             add_program_action = menu.addAction("💽 Add program")
@@ -439,176 +465,201 @@ class ProgramListPanel(QWidget):
             
             close_action = menu.addAction("✖️ Close")
             close_action.triggered.connect(lambda: self._on_screen_close(screen_name))
+        else:
+            # Program or Content context menu
+            rename_action = menu.addAction("📝 Rename")
+            delete_action = menu.addAction("❌ Delete")
             
-            paste_action = menu.addAction("📋 Paste")
-            paste_action.triggered.connect(lambda: self._on_screen_paste(screen_name))
-            
-            menu.exec_(self.tree.mapToGlobal(position))
+            if item_type == "program":
+                program_id = item.data(0, Qt.UserRole + 1)
+                rename_action.triggered.connect(lambda: self._on_program_rename(program_id))
+                delete_action.triggered.connect(lambda: self._on_program_delete(program_id))
+                
+                menu.addSeparator()
+                
+                # Content type actions
+                content_actions = [
+                    ("🎞 Add Video", "video"),
+                    ("🌄 Add Photo", "photo"),
+                    ("🔠 Add Text", "text"),
+                    ("🔤 Add SingleLineText", "singleline_text"),
+                    ("🎇 Add Animation", "animation"),
+                    ("🧊 Add 3D Text", "3d_text"),
+                    ("🕓 Add Clock", "clock"),
+                    ("🗓 Add Calendar", "calendar"),
+                    ("⌛️ Add Timing", "timing"),
+                    ("🌦 Add Weather", "weather"),
+                    ("🪄 Add Neon", "neon"),
+                    ("📚 Add WPS", "wps"),
+                    ("📅 Add Table", "table"),
+                    ("🗃 Add Office", "office"),
+                    ("📟 Add Digital Watch", "digital_watch"),
+                    ("🌐 Add HTML", "html"),
+                    ("🎥 Add LiveStream", "livestream"),
+                    ("🧿 Add QR code", "qrcode")
+                ]
+                
+                for action_text, content_type in content_actions:
+                    action = menu.addAction(action_text)
+                    action.triggered.connect(lambda checked, pid=program_id, ct=content_type: 
+                                           self.content_add_requested.emit(pid, ct))
+                
+                menu.addSeparator()
+                
+                copy_action = menu.addAction("📑 Copy")
+                copy_action.triggered.connect(lambda: self.program_copy_requested.emit(program_id))
+            else:  # content
+                program_id = item.data(0, Qt.UserRole + 1)
+                element_id = item.data(0, Qt.UserRole + 2)
+                rename_action.triggered.connect(lambda: self._on_content_rename(program_id, element_id))
+                delete_action.triggered.connect(lambda: self._on_content_delete(program_id, element_id))
+                
+                menu.addSeparator()
+                
+                # Content type actions (same as program)
+                content_actions = [
+                    ("🎞 Add Video", "video"),
+                    ("🌄 Add Photo", "photo"),
+                    ("🔠 Add Text", "text"),
+                    ("🔤 Add SingleLineText", "singleline_text"),
+                    ("🎇 Add Animation", "animation"),
+                    ("🧊 Add 3D Text", "3d_text"),
+                    ("🕓 Add Clock", "clock"),
+                    ("🗓 Add Calendar", "calendar"),
+                    ("⌛️ Add Timing", "timing"),
+                    ("🌦 Add Weather", "weather"),
+                    ("🪄 Add Neon", "neon"),
+                    ("📚 Add WPS", "wps"),
+                    ("📅 Add Table", "table"),
+                    ("🗃 Add Office", "office"),
+                    ("📟 Add Digital Watch", "digital_watch"),
+                    ("🌐 Add HTML", "html"),
+                    ("🎥 Add LiveStream", "livestream"),
+                    ("🧿 Add QR code", "qrcode")
+                ]
+                
+                for action_text, content_type in content_actions:
+                    action = menu.addAction(action_text)
+                    action.triggered.connect(lambda checked, pid=program_id, ct=content_type: 
+                                           self.content_add_requested.emit(pid, ct))
+                
+                menu.addSeparator()
+                
+                copy_action = menu.addAction("📑 Copy")
+                copy_action.triggered.connect(lambda: self.program_copy_requested.emit(program_id))
+        
+        menu.exec_(self.tree.mapToGlobal(position))
     
+    # Screen handlers
     def _on_screen_rename(self, screen_name: str):
-        """Handle screen rename from context menu"""
-        self.screen_renamed.emit(screen_name, "")
+        """Handle screen rename"""
+        new_name, ok = QInputDialog.getText(self, "Rename Screen", "Enter new screen name:", text=screen_name)
+        if ok and new_name:
+            self.screen_renamed.emit(screen_name, new_name)
     
     def _on_screen_delete(self, screen_name: str):
-        """Handle screen delete from context menu"""
+        """Handle screen delete"""
         self.screen_deleted.emit(screen_name)
     
     def _on_new_screen(self):
-        """Handle new screen from context menu"""
+        """Handle new screen"""
         self.new_screen_requested.emit()
     
     def _on_add_program(self, screen_name: str):
-        """Handle add program from context menu"""
+        """Handle add program"""
         self.add_program_requested.emit(screen_name)
     
     def _on_screen_insert(self, screen_name: str):
-        """Handle screen insert from context menu"""
+        """Handle screen insert"""
         self.screen_insert_requested.emit(screen_name)
     
     def _on_screen_download(self, screen_name: str):
-        """Handle screen download from context menu"""
+        """Handle screen download"""
         self.screen_download_requested.emit(screen_name)
     
     def _on_screen_close(self, screen_name: str):
-        """Handle screen close from context menu"""
+        """Handle screen close"""
         self.screen_close_requested.emit(screen_name)
     
-    def _on_screen_paste(self, screen_name: str):
-        """Handle screen paste from context menu"""
-        self.screen_paste_requested.emit(screen_name)
-    
-    def _on_program_rename_context(self, program_id: str):
-        """Handle program rename from context menu"""
+    # Program handlers
+    def _on_program_rename(self, program_id: str):
+        """Handle program rename"""
         if self.program_manager:
             program = self.program_manager.get_program_by_id(program_id)
             if program:
-                from PyQt5.QtWidgets import QInputDialog
                 new_name, ok = QInputDialog.getText(self, "Rename Program", "Enter new program name:", text=program.name)
                 if ok and new_name:
                     self.program_renamed.emit(program_id, new_name)
     
-    def _on_program_delete_context(self, program_id: str):
-        """Handle program delete from context menu"""
+    def _on_program_delete(self, program_id: str):
+        """Handle program delete"""
         self.delete_program_requested.emit(program_id)
     
-    def _on_program_add_program(self, program_id: str):
-        """Handle add program from program context menu"""
-        self.new_program_requested.emit()
+    # Content handlers
+    def _on_content_rename(self, program_id: str, element_id: str):
+        """Handle content rename"""
+        if self.program_manager:
+            program = self.program_manager.get_program_by_id(program_id)
+            if program:
+                element = next((e for e in program.elements if e.get("id") == element_id), None)
+                if element:
+                    current_name = element.get("name", element.get("type", "Content"))
+                    new_name, ok = QInputDialog.getText(self, "Rename Content", "Enter new content name:", text=current_name)
+                    if ok and new_name:
+                        self.content_renamed.emit(program_id, element_id, new_name)
     
-    def _on_program_add_content(self, program_id: str, content_type: str):
-        """Handle add content from program context menu"""
-        self.program_add_content_requested.emit(program_id, content_type)
+    def _on_content_delete(self, program_id: str, element_id: str):
+        """Handle content delete"""
+        self.content_deleted.emit(program_id, element_id)
     
-    def _on_program_copy(self, program_id: str):
-        """Handle program copy from context menu"""
-        self.program_copy_requested.emit(program_id)
-    
-    def _on_program_paste(self, program_id: str):
-        """Handle program paste from context menu"""
-        self.program_paste_requested.emit(program_id)
-    
+    # Toolbar handlers
     def on_copy_clicked(self):
         """Handle copy button click"""
         current_item = self.tree.currentItem()
         if current_item:
-            program_id = current_item.data(0, Qt.UserRole)
-            if program_id:
+            item_type = current_item.data(0, Qt.UserRole)
+            if item_type == "program":
+                program_id = current_item.data(0, Qt.UserRole + 1)
                 self.program_copy_requested.emit(program_id)
     
     def on_paste_clicked(self):
         """Handle paste button click"""
         current_item = self.tree.currentItem()
         if current_item:
-            program_id = current_item.data(0, Qt.UserRole)
-            if program_id:
+            item_type = current_item.data(0, Qt.UserRole)
+            if item_type == "program":
+                program_id = current_item.data(0, Qt.UserRole + 1)
                 self.program_paste_requested.emit(program_id)
     
     def on_delete_clicked(self):
         """Handle delete button click"""
         current_item = self.tree.currentItem()
         if current_item:
-            program_id = current_item.data(0, Qt.UserRole)
-            if program_id:
+            item_type = current_item.data(0, Qt.UserRole)
+            if item_type == "program":
+                program_id = current_item.data(0, Qt.UserRole + 1)
                 self.delete_program_requested.emit(program_id)
-    
-    def on_checkbox_toggled(self, checked: bool):
-        """Handle checkbox toggle"""
-        current_item = self.tree.currentItem()
-        if current_item:
-            program_id = current_item.data(0, Qt.UserRole)
-            if program_id:
-                self.program_activated.emit(program_id, checked)
-        
-        if checked:
-            self.check_btn.setText("☑️")
-        else:
-            self.check_btn.setText("⬜️")
-    
-    def on_select_all_changed(self, state):
-        """Handle select all checkbox - only affects programs in the selected screen"""
-        screen_item = self._get_selected_screen_item()
-        if not screen_item:
-            return
-        
-        checked_count = 0
-        total_count = 0
-        for j in range(screen_item.childCount()):
-            program_item = screen_item.child(j)
-            program_id = program_item.data(0, Qt.UserRole)
-            if program_id:
-                total_count += 1
-                if program_item.checkState(0) == Qt.Checked:
-                    checked_count += 1
-        
-        if total_count == 0:
-            return
-        
-        if state == Qt.PartiallyChecked:
-            checked = (checked_count == 0)
-        else:
-            checked = (state == Qt.Checked)
-        
-        self.tree.blockSignals(True)
-        self.select_all_checkbox.blockSignals(True)
-        for j in range(screen_item.childCount()):
-            program_item = screen_item.child(j)
-            program_id = program_item.data(0, Qt.UserRole)
-            if program_id:
-                program_item.setCheckState(0, Qt.Checked if checked else Qt.Unchecked)
-                program_item.setData(0, Qt.UserRole + 1, checked)
-        self.select_all_checkbox.setCheckState(Qt.Checked if checked else Qt.Unchecked)
-        self.select_all_checkbox.blockSignals(False)
-        self.tree.blockSignals(False)
-        
-        if not self._refreshing:
-            for j in range(screen_item.childCount()):
-                program_item = screen_item.child(j)
-                program_id = program_item.data(0, Qt.UserRole)
-                if program_id:
-                    self.program_checked.emit(program_id, checked)
-    
-    def on_duplicate_program(self):
-        """Handle duplicate program"""
-        current_item = self.tree.currentItem()
-        if current_item:
-            program_id = current_item.data(0, Qt.UserRole)
-            if program_id:
-                self.program_duplicated.emit(program_id)
+            elif item_type == "content":
+                program_id = current_item.data(0, Qt.UserRole + 1)
+                element_id = current_item.data(0, Qt.UserRole + 2)
+                self.content_deleted.emit(program_id, element_id)
     
     def on_move_up(self):
-        """Handle move program up"""
+        """Handle move up"""
         current_item = self.tree.currentItem()
         if current_item:
-            program_id = current_item.data(0, Qt.UserRole)
-            if program_id:
+            item_type = current_item.data(0, Qt.UserRole)
+            if item_type == "program":
+                program_id = current_item.data(0, Qt.UserRole + 1)
                 self.program_moved.emit(program_id, -1)
     
     def on_move_down(self):
-        """Handle move program down"""
+        """Handle move down"""
         current_item = self.tree.currentItem()
         if current_item:
-            program_id = current_item.data(0, Qt.UserRole)
-            if program_id:
+            item_type = current_item.data(0, Qt.UserRole)
+            if item_type == "program":
+                program_id = current_item.data(0, Qt.UserRole + 1)
                 self.program_moved.emit(program_id, 1)
     
     def on_item_changed(self, item: QTreeWidgetItem, column: int):
@@ -619,71 +670,177 @@ class ProgramListPanel(QWidget):
         if item is None:
             return
         
-        program_id = item.data(0, Qt.UserRole)
-        if not program_id:
-            return
+        item_type = item.data(0, Qt.UserRole)
         
-        if column == 0:
+        if item_type == "program":
             checked = (item.checkState(0) == Qt.Checked)
-            old_checked = item.data(0, Qt.UserRole + 1)
+            old_checked = item.data(0, Qt.UserRole + 2)
             if old_checked is None or old_checked != checked:
                 self.tree.blockSignals(True)
-                item.setData(0, Qt.UserRole + 1, checked)
+                item.setData(0, Qt.UserRole + 2, checked)
                 self.tree.blockSignals(False)
+                
+                if self.program_manager:
+                    program_id = item.data(0, Qt.UserRole + 1)
+                    program = self.program_manager.get_program_by_id(program_id)
+                    if program:
+                        program.properties["checked"] = checked
+                
+                program_id = item.data(0, Qt.UserRole + 1)
                 self.program_checked.emit(program_id, checked)
                 self._update_select_all_checkbox()
             else:
+                # Handle rename
                 text = item.text(0)
-                new_name = text.replace("☑ ", "").replace("⬜ ", "").replace("✓ ", "").replace("▶ ", "").strip()
+                new_name = text.replace("💽 ", "").strip()
                 if new_name:
+                    program_id = item.data(0, Qt.UserRole + 1)
                     self.program_renamed.emit(program_id, new_name)
+        elif item_type == "content":
+            # Handle content rename
+            text = item.text(0)
+            # Extract name after icon
+            parts = text.split(" ", 1)
+            if len(parts) > 1:
+                new_name = parts[1]
+                program_id = item.data(0, Qt.UserRole + 1)
+                element_id = item.data(0, Qt.UserRole + 2)
+                self.content_renamed.emit(program_id, element_id, new_name)
+    
+    def on_select_all_changed(self, state):
+        """Handle select all checkbox - toggles active program or all programs in active screen"""
+        current_item = self.tree.currentItem()
+        if not current_item:
+            return
+        
+        checked = (state == Qt.Checked)
+        item_type = current_item.data(0, Qt.UserRole)
+        
+        self.tree.blockSignals(True)
+        self.select_all_checkbox.blockSignals(True)
+        
+        if item_type == "program":
+            # If a program is selected, toggle only that program
+            program_item = current_item
+            program_item.setCheckState(0, Qt.Checked if checked else Qt.Unchecked)
+            program_item.setData(0, Qt.UserRole + 2, checked)
+            
+            self.select_all_checkbox.setCheckState(Qt.Checked if checked else Qt.Unchecked)
+            self.select_all_checkbox.blockSignals(False)
+            self.tree.blockSignals(False)
+            
+            if not self._refreshing:
+                program_id = program_item.data(0, Qt.UserRole + 1)
+                self.program_checked.emit(program_id, checked)
+                self._update_select_all_checkbox()
+        elif item_type == "screen":
+            # If a screen is selected, toggle all programs in that screen
+            screen_item = current_item
+            for j in range(screen_item.childCount()):
+                program_item = screen_item.child(j)
+                if program_item.data(0, Qt.UserRole) == "program":
+                    program_item.setCheckState(0, Qt.Checked if checked else Qt.Unchecked)
+                    program_item.setData(0, Qt.UserRole + 2, checked)
+            
+            self.select_all_checkbox.setCheckState(Qt.Checked if checked else Qt.Unchecked)
+            self.select_all_checkbox.blockSignals(False)
+            self.tree.blockSignals(False)
+            
+            if not self._refreshing:
+                for j in range(screen_item.childCount()):
+                    program_item = screen_item.child(j)
+                    if program_item.data(0, Qt.UserRole) == "program":
+                        program_id = program_item.data(0, Qt.UserRole + 1)
+                        self.program_checked.emit(program_id, checked)
+                self._update_select_all_checkbox()
+        else:
+            # For content items, toggle the parent program
+            program_item = current_item.parent()
+            if program_item and program_item.data(0, Qt.UserRole) == "program":
+                program_item.setCheckState(0, Qt.Checked if checked else Qt.Unchecked)
+                program_item.setData(0, Qt.UserRole + 2, checked)
+                
+                self.select_all_checkbox.setCheckState(Qt.Checked if checked else Qt.Unchecked)
+                self.select_all_checkbox.blockSignals(False)
+                self.tree.blockSignals(False)
+                
+                if not self._refreshing:
+                    program_id = program_item.data(0, Qt.UserRole + 1)
+                    self.program_checked.emit(program_id, checked)
+                    self._update_select_all_checkbox()
+            else:
+                self.select_all_checkbox.blockSignals(False)
+                self.tree.blockSignals(False)
     
     def _get_selected_screen_item(self):
-        """Get the screen item that contains the currently selected program, or the first expanded screen"""
+        """Get the selected screen item"""
         current_item = self.tree.currentItem()
         if current_item:
-            parent = current_item.parent()
-            if parent:
-                return parent
-            elif current_item.data(0, Qt.UserRole) is None:
+            item_type = current_item.data(0, Qt.UserRole)
+            if item_type == "screen":
                 return current_item
+            elif item_type == "program":
+                return current_item.parent()
+            elif item_type == "content":
+                parent = current_item.parent()
+                if parent:
+                    return parent.parent()
         
-        for i in range(self.tree.topLevelItemCount()):
-            screen_item = self.tree.topLevelItem(i)
-            if screen_item.isExpanded() or screen_item.childCount() > 0:
-                return screen_item
-        
+        # Fallback to first screen
         if self.tree.topLevelItemCount() > 0:
             return self.tree.topLevelItem(0)
         return None
     
     def _update_select_all_checkbox(self):
-        """Update the select all checkbox based on the state of programs in the selected screen"""
-        screen_item = self._get_selected_screen_item()
-        if not screen_item:
+        """Update the select all checkbox based on active item"""
+        current_item = self.tree.currentItem()
+        if not current_item:
             self.select_all_checkbox.blockSignals(True)
             self.select_all_checkbox.setCheckState(Qt.Unchecked)
             self.select_all_checkbox.blockSignals(False)
             return
         
-        checked_count = 0
-        total_count = 0
-        for j in range(screen_item.childCount()):
-            program_item = screen_item.child(j)
-            program_id = program_item.data(0, Qt.UserRole)
-            if program_id:
-                total_count += 1
-                if program_item.checkState(0) == Qt.Checked:
-                    checked_count += 1
-        
+        item_type = current_item.data(0, Qt.UserRole)
         self.select_all_checkbox.blockSignals(True)
-        if total_count == 0:
-            self.select_all_checkbox.setCheckState(Qt.Unchecked)
-        elif checked_count == 0:
-            self.select_all_checkbox.setCheckState(Qt.Unchecked)
-        elif checked_count == total_count:
-            self.select_all_checkbox.setCheckState(Qt.Checked)
+        
+        if item_type == "program":
+            # If a program is selected, show that program's state
+            program_item = current_item
+            if program_item.checkState(0) == Qt.Checked:
+                self.select_all_checkbox.setCheckState(Qt.Checked)
+            else:
+                self.select_all_checkbox.setCheckState(Qt.Unchecked)
+        elif item_type == "screen":
+            # If a screen is selected, show aggregate state of all programs
+            screen_item = current_item
+            checked_count = 0
+            total_count = 0
+            
+            for j in range(screen_item.childCount()):
+                program_item = screen_item.child(j)
+                if program_item.data(0, Qt.UserRole) == "program":
+                    total_count += 1
+                    if program_item.checkState(0) == Qt.Checked:
+                        checked_count += 1
+            
+            if total_count == 0:
+                self.select_all_checkbox.setCheckState(Qt.Unchecked)
+            elif checked_count == 0:
+                self.select_all_checkbox.setCheckState(Qt.Unchecked)
+            elif checked_count == total_count:
+                self.select_all_checkbox.setCheckState(Qt.Checked)
+            else:
+                self.select_all_checkbox.setCheckState(Qt.PartiallyChecked)
         else:
-            self.select_all_checkbox.setCheckState(Qt.PartiallyChecked)
+            # For content items, show the parent program's state
+            program_item = current_item.parent()
+            if program_item and program_item.data(0, Qt.UserRole) == "program":
+                if program_item.checkState(0) == Qt.Checked:
+                    self.select_all_checkbox.setCheckState(Qt.Checked)
+                else:
+                    self.select_all_checkbox.setCheckState(Qt.Unchecked)
+            else:
+                self.select_all_checkbox.setCheckState(Qt.Unchecked)
+        
         self.select_all_checkbox.blockSignals(False)
 

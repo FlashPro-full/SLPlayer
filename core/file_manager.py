@@ -196,25 +196,29 @@ class FileManager:
             # Merge screen properties from all programs in this screen
             # CRITICAL: Use screen properties from programs, NEVER program.width/height (which is PC canvas size)
             # The screen_properties["width"] and ["height"] MUST be the actual controller screen dimensions
+            # Priority: Use the first non-None width/height found, or keep existing if already set
             for p in screen_programs:
                 p_screen_props = p.properties.get("screen", {})
-                # Only set width/height if not already set, and ONLY from screen properties
-                # Do NOT use p.width/p.height as those are PC canvas dimensions (1920x1080), not controller screen dimensions
-                if "width" not in screen_properties:
+                
+                # CRITICAL: Always collect width/height from screen properties (controller screen dimensions)
+                # Use the first valid width/height found, or keep existing if already valid
+                if "width" not in screen_properties or not screen_properties.get("width"):
                     screen_width = p_screen_props.get("width")
-                    if screen_width and isinstance(screen_width, (int, str)):
+                    if screen_width is not None:
                         try:
                             screen_properties["width"] = int(screen_width)
                         except (ValueError, TypeError):
                             pass
-                if "height" not in screen_properties:
+                
+                if "height" not in screen_properties or not screen_properties.get("height"):
                     screen_height = p_screen_props.get("height")
-                    if screen_height and isinstance(screen_height, (int, str)):
+                    if screen_height is not None:
                         try:
                             screen_properties["height"] = int(screen_height)
                         except (ValueError, TypeError):
                             pass
-                # Other properties can be merged
+                
+                # Other properties can be merged (only if not already set)
                 if "rotate" not in screen_properties and "rotate" in p_screen_props:
                     screen_properties["rotate"] = p_screen_props["rotate"]
                 if "brand" not in screen_properties and "brand" in p_screen_props:
@@ -226,16 +230,31 @@ class FileManager:
                 if "controller_id" not in screen_properties and "controller_id" in p_screen_props:
                     screen_properties["controller_id"] = p_screen_props["controller_id"]
             
+            # CRITICAL: Ensure width/height are always in screen_properties before saving
+            # If still missing, use defaults or log warning
+            if "width" not in screen_properties or not screen_properties.get("width"):
+                logger.warning(f"Screen '{screen_name}' missing width in screen_properties, using default 640")
+                screen_properties["width"] = 640
+            if "height" not in screen_properties or not screen_properties.get("height"):
+                logger.warning(f"Screen '{screen_name}' missing height in screen_properties, using default 480")
+                screen_properties["height"] = 480
+            
             # Prepare programs data
+            # Remove program-level width/height (PC canvas) but keep screen-level width/height (controller screen)
             programs = []
             for p in screen_programs:
                 program_dict = p.to_dict()
+                # Remove PC canvas dimensions (program.width/height) - these are not controller screen dimensions
                 program_dict.pop("width", None)
                 program_dict.pop("height", None)
+                
+                # Keep screen properties but ensure width/height are preserved from screen_properties
                 if "screen" in program_dict.get("properties", {}):
                     screen_props_copy = program_dict["properties"]["screen"].copy()
-                    screen_props_copy.pop("width", None)
-                    screen_props_copy.pop("height", None)
+                    # Don't remove width/height from screen properties - they are controller screen dimensions
+                    # They will be overwritten by screen_properties anyway, but keep them for reference
+                    # Only remove if they're the PC canvas dimensions (which shouldn't be in screen properties)
+                    # Actually, keep them - they should be the controller screen dimensions
                     program_dict["properties"]["screen"] = screen_props_copy
                 programs.append(program_dict)
             
@@ -260,4 +279,43 @@ class FileManager:
         except Exception as e:
             logger.error(f"Error creating .soo file: {e}", exc_info=True)
             return False
+    
+    def cleanup_orphaned_files(self, current_screen_names: set):
+        """
+        Remove .soo files from work directory that don't correspond to any current screen.
+        
+        Args:
+            current_screen_names: Set of screen names that currently exist in the program list
+        """
+        try:
+            if not self.work_dir.exists():
+                return
+            
+            # Get all .soo files in work directory
+            soo_files = list(self.work_dir.glob("*.soo"))
+            
+            if not soo_files:
+                return
+            
+            # Create set of sanitized current screen names for comparison
+            sanitized_current_names = {ScreenManager.sanitize_screen_name(name) for name in current_screen_names}
+            
+            deleted_count = 0
+            for soo_file in soo_files:
+                # Get screen name from filename (remove .soo extension)
+                file_stem = soo_file.stem
+                
+                # Check if this file corresponds to a current screen
+                if file_stem not in sanitized_current_names:
+                    try:
+                        soo_file.unlink()
+                        deleted_count += 1
+                        logger.info(f"Deleted orphaned autosave file: {soo_file.name}")
+                    except Exception as e:
+                        logger.warning(f"Failed to delete orphaned file {soo_file.name}: {e}")
+            
+            if deleted_count > 0:
+                logger.info(f"Cleaned up {deleted_count} orphaned autosave file(s)")
+        except Exception as e:
+            logger.error(f"Error cleaning up orphaned files: {e}", exc_info=True)
 

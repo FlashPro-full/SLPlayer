@@ -18,7 +18,7 @@ class BackupRestore:
         self.backup_dir = Path.home() / ".slplayer" / "backups"
         self.backup_dir.mkdir(parents=True, exist_ok=True)
     
-    def create_backup(self, program_manager, media_library, settings, output_path: Optional[str] = None) -> bool:
+    def create_backup(self, output_path: Optional[str] = None, program_manager=None, media_library=None, settings=None) -> bool:
         """
         Create complete backup of all application data.
         Returns True if successful.
@@ -39,31 +39,46 @@ class BackupRestore:
                 "schedules": []
             }
             
-            # Backup all programs
-            programs_dir = program_manager.programs_dir
-            if programs_dir.exists():
-                for program_file in programs_dir.glob("*.json"):
-                    try:
-                        with open(program_file, 'r', encoding='utf-8') as f:
-                            program_data = json.load(f)
+            # Backup all programs (if program_manager provided)
+            if program_manager:
+                if hasattr(program_manager, 'programs_dir') and program_manager.programs_dir.exists():
+                    programs_dir = program_manager.programs_dir
+                    for program_file in programs_dir.glob("*.json"):
+                        try:
+                            with open(program_file, 'r', encoding='utf-8') as f:
+                                program_data = json.load(f)
+                                backup_data["programs"].append({
+                                    "filename": program_file.name,
+                                    "data": program_data
+                                })
+                        except Exception as e:
+                            logger.warning(f"Error backing up program {program_file}: {e}")
+                elif hasattr(program_manager, 'programs'):
+                    # Backup programs from ProgramManager
+                    for program in program_manager.programs:
+                        try:
                             backup_data["programs"].append({
-                                "filename": program_file.name,
-                                "data": program_data
+                                "id": program.id,
+                                "data": program.to_dict()
                             })
-                    except Exception as e:
-                        logger.warning(f"Error backing up program {program_file}: {e}")
+                        except Exception as e:
+                            logger.warning(f"Error backing up program {program.id}: {e}")
             
-            # Backup media library
+            # Backup media library (if provided)
             if media_library:
                 try:
-                    media_files = media_library.get_media_files()
-                    backup_data["media_library"] = media_files
+                    if hasattr(media_library, 'get_media_files'):
+                        media_files = media_library.get_media_files()
+                        backup_data["media_library"] = media_files
                 except Exception as e:
                     logger.warning(f"Error backing up media library: {e}")
             
             # Backup settings
-            from config.settings import settings
-            backup_data["settings"] = settings.settings.copy()
+            if settings is None:
+                from config.settings import settings as app_settings
+                backup_data["settings"] = app_settings.settings.copy()
+            else:
+                backup_data["settings"] = settings.settings.copy() if hasattr(settings, 'settings') else settings
             
             # Backup schedules (if schedule manager exists)
             try:
@@ -88,7 +103,7 @@ class BackupRestore:
             logger.exception(f"Error creating backup: {e}")
             return False
     
-    def restore_backup(self, backup_path: str, program_manager, media_library) -> bool:
+    def restore_backup(self, backup_path: str, program_manager=None, media_library=None) -> bool:
         """
         Restore from backup file.
         Returns True if successful.
@@ -102,18 +117,26 @@ class BackupRestore:
             with open(backup_file, 'r', encoding='utf-8') as f:
                 backup_data = json.load(f)
             
-            # Restore programs
-            if "programs" in backup_data:
-                programs_dir = program_manager.programs_dir
-                programs_dir.mkdir(parents=True, exist_ok=True)
-                
-                for program_info in backup_data["programs"]:
-                    try:
-                        program_file = programs_dir / program_info["filename"]
-                        with open(program_file, 'w', encoding='utf-8') as f:
-                            json.dump(program_info["data"], f, indent=2, ensure_ascii=False)
-                    except Exception as e:
-                        logger.warning(f"Error restoring program {program_info['filename']}: {e}")
+            # Restore programs (if program_manager provided)
+            if "programs" in backup_data and program_manager:
+                if hasattr(program_manager, 'programs_dir'):
+                    programs_dir = program_manager.programs_dir
+                    programs_dir.mkdir(parents=True, exist_ok=True)
+                    
+                    for program_info in backup_data["programs"]:
+                        try:
+                            if "filename" in program_info:
+                                program_file = programs_dir / program_info["filename"]
+                                with open(program_file, 'w', encoding='utf-8') as f:
+                                    json.dump(program_info["data"], f, indent=2, ensure_ascii=False)
+                            elif "data" in program_info:
+                                # Restore program object directly
+                                from core.program_manager import Program
+                                program = Program()
+                                program.from_dict(program_info["data"])
+                                program_manager.programs.append(program)
+                        except Exception as e:
+                            logger.warning(f"Error restoring program: {e}")
             
             # Restore media library
             if "media_library" in backup_data and media_library:
@@ -122,12 +145,13 @@ class BackupRestore:
             
             # Restore settings
             if "settings" in backup_data:
-                from config.settings import settings
-                settings.settings.update(backup_data["settings"])
-                settings.save_settings()
+                from config.settings import settings as app_settings
+                app_settings.settings.update(backup_data["settings"])
+                app_settings.save_settings()
             
             # Restore schedules
             if "schedules" in backup_data:
+                from utils.app_data import ensure_app_data_dir, get_app_data_dir
                 ensure_app_data_dir()
                 schedule_file = get_app_data_dir() / "schedules.json"
                 schedule_file.parent.mkdir(parents=True, exist_ok=True)
@@ -145,13 +169,11 @@ class BackupRestore:
         """Export user data (programs, settings, schedules)"""
         try:
             from core.program_manager import ProgramManager
-            from core.media_library import MediaLibrary
             from config.settings import settings
             
             program_manager = ProgramManager()
-            media_library = MediaLibrary()
             
-            return self.create_backup(program_manager, media_library, settings, output_path)
+            return self.create_backup(output_path, program_manager=program_manager, settings=settings)
         except Exception as e:
             logger.exception(f"Error exporting user data: {e}")
             return False
@@ -160,12 +182,10 @@ class BackupRestore:
         """Import user data"""
         try:
             from core.program_manager import ProgramManager
-            from core.media_library import MediaLibrary
             
             program_manager = ProgramManager()
-            media_library = MediaLibrary()
             
-            return self.restore_backup(input_path, program_manager, media_library)
+            return self.restore_backup(input_path, program_manager=program_manager)
         except Exception as e:
             logger.exception(f"Error importing user data: {e}")
             return False

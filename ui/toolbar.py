@@ -165,18 +165,10 @@ class ContentTypesToolbar(BaseToolbar):
             ("🔠 Text", ContentType.TEXT),
             ("🔤 SingleLineText", ContentType.SINGLE_LINE_TEXT),
             ("🎇 Animation", ContentType.ANIMATION),
-            ("🧊 3D Text", ContentType.TEXT_3D),
             ("🕓 Clock", ContentType.CLOCK),
-            ("🗓 Calendar", ContentType.CALENDAR),
             ("⌛️ Timing", ContentType.TIMING),
             ("🌦 Weather", ContentType.WEATHER),
-            ("🪄 Neon", ContentType.NEON),
-            ("📅 Table", ContentType.TABLE),
-            ("🗃 Office", ContentType.OFFICE),
-            ("📟 Digital Watch", ContentType.DIGITAL_WATCH),
-            ("🌐 HTML", ContentType.HTML),
-            ("🎥 LiveStream", ContentType.LIVESTREAM),
-            ("🧿 QR code", ContentType.QR_CODE),
+            ("📎 Sensor", ContentType.SENSOR),
         ]
         
         for emoji_text, content_type in content_types:
