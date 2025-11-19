@@ -1,6 +1,3 @@
-"""
-Network Setup Dialog - First launch network configuration
-"""
 from PyQt5.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, 
     QTextEdit, QMessageBox
@@ -12,7 +9,6 @@ logger = get_logger(__name__)
 
 
 class NetworkSetupDialog(QDialog):
-    """Network setup dialog shown on first launch"""
     
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -23,17 +19,14 @@ class NetworkSetupDialog(QDialog):
         self.init_ui()
     
     def init_ui(self):
-        """Initialize UI components"""
         layout = QVBoxLayout(self)
         layout.setSpacing(15)
         layout.setContentsMargins(20, 20, 20, 20)
         
-        # Title
         title = QLabel("Welcome to SLPlayer")
         title.setStyleSheet("font-size: 18px; font-weight: bold; margin-bottom: 10px;")
         layout.addWidget(title)
         
-        # Instructions
         instructions = QTextEdit()
         instructions.setReadOnly(True)
         instructions.setMaximumHeight(150)
@@ -48,7 +41,6 @@ class NetworkSetupDialog(QDialog):
         instructions.setStyleSheet("background-color: #F5F5F5; border: 1px solid #CCCCCC; padding: 10px;")
         layout.addWidget(instructions)
         
-        # Buttons
         button_layout = QHBoxLayout()
         button_layout.addStretch()
         
@@ -60,6 +52,5 @@ class NetworkSetupDialog(QDialog):
         layout.addLayout(button_layout)
     
     def exec_(self):
-        """Override exec_ to return result"""
         return super().exec_()
 

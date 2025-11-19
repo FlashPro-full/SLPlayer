@@ -1,6 +1,3 @@
-"""
-Time, Power, and Brightness Management Dialog
-"""
 from PyQt5.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QGroupBox,
     QCheckBox, QTimeEdit, QSpinBox, QSlider, QComboBox, QTableWidget,
@@ -17,9 +14,8 @@ logger = get_logger(__name__)
 
 
 class TimePowerBrightnessDialog(QDialog):
-    """Dialog for managing time sync, power schedules, and brightness"""
     
-    settings_changed = pyqtSignal(dict)  # Emitted when settings are saved
+    settings_changed = pyqtSignal(dict)
     
     def __init__(self, parent=None, controller=None):
         super().__init__(parent)
@@ -28,7 +24,7 @@ class TimePowerBrightnessDialog(QDialog):
         self.setMinimumWidth(700)
         self.setMinimumHeight(600)
         
-        # Settings storage
+
         self.time_settings = {}
         self.power_schedules = []
         self.brightness_settings = {}
@@ -37,29 +33,28 @@ class TimePowerBrightnessDialog(QDialog):
         self.load_settings()
     
     def init_ui(self):
-        """Initialize UI components"""
         layout = QVBoxLayout(self)
         layout.setSpacing(15)
         layout.setContentsMargins(20, 20, 20, 20)
         
-        # Create tab widget
+
         tabs = QTabWidget()
         
-        # Time Sync Tab
+
         time_tab = self.create_time_tab()
         tabs.addTab(time_tab, "⏰ Time Sync")
         
-        # Power Schedule Tab
+
         power_tab = self.create_power_tab()
         tabs.addTab(power_tab, "⚡ Power Schedule")
         
-        # Brightness Tab
+
         brightness_tab = self.create_brightness_tab()
         tabs.addTab(brightness_tab, "💡 Brightness")
         
         layout.addWidget(tabs)
         
-        # Buttons
+
         button_layout = QHBoxLayout()
         button_layout.addStretch()
         
@@ -78,25 +73,24 @@ class TimePowerBrightnessDialog(QDialog):
         layout.addLayout(button_layout)
     
     def create_time_tab(self) -> QWidget:
-        """Create time synchronization tab"""
         widget = QWidget()
         layout = QVBoxLayout(widget)
         layout.setSpacing(15)
         
-        # Time Sync Group
+
         sync_group = QGroupBox("Time Synchronization")
         sync_layout = QVBoxLayout(sync_group)
         
-        # Current time display
+
         self.current_time_label = QLabel("Current PC Time: " + datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
         sync_layout.addWidget(self.current_time_label)
         
-        # Update time display every second
+
         self.time_timer = QTimer()
         self.time_timer.timeout.connect(self.update_time_display)
         self.time_timer.start(1000)
         
-        # Sync method
+
         method_layout = QHBoxLayout()
         method_layout.addWidget(QLabel("Sync Method:"))
         
@@ -105,7 +99,7 @@ class TimePowerBrightnessDialog(QDialog):
         method_layout.addWidget(self.sync_method_combo)
         sync_layout.addLayout(method_layout)
         
-        # Sync button
+
         sync_btn = QPushButton("🔄 Sync Time Now")
         sync_btn.clicked.connect(self.sync_time)
         sync_layout.addWidget(sync_btn)
@@ -116,57 +110,56 @@ class TimePowerBrightnessDialog(QDialog):
         return widget
     
     def create_power_tab(self) -> QWidget:
-        """Create power schedule tab"""
         widget = QWidget()
         layout = QVBoxLayout(widget)
         layout.setSpacing(15)
         
-        # Power Schedule Group
+
         schedule_group = QGroupBox("On/Off Schedule")
         schedule_layout = QVBoxLayout(schedule_group)
         
-        # Enable schedule checkbox
+
         self.enable_schedule_check = QCheckBox("Enable Power Schedule")
         self.enable_schedule_check.setChecked(True)
         schedule_layout.addWidget(self.enable_schedule_check)
         
-        # Schedule table
+
         self.schedule_table = QTableWidget()
         self.schedule_table.setColumnCount(4)
         self.schedule_table.setHorizontalHeaderLabels(["Day", "On Time", "Off Time", "Enabled"])
         self.schedule_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.schedule_table.setSelectionBehavior(QTableWidget.SelectRows)
         
-        # Populate with days of week
+
         days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
         self.schedule_table.setRowCount(len(days))
         
         for i, day in enumerate(days):
-            # Day name
+
             day_item = QTableWidgetItem(day)
             day_item.setFlags(day_item.flags() & ~Qt.ItemIsEditable)
             self.schedule_table.setItem(i, 0, day_item)
             
-            # On time
+
             on_time = QTimeEdit()
             on_time.setTime(QTime(8, 0))
             on_time.setDisplayFormat("HH:mm")
             self.schedule_table.setCellWidget(i, 1, on_time)
             
-            # Off time
+
             off_time = QTimeEdit()
             off_time.setTime(QTime(22, 0))
             off_time.setDisplayFormat("HH:mm")
             self.schedule_table.setCellWidget(i, 2, off_time)
             
-            # Enabled checkbox
+
             enabled_check = QCheckBox()
             enabled_check.setChecked(True)
             self.schedule_table.setCellWidget(i, 3, enabled_check)
         
         schedule_layout.addWidget(self.schedule_table)
         
-        # Buttons for schedule
+
         schedule_btn_layout = QHBoxLayout()
         add_schedule_btn = QPushButton("➕ Add Schedule")
         add_schedule_btn.clicked.connect(self.add_schedule)
@@ -185,12 +178,11 @@ class TimePowerBrightnessDialog(QDialog):
         return widget
     
     def create_brightness_tab(self) -> QWidget:
-        """Create brightness management tab"""
         widget = QWidget()
         layout = QVBoxLayout(widget)
         layout.setSpacing(15)
         
-        # Current Brightness Group
+
         current_group = QGroupBox("Current Brightness")
         current_layout = QFormLayout(current_group)
         
@@ -203,11 +195,11 @@ class TimePowerBrightnessDialog(QDialog):
         
         layout.addWidget(current_group)
         
-        # Brightness Control Group
+
         control_group = QGroupBox("Brightness Control")
         control_layout = QVBoxLayout(control_group)
         
-        # Brightness slider
+
         brightness_layout = QHBoxLayout()
         brightness_layout.addWidget(QLabel("Brightness:"))
         
@@ -224,26 +216,26 @@ class TimePowerBrightnessDialog(QDialog):
         
         control_layout.addLayout(brightness_layout)
         
-        # Brightness by time range
+
         time_range_group = QGroupBox("Brightness by Time Range")
         time_range_layout = QVBoxLayout(time_range_group)
         
         self.enable_time_brightness_check = QCheckBox("Enable Time-Based Brightness")
         time_range_layout.addWidget(self.enable_time_brightness_check)
         
-        # Brightness schedule table
+
         self.brightness_table = QTableWidget()
         self.brightness_table.setColumnCount(4)
         self.brightness_table.setHorizontalHeaderLabels(["From Time", "To Time", "Brightness %", "Enabled"])
         self.brightness_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         
-        # Add default row
+
         self.brightness_table.setRowCount(1)
         self.add_brightness_row(0, QTime(0, 0), QTime(23, 59), 100)
         
         time_range_layout.addWidget(self.brightness_table)
         
-        # Buttons
+
         brightness_btn_layout = QHBoxLayout()
         add_brightness_btn = QPushButton("➕ Add Time Range")
         add_brightness_btn.clicked.connect(self.add_brightness_range)
@@ -264,20 +256,19 @@ class TimePowerBrightnessDialog(QDialog):
         return widget
     
     def add_brightness_row(self, row: int, from_time: QTime, to_time: QTime, brightness: int):
-        """Add a brightness schedule row"""
-        # From time
+
         from_time_edit = QTimeEdit()
         from_time_edit.setTime(from_time)
         from_time_edit.setDisplayFormat("HH:mm")
         self.brightness_table.setCellWidget(row, 0, from_time_edit)
         
-        # To time
+
         to_time_edit = QTimeEdit()
         to_time_edit.setTime(to_time)
         to_time_edit.setDisplayFormat("HH:mm")
         self.brightness_table.setCellWidget(row, 1, to_time_edit)
         
-        # Brightness
+
         brightness_spin = QSpinBox()
         brightness_spin.setMinimum(0)
         brightness_spin.setMaximum(100)
@@ -285,19 +276,17 @@ class TimePowerBrightnessDialog(QDialog):
         brightness_spin.setSuffix("%")
         self.brightness_table.setCellWidget(row, 2, brightness_spin)
         
-        # Enabled
+
         enabled_check = QCheckBox()
         enabled_check.setChecked(True)
         self.brightness_table.setCellWidget(row, 3, enabled_check)
     
     def add_brightness_range(self):
-        """Add new brightness time range"""
         row = self.brightness_table.rowCount()
         self.brightness_table.insertRow(row)
         self.add_brightness_row(row, QTime(0, 0), QTime(23, 59), 100)
     
     def remove_brightness_range(self):
-        """Remove selected brightness time range"""
         current_row = self.brightness_table.currentRow()
         if current_row >= 0 and self.brightness_table.rowCount() > 1:
             self.brightness_table.removeRow(current_row)
@@ -305,22 +294,18 @@ class TimePowerBrightnessDialog(QDialog):
             QMessageBox.warning(self, "No Selection", "Please select a row to remove.")
     
     def add_schedule(self):
-        """Add new power schedule"""
-        # For now, we use the weekly schedule table
-        # This can be extended for custom schedules
+
+
         QMessageBox.information(self, "Info", "Use the weekly schedule table above to set daily schedules.")
     
     def remove_schedule(self):
-        """Remove power schedule"""
-        # Weekly schedule is always present, this can be used for custom schedules
+
         QMessageBox.information(self, "Info", "Weekly schedule cannot be removed. Disable individual days if needed.")
     
     def update_time_display(self):
-        """Update current time display"""
         self.current_time_label.setText("Current PC Time: " + datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
     
     def sync_time(self):
-        """Synchronize time with PC or NTP"""
         try:
             if not self.controller:
                 QMessageBox.warning(self, "No Controller", "No controller connected. Please connect to a controller first.")
@@ -329,7 +314,7 @@ class TimePowerBrightnessDialog(QDialog):
             use_ntp = self.sync_method_combo.currentIndex() == 1
             
             if use_ntp:
-                # Try NTP sync
+
                 ntp_time = NTPSync.get_ntp_time()
                 if ntp_time is None:
                     QMessageBox.warning(self, "NTP Sync Failed", 
@@ -342,7 +327,7 @@ class TimePowerBrightnessDialog(QDialog):
             else:
                 sync_time = datetime.now()
             
-            # Send time to controller
+
             if hasattr(self.controller, 'set_time'):
                 if self.controller.set_time(sync_time):
                     QMessageBox.information(self, "Success", 
@@ -357,7 +342,6 @@ class TimePowerBrightnessDialog(QDialog):
             QMessageBox.critical(self, "Error", f"Error syncing time: {str(e)}")
     
     def read_brightness(self):
-        """Read brightness from controller"""
         try:
             if not self.controller:
                 QMessageBox.warning(self, "No Controller", "No controller connected.")
@@ -380,20 +364,18 @@ class TimePowerBrightnessDialog(QDialog):
             QMessageBox.critical(self, "Error", f"Error reading brightness: {str(e)}")
     
     def on_brightness_changed(self, value: int):
-        """Handle brightness slider change"""
         self.brightness_value_label.setText(f"{value}%")
     
     def read_from_controller(self):
-        """Read all settings from controller"""
         try:
             if not self.controller:
                 QMessageBox.warning(self, "No Controller", "No controller connected.")
                 return
             
-            # Read brightness
+
             self.read_brightness()
             
-            # Read power schedule if supported
+
             if hasattr(self.controller, 'get_power_schedule'):
                 schedule = self.controller.get_power_schedule()
                 if schedule:
@@ -406,19 +388,17 @@ class TimePowerBrightnessDialog(QDialog):
             QMessageBox.critical(self, "Error", f"Error reading from controller: {str(e)}")
     
     def load_power_schedule(self, schedule: Dict):
-        """Load power schedule into UI"""
-        # This would parse the schedule and populate the table
-        # Implementation depends on controller format
+
+
         pass
     
     def save_and_send(self):
-        """Save settings and send to controller"""
         try:
             if not self.controller:
                 QMessageBox.warning(self, "No Controller", "No controller connected.")
                 return
             
-            # Collect settings
+
             settings = {
                 "time_sync": {
                     "method": "ntp" if self.sync_method_combo.currentIndex() == 1 else "pc"
@@ -427,16 +407,16 @@ class TimePowerBrightnessDialog(QDialog):
                 "brightness": self.get_brightness_settings()
             }
             
-            # Send to controller
+
             success = True
             
-            # Send brightness
+
             if hasattr(self.controller, 'set_brightness'):
                 brightness = self.brightness_slider.value()
                 if not self.controller.set_brightness(brightness):
                     success = False
             
-            # Send power schedule
+
             if hasattr(self.controller, 'set_power_schedule'):
                 schedule = self.get_power_schedule()
                 if not self.controller.set_power_schedule(schedule):
@@ -454,7 +434,6 @@ class TimePowerBrightnessDialog(QDialog):
             QMessageBox.critical(self, "Error", f"Error saving settings: {str(e)}")
     
     def get_power_schedule(self) -> List[Dict]:
-        """Get power schedule from UI"""
         schedule = []
         for i in range(self.schedule_table.rowCount()):
             day_item = self.schedule_table.item(i, 0)
@@ -481,7 +460,6 @@ class TimePowerBrightnessDialog(QDialog):
         return schedule
     
     def get_brightness_settings(self) -> Dict:
-        """Get brightness settings from UI"""
         settings = {
             "current": self.brightness_slider.value(),
             "time_ranges": []
@@ -505,13 +483,11 @@ class TimePowerBrightnessDialog(QDialog):
         return settings
     
     def load_settings(self):
-        """Load settings from controller or defaults"""
-        # This would load saved settings
-        # For now, just initialize with defaults
+
+
         pass
     
     def closeEvent(self, event):
-        """Clean up on close"""
         if hasattr(self, 'time_timer'):
             self.time_timer.stop()
         event.accept()

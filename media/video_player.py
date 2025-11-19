@@ -2,6 +2,7 @@ from PyQt5.QtCore import QDir, Qt, QUrl, pyqtSignal
 from PyQt5.QtMultimedia import QMediaContent, QMediaPlayer
 from PyQt5.QtMultimediaWidgets import QVideoWidget
 from PyQt5.QtWidgets import (QApplication, QFileDialog, QHBoxLayout, QLabel, QPushButton, QSizePolicy, QSlider, QStyle, QVBoxLayout, QWidget)
+from PyQt5.QtGui import QPalette
 
 
 class VideoPlayer(QWidget):
@@ -16,11 +17,14 @@ class VideoPlayer(QWidget):
         self.mediaPlayer = QMediaPlayer(None, QMediaPlayer.VideoSurface)  # type: ignore
 
         self.videoWidget = QVideoWidget()
-        # Set attributes to prevent flickering and improve performance
-        self.videoWidget.setAttribute(Qt.WA_OpaquePaintEvent, True)  # type: ignore
-        self.videoWidget.setAttribute(Qt.WA_NoSystemBackground, True)  # type: ignore
+        self.videoWidget.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
+        
+        palette = QPalette()
+        palette.setColor(QPalette.Window, Qt.black)
+        self.videoWidget.setPalette(palette)
+        
+        self.videoWidget.setAttribute(Qt.WA_OpaquePaintEvent, True)
         self.videoWidget.setAutoFillBackground(False)
-        self.videoWidget.setUpdatesEnabled(True)
 
         openButton = QPushButton("Open...")
         openButton.clicked.connect(self.openFile)
@@ -30,9 +34,12 @@ class VideoPlayer(QWidget):
         self.playButton.setIcon(self.style().standardIcon(QStyle.SP_MediaPlay))  # type: ignore
         self.playButton.clicked.connect(self._togglePlayPause)
 
-        self.positionSlider = QSlider(Qt.Horizontal)  # type: ignore
+        self.positionSlider = QSlider(Qt.Horizontal)
         self.positionSlider.setRange(0, 0)
-        self.positionSlider.sliderMoved.connect(self.setPosition)
+        self.positionSlider.sliderPressed.connect(self._on_slider_pressed)
+        self.positionSlider.sliderReleased.connect(self._on_slider_released)
+        self.positionSlider.sliderMoved.connect(self._on_slider_moved)
+        self._slider_pressed = False
 
         self.errorLabel = QLabel()
         self.errorLabel.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum)
@@ -55,9 +62,13 @@ class VideoPlayer(QWidget):
         self.setLayout(layout)
 
         self.mediaPlayer.setVideoOutput(self.videoWidget)
+        
         self.mediaPlayer.stateChanged.connect(self.mediaStateChanged)
         self.mediaPlayer.positionChanged.connect(self.positionChanged)
         self.mediaPlayer.durationChanged.connect(self.durationChanged)
+        self.mediaPlayer.mediaStatusChanged.connect(self.mediaStatusChanged)
+        self.mediaPlayer.bufferStatusChanged.connect(self.bufferStatusChanged)
+        self.mediaPlayer.videoAvailableChanged.connect(self.videoAvailableChanged)
         self.mediaPlayer.error.connect(self.handleError)
 
     def openFile(self):
@@ -122,27 +133,53 @@ class VideoPlayer(QWidget):
         return self.mediaPlayer.state() == QMediaPlayer.PlayingState  # type: ignore
 
     def mediaStateChanged(self, state):
-        """Handle media state changes"""
-        # Emit finished signal when stopped (if not manually stopped)
-        if state == QMediaPlayer.StoppedState:  # type: ignore
-            # Check if we reached the end
+        if state == QMediaPlayer.StoppedState:
             if self.mediaPlayer.position() >= self.mediaPlayer.duration() - 100:
                 self.videoFinished.emit()
         
-        # Update play button icon as in sample code
         if hasattr(self, 'playButton'):
-            if self.mediaPlayer.state() == QMediaPlayer.PlayingState:  # type: ignore
+            if state == QMediaPlayer.PlayingState:
                 self.playButton.setIcon(
-                        self.style().standardIcon(QStyle.SP_MediaPause))  # type: ignore
+                    self.style().standardIcon(QStyle.SP_MediaPause))
+                self.playButton.setEnabled(True)
+            elif state == QMediaPlayer.PausedState:
+                self.playButton.setIcon(
+                    self.style().standardIcon(QStyle.SP_MediaPlay))
+                self.playButton.setEnabled(True)
             else:
                 self.playButton.setIcon(
-                        self.style().standardIcon(QStyle.SP_MediaPlay))  # type: ignore
+                    self.style().standardIcon(QStyle.SP_MediaPlay))
+                self.playButton.setEnabled(True)
+    
+    def mediaStatusChanged(self, status):
+        if status == QMediaPlayer.InvalidMedia:
+            self.handleError()
+        elif status == QMediaPlayer.EndOfMedia:
+            self.videoFinished.emit()
+    
+    def bufferStatusChanged(self, progress):
+        pass
+    
+    def videoAvailableChanged(self, available):
+        if not available and hasattr(self, 'playButton'):
+            self.playButton.setEnabled(False)
 
     def positionChanged(self, position):
-        self.positionSlider.setValue(position)
+        if not self._slider_pressed:
+            self.positionSlider.setValue(position // 1000)
 
     def durationChanged(self, duration):
-        self.positionSlider.setRange(0, duration)
+        if duration > 0:
+            self.positionSlider.setRange(0, duration // 1000)
+
+    def _on_slider_pressed(self):
+        self._slider_pressed = True
+
+    def _on_slider_released(self):
+        self._slider_pressed = False
+
+    def _on_slider_moved(self, position):
+        self.mediaPlayer.setPosition(position * 1000)
 
     def setPosition(self, position):
         self.mediaPlayer.setPosition(position)
@@ -155,6 +192,53 @@ class VideoPlayer(QWidget):
         if hasattr(self, 'errorLabel'):
             self.errorLabel.setText("Error: " + error_string)
         self.videoError.emit(error_string)
+    
+    @staticmethod
+    def get_video_thumbnail(video_path: str, callback=None):
+        """
+        Extract thumbnail from video file using OpenCV.
+        If callback is provided, generates thumbnail in background thread.
+        Otherwise, returns cached thumbnail or None.
+        """
+        from media.thumbnail_generator import ThumbnailCache, VideoThumbnailThread
+        
+        # Check cache first
+        cache = ThumbnailCache()
+        cached = cache.get(video_path)
+        if cached:
+            return cached
+        
+        # If callback provided, generate in background
+        if callback:
+            thread = VideoThumbnailThread(video_path)
+            thread.finished.connect(callback)
+            thread.start()
+            return None  # Return None immediately, callback will be called
+        
+        # Synchronous fallback (for backward compatibility)
+        try:
+            import cv2
+            import numpy as np
+            from PyQt5.QtGui import QPixmap, QImage
+            
+            cap = cv2.VideoCapture(video_path)
+            if cap.isOpened():
+                ret, frame = cap.read()
+                cap.release()
+                if ret and frame is not None:
+                    frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                    frame_rgb = np.ascontiguousarray(frame_rgb)
+                    height, width, channel = frame_rgb.shape
+                    bytes_per_line = 3 * width
+                    q_image = QImage(frame_rgb.data, width, height, bytes_per_line, QImage.Format_RGB888)
+                    q_image = q_image.copy()
+                    pixmap = QPixmap.fromImage(q_image)
+                    cache.set(video_path, pixmap)  # Cache it
+                    return pixmap
+        except Exception:
+            pass
+        
+        return None
 
 
 if __name__ == '__main__':

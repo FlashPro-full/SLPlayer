@@ -1,6 +1,3 @@
-"""
-Menu bar component
-"""
 from PyQt5.QtWidgets import QMenuBar, QMessageBox, QAction, QFileDialog
 from PyQt5.QtCore import pyqtSignal
 from PyQt5.QtGui import QKeySequence
@@ -11,9 +8,9 @@ logger = get_logger(__name__)
 
 
 class MenuBar(QMenuBar):
-    """Application menu bar"""
     
     new_program_requested = pyqtSignal()
+    new_screen_requested = pyqtSignal()
     open_program_requested = pyqtSignal(str)
     save_program_requested = pyqtSignal(str)
     exit_requested = pyqtSignal()
@@ -25,15 +22,13 @@ class MenuBar(QMenuBar):
     clear_program_requested = pyqtSignal()
     connect_requested = pyqtSignal()
     disconnect_requested = pyqtSignal()
-    upload_requested = pyqtSignal()
-    download_requested = pyqtSignal()
+    send_requested = pyqtSignal()
+    export_to_usb_requested = pyqtSignal()
     time_power_brightness_requested = pyqtSignal()
     network_config_requested = pyqtSignal()
     diagnostics_requested = pyqtSignal()
     import_requested = pyqtSignal()
     export_requested = pyqtSignal()
-    import_xml_requested = pyqtSignal()
-    export_xml_requested = pyqtSignal()
     
     language_changed = pyqtSignal(str)
     about_requested = pyqtSignal()
@@ -64,7 +59,6 @@ class MenuBar(QMenuBar):
         self.init_menus()
     
     def init_menus(self):
-        """Initialize menu items per draft"""
         file_menu = self.addMenu(tr("menu.file"))
         self.menus["file"] = file_menu
         
@@ -109,39 +103,36 @@ class MenuBar(QMenuBar):
         control_menu = self.addMenu(tr("menu.control"))
         self.menus["control"] = control_menu
         
-        discover_action = QAction("🔍 Discover Controllers", self)
+        discover_action = QAction(tr("action.discover"), self)
         discover_action.triggered.connect(self.discover_controllers_requested.emit)
         control_menu.addAction(discover_action)
         self.actions["control.discover"] = discover_action
         
-        dashboard_action = QAction("📊 Dashboard", self)
+        dashboard_action = QAction(tr("action.dashboard"), self)
         dashboard_action.triggered.connect(self.dashboard_requested.emit)
         control_menu.addAction(dashboard_action)
         self.actions["control.dashboard"] = dashboard_action
         
         control_menu.addSeparator()
         
-        # Time/Power/Brightness
-        time_power_action = QAction("⏰ Time / Power / Brightness", self)
+        time_power_action = QAction(tr("action.time_power"), self)
         time_power_action.triggered.connect(self.time_power_brightness_requested.emit)
         control_menu.addAction(time_power_action)
         self.actions["control.time_power"] = time_power_action
         
-        # Network Configuration
-        network_config_action = QAction("🌐 Network Configuration", self)
+        network_config_action = QAction(tr("action.network_config"), self)
         network_config_action.triggered.connect(self.network_config_requested.emit)
         control_menu.addAction(network_config_action)
         self.actions["control.network"] = network_config_action
         
-        # Diagnostics
-        diagnostics_action = QAction("🔧 Diagnostics & Logs", self)
+        diagnostics_action = QAction(tr("action.diagnostics"), self)
         diagnostics_action.triggered.connect(self.diagnostics_requested.emit)
         control_menu.addAction(diagnostics_action)
         self.actions["control.diagnostics"] = diagnostics_action
         
         control_menu.addSeparator()
         
-        device_info_action = QAction("📱 Controller Information", self)
+        device_info_action = QAction(tr("action.device_info"), self)
         device_info_action.triggered.connect(self.device_info_requested.emit)
         control_menu.addAction(device_info_action)
         self.actions["control.device_info"] = device_info_action
@@ -151,47 +142,37 @@ class MenuBar(QMenuBar):
         control_menu.addAction(clear_action)
         self.actions["control.clear"] = clear_action
         
-        upload_action = QAction(tr("action.upload"), self)
-        upload_action.triggered.connect(self.upload_requested.emit)
-        control_menu.addAction(upload_action)
-        self.actions["control.upload"] = upload_action
-        
-        download_action = QAction(tr("action.download"), self)
-        download_action.triggered.connect(self.download_requested.emit)
-        control_menu.addAction(download_action)
-        self.actions["control.download"] = download_action
+        send_action = QAction(tr("action.send"), self)
+        send_action.triggered.connect(self.send_requested.emit)
+        control_menu.addAction(send_action)
+        self.actions["control.send"] = send_action
         
         control_menu.addSeparator()
         
-        # Import/Export
-        import_action = QAction("📥 Import from Controller", self)
+        export_usb_action = QAction(tr("action.export_to_usb"), self)
+        export_usb_action.triggered.connect(self.export_to_usb_requested.emit)
+        control_menu.addAction(export_usb_action)
+        self.actions["control.export_to_usb"] = export_usb_action
+        
+        control_menu.addSeparator()
+        
+        import_action = QAction(tr("action.import_controller"), self)
         import_action.triggered.connect(self.import_requested.emit)
         control_menu.addAction(import_action)
         self.actions["control.import"] = import_action
         
-        export_action = QAction("📤 Export / Publish", self)
+        export_action = QAction(tr("action.export"), self)
         export_action.triggered.connect(self.export_requested.emit)
         control_menu.addAction(export_action)
         self.actions["control.export"] = export_action
         
         control_menu.addSeparator()
         
-        # XML Import/Export
-        import_xml_action = QAction("📄 Import XML (HDPlayer)", self)
-        import_xml_action.triggered.connect(self.import_xml_requested.emit)
-        control_menu.addAction(import_xml_action)
-        self.actions["control.import_xml"] = import_xml_action
-        
-        export_xml_action = QAction("📄 Export XML (HDPlayer)", self)
-        export_xml_action.triggered.connect(self.export_xml_requested.emit)
-        control_menu.addAction(export_xml_action)
-        self.actions["control.export_xml"] = export_xml_action
-        
         language_menu = self.addMenu(tr("menu.language"))
         self.menus["language"] = language_menu
         
         self.lang_actions = {}
-        for label, code in [("English", "en"), ("italiano", "it"), ("中文", "zh"), ("polski", "pl")]:
+        for label, code in [("English", "en"), ("italiano", "it"), ("polski", "pl")]:
             act = QAction(label, self)
             act.setCheckable(True)
             act.triggered.connect(lambda checked, c=code: self.on_language_change(c))
@@ -227,7 +208,6 @@ class MenuBar(QMenuBar):
             act.setChecked(c == code)
     
     def refresh_texts(self):
-        """Refresh menu and actions texts based on current language."""
         if "file" in self.menus:
             self.menus["file"].setTitle(tr("menu.file"))
         if "setting" in self.menus:
@@ -247,30 +227,26 @@ class MenuBar(QMenuBar):
         if "setting.sync" in a: a["setting.sync"].setText(tr("action.sync_setting"))
         if "control.device_info" in a: a["control.device_info"].setText("📱 Controller Information")
         if "control.clear" in a: a["control.clear"].setText(tr("action.clear_program"))
-        if "control.upload" in a: a["control.upload"].setText(tr("action.upload"))
-        if "control.download" in a: a["control.download"].setText(tr("action.download"))
+        if "control.send" in a: a["control.send"].setText(tr("action.send"))
+        if "control.export_to_usb" in a: a["control.export_to_usb"].setText(tr("action.export_to_usb"))
         if "help.about" in a: a["help.about"].setText(tr("action.about"))
     
     def set_actions_enabled_for_screen(self, has_screen: bool):
-        """
-        Enable/disable menu items depending on whether a controller screen/program exists.
-        Requirement: disable all related items except Screen Setting before adding a screen.
-        """
         if "file.save" in self.actions:
             self.actions["file.save"].setEnabled(has_screen)
         if "setting.screen" in self.actions:
             self.actions["setting.screen"].setEnabled(True)
         if "setting.sync" in self.actions:
             self.actions["setting.sync"].setEnabled(has_screen)
-        for key in ["control.device_info", "control.clear", "control.upload", "control.download"]:
+        for key in ["control.device_info", "control.clear", "control.send", "control.export_to_usb"]:
             if key in self.actions:
                 self.actions[key].setEnabled(has_screen)
     
     def on_open(self):
         from PyQt5.QtWidgets import QFileDialog
         file_path, _ = QFileDialog.getOpenFileName(
-            self, "Open Program", "",
-            "Program Files (*.soo);;All Files (*)"
+            self, tr("action.open_program"), "",
+            tr("action.program_files")
         )
         if file_path:
             self.open_program_requested.emit(file_path)

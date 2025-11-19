@@ -1,10 +1,8 @@
-"""
-Properties panel that shows different properties based on selection
-"""
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QScrollArea
 from PyQt5.QtCore import pyqtSignal, Qt
 from typing import Optional, Dict, List
 from core.program_manager import ProgramManager, Program
+from core.screen_manager import ScreenManager
 from ui.properties import (
     ProgramPropertiesComponent,
     VideoPropertiesComponent,
@@ -16,12 +14,13 @@ from ui.properties import (
     ClockPropertiesComponent,
     TimingPropertiesComponent,
     WeatherPropertiesComponent,
-    SensorPropertiesComponent
+    SensorPropertiesComponent,
+    HdmiPropertiesComponent,
+    HtmlPropertiesComponent
 )
 
 
 class PropertiesPanel(QWidget):
-    """Properties panel showing properties based on selection"""
     
     property_changed = pyqtSignal(str, object)
     
@@ -33,10 +32,10 @@ class PropertiesPanel(QWidget):
         self.current_screen_programs: List[Program] = []
         self.main_window = parent
         self.program_manager: Optional[ProgramManager] = None
+        self.screen_manager: Optional[ScreenManager] = None
         self.init_ui()
     
     def init_ui(self):
-        """Initialize the UI"""
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
@@ -82,20 +81,17 @@ class PropertiesPanel(QWidget):
             }
         """)
         
-        # Create scroll area for properties content
         self.scroll_area = QScrollArea(self)
         self.scroll_area.setWidgetResizable(True)
         self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self.scroll_area.setFrameShape(QScrollArea.NoFrame)
         
-        # Create container widget for all property components
         self.content_widget = QWidget()
         self.content_layout = QVBoxLayout(self.content_widget)
         self.content_layout.setContentsMargins(4, 4, 4, 4)
         self.content_layout.setSpacing(4)
         
-        # Create property components
         self.program_properties_widget = ProgramPropertiesComponent(self.content_widget)
         self.video_properties_widget = VideoPropertiesComponent(self.content_widget)
         self.image_properties_widget = ImagePropertiesComponent(self.content_widget)
@@ -107,9 +103,10 @@ class PropertiesPanel(QWidget):
         self.timing_properties_widget = TimingPropertiesComponent(self.content_widget)
         self.weather_properties_widget = WeatherPropertiesComponent(self.content_widget)
         self.sensor_properties_widget = SensorPropertiesComponent(self.content_widget)
+        self.hdmi_properties_widget = HdmiPropertiesComponent(self.content_widget)
+        self.html_properties_widget = HtmlPropertiesComponent(self.content_widget)
         self.empty_widget = QWidget(self.content_widget)
         
-        # Connect component signals to panel signal
         self.program_properties_widget.property_changed.connect(self.property_changed.emit)
         self.video_properties_widget.property_changed.connect(self.property_changed.emit)
         self.image_properties_widget.property_changed.connect(self.property_changed.emit)
@@ -121,8 +118,9 @@ class PropertiesPanel(QWidget):
         self.timing_properties_widget.property_changed.connect(self.property_changed.emit)
         self.weather_properties_widget.property_changed.connect(self.property_changed.emit)
         self.sensor_properties_widget.property_changed.connect(self.property_changed.emit)
+        self.hdmi_properties_widget.property_changed.connect(self.property_changed.emit)
+        self.html_properties_widget.property_changed.connect(self.property_changed.emit)
         
-        # Add all components to content layout
         self.content_layout.addWidget(self.program_properties_widget)
         self.content_layout.addWidget(self.video_properties_widget)
         self.content_layout.addWidget(self.image_properties_widget)
@@ -134,19 +132,18 @@ class PropertiesPanel(QWidget):
         self.content_layout.addWidget(self.timing_properties_widget)
         self.content_layout.addWidget(self.weather_properties_widget)
         self.content_layout.addWidget(self.sensor_properties_widget)
+        self.content_layout.addWidget(self.hdmi_properties_widget)
+        self.content_layout.addWidget(self.html_properties_widget)
         self.content_layout.addWidget(self.empty_widget)
-        self.content_layout.addStretch()  # Add stretch at the end
+        self.content_layout.addStretch()
         
-        # Set content widget to scroll area
         self.scroll_area.setWidget(self.content_widget)
         
-        # Add scroll area to main layout
         main_layout.addWidget(self.scroll_area)
         
         self.show_empty()
     
     def _hide_all(self):
-        """Hide all property widgets"""
         self.program_properties_widget.setVisible(False)
         self.video_properties_widget.setVisible(False)
         self.image_properties_widget.setVisible(False)
@@ -158,70 +155,57 @@ class PropertiesPanel(QWidget):
         self.timing_properties_widget.setVisible(False)
         self.weather_properties_widget.setVisible(False)
         self.sensor_properties_widget.setVisible(False)
+        self.hdmi_properties_widget.setVisible(False)
+        self.html_properties_widget.setVisible(False)
         self.empty_widget.setVisible(False)
     
-    def show_program_properties(self):
-        """Show program properties"""
+    def _show_widget(self, widget):
         self._hide_all()
-        self.program_properties_widget.setVisible(True)
+        widget.setVisible(True)
+    
+    def show_program_properties(self):
+        self._show_widget(self.program_properties_widget)
     
     def show_video_properties(self):
-        """Show video properties"""
-        self._hide_all()
-        self.video_properties_widget.setVisible(True)
+        self._show_widget(self.video_properties_widget)
     
     def show_image_properties(self):
-        """Show image/photo properties"""
-        self._hide_all()
-        self.image_properties_widget.setVisible(True)
+        self._show_widget(self.image_properties_widget)
     
     def show_text_properties(self):
-        """Show text properties"""
-        self._hide_all()
-        self.text_properties_widget.setVisible(True)
+        self._show_widget(self.text_properties_widget)
     
     def show_screen_properties(self):
-        """Show screen properties"""
-        self._hide_all()
-        self.screen_properties_widget.setVisible(True)
+        self._show_widget(self.screen_properties_widget)
     
     def show_single_line_text_properties(self):
-        """Show single line text properties"""
-        self._hide_all()
-        self.single_line_text_properties_widget.setVisible(True)
+        self._show_widget(self.single_line_text_properties_widget)
     
     def show_animation_properties(self):
-        """Show animation properties"""
-        self._hide_all()
-        self.animation_properties_widget.setVisible(True)
+        self._show_widget(self.animation_properties_widget)
     
     def show_clock_properties(self):
-        """Show clock properties"""
-        self._hide_all()
-        self.clock_properties_widget.setVisible(True)
+        self._show_widget(self.clock_properties_widget)
     
     def show_timing_properties(self):
-        """Show timing properties"""
-        self._hide_all()
-        self.timing_properties_widget.setVisible(True)
+        self._show_widget(self.timing_properties_widget)
     
     def show_weather_properties(self):
-        """Show weather properties"""
-        self._hide_all()
-        self.weather_properties_widget.setVisible(True)
+        self._show_widget(self.weather_properties_widget)
     
     def show_sensor_properties(self):
-        """Show sensor properties"""
-        self._hide_all()
-        self.sensor_properties_widget.setVisible(True)
+        self._show_widget(self.sensor_properties_widget)
+    
+    def show_hdmi_properties(self):
+        self._show_widget(self.hdmi_properties_widget)
+    
+    def show_html_properties(self):
+        self._show_widget(self.html_properties_widget)
     
     def show_empty(self):
-        """Show empty state"""
-        self._hide_all()
-        self.empty_widget.setVisible(True)
+        self._show_widget(self.empty_widget)
     
     def set_program(self, program: Optional[Program]):
-        """Set the current program"""
         self.current_program = program
         self.current_element = None
         if program:
@@ -231,7 +215,6 @@ class PropertiesPanel(QWidget):
             self.show_empty()
     
     def set_element(self, element: Optional[Dict], program: Optional[Program]):
-        """Set the current element"""
         self.current_element = element
         self.current_program = program
         if element:
@@ -263,6 +246,12 @@ class PropertiesPanel(QWidget):
             elif element_type == "sensor":
                 self.show_sensor_properties()
                 self.sensor_properties_widget.set_program_data(program, element)
+            elif element_type == "hdmi":
+                self.show_hdmi_properties()
+                self.hdmi_properties_widget.set_program_data(program, element)
+            elif element_type == "html":
+                self.show_html_properties()
+                self.html_properties_widget.set_program_data(program, element)
             elif program:
                 self.show_program_properties()
                 self.program_properties_widget.set_program_data(program)
@@ -274,14 +263,15 @@ class PropertiesPanel(QWidget):
         else:
             self.show_empty()
     
-    def set_screen(self, screen_name: str, programs: List[Program], program_manager: Optional[ProgramManager] = None):
-        """Set the current screen"""
+    def set_screen(self, screen_name: str, programs: List[Program], program_manager: Optional[ProgramManager] = None, 
+                   screen_manager: Optional[ScreenManager] = None):
         try:
             self.current_screen_name = screen_name
             self.current_screen_programs = programs
             self.current_program = None
             self.current_element = None
             self.program_manager = program_manager
+            self.screen_manager = screen_manager
             if screen_name and programs:
                 self.show_screen_properties()
                 self.screen_properties_widget.set_program_manager(program_manager)
@@ -289,7 +279,6 @@ class PropertiesPanel(QWidget):
             else:
                 self.show_empty()
         except Exception as e:
-            # Log error but don't crash - just show empty state
             from utils.logger import get_logger
             logger = get_logger(__name__)
             logger.error(f"Error in set_screen: {e}", exc_info=True)

@@ -13,6 +13,8 @@ from ui.properties.clock_properties_component import ClockPropertiesComponent
 from ui.properties.timing_properties_component import TimingPropertiesComponent
 from ui.properties.weather_properties_component import WeatherPropertiesComponent
 from ui.properties.sensor_properties_component import SensorPropertiesComponent
+from ui.properties.hdmi_properties_component import HdmiPropertiesComponent
+from ui.properties.html_properties_component import HtmlPropertiesComponent
 
 __all__ = [
     'BasePropertiesComponent',
@@ -27,5 +29,7 @@ __all__ = [
     'TimingPropertiesComponent',
     'WeatherPropertiesComponent',
     'SensorPropertiesComponent',
+    'HdmiPropertiesComponent',
+    'HtmlPropertiesComponent',
 ]
 

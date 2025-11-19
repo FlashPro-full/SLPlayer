@@ -27,14 +27,11 @@ def main():
                 continue
             potential_path = Path(arg)
             if potential_path.suffix.lower() == '.soo':
+                if not potential_path.exists():
+                    potential_path = potential_path.resolve()
                 if potential_path.exists():
                     soo_file_path = str(potential_path.absolute())
                     break
-                else:
-                    potential_path = Path(arg).resolve()
-                    if potential_path.exists():
-                        soo_file_path = str(potential_path)
-                        break
         
         logger.info("Starting SLPlayer application")
         app = QApplication(sys.argv)
@@ -57,15 +54,22 @@ def main():
             settings.set("first_launch_complete", True)
             logger.info("First launch network setup completed")
         
+        # Initialize controller database with comprehensive research data
+        try:
+            from core.controller_research_service import ControllerResearchService
+            ControllerResearchService.populate_database(force_update=False)
+            logger.info("Controller database populated with research data")
+        except Exception as e:
+            logger.warning(f"Could not populate controller database at startup: {e}")
+        
         startup_service = StartupService()
         controller_id, valid_license_found = startup_service.verify_license_at_startup()
-        license_must_be_activated = not valid_license_found
         
         if not skip_license and not valid_license_found:
             from ui.login_dialog import LoginDialog
             login_dialog = LoginDialog(controller_id=controller_id)
             
-            if license_must_be_activated and not controller_id:
+            if not controller_id:
                 logger.info("No valid license found - showing license activation dialog for online activation")
             
             dialog_result = login_dialog.exec()
@@ -74,48 +78,29 @@ def main():
                 logger.info("User cancelled license activation - application exit required")
                 sys.exit(0)
             
-            if not login_dialog.is_license_valid():
-                controller_id = login_dialog.controller_id or controller_id
-                if not startup_service.check_license_after_activation(controller_id):
-                    sys.exit(1)
-            
             controller_id = login_dialog.controller_id or controller_id
             
-            if controller_id and license_must_be_activated:
-                if not startup_service.check_license_after_activation(controller_id):
+            if not login_dialog.is_license_valid() or (controller_id and not startup_service.check_license_after_activation(controller_id)):
                     sys.exit(1)
         elif valid_license_found:
             logger.info(f"Valid license found for controller: {controller_id} - skipping activation dialog")
         else:
             logger.info("License dialog skipped via command-line argument")
         
-        if controller_id and not skip_license and not valid_license_found:
-            if not startup_service.check_license_after_activation(controller_id):
-                sys.exit(1)
-        
         window = MainWindow()
         window.resize(window_width, window_height)
         window.move(window_x, window_y)
         window.show()
         
+        # Use async loading for better performance
         if soo_file_path:
             logger.info(f"Loading specific .soo file from command-line: {soo_file_path}")
-            window._latest_file_loaded = window.load_soo_file(soo_file_path, clear_existing=True)
-            if window._latest_file_loaded:
-                logger.info("Specific .soo file loaded successfully")
-            else:
-                logger.warning("Failed to load specific .soo file, will try to load all autosaved files")
-                window._latest_file_loaded = window.file_manager.load_latest_soo_files()
+            window.load_soo_file(soo_file_path, clear_existing=True, async_load=True)
+            # Note: File loading happens in background, status checked via signal
         else:
             logger.info("No specific .soo file provided, loading all autosaved files")
-            window._latest_file_loaded = window.file_manager.load_latest_soo_files()
-        
-        logger.info(f"File loaded status: {window._latest_file_loaded}")
-        if not window._latest_file_loaded:
-            logger.info("No files loaded, opening screen settings dialog")
-            window.open_screen_settings_on_startup()
-        else:
-            logger.info("Files loaded successfully, skipping screen settings dialog")
+            window.load_latest_soo_files_async()
+            # Note: File loading happens in background, status checked via signal
         
         IconManager.setup_taskbar_icon(window, base_path)
         

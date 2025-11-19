@@ -1,6 +1,3 @@
-"""
-Weather properties component
-"""
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QComboBox,
                              QPushButton, QGroupBox, QLineEdit, QCheckBox)
 from PyQt5.QtCore import Qt
@@ -10,30 +7,25 @@ from ui.properties.base_properties_component import BasePropertiesComponent
 
 
 class WeatherPropertiesComponent(BasePropertiesComponent):
-    """Weather properties component"""
     
     def __init__(self, parent=None):
         super().__init__(parent)
         self.init_ui()
     
     def init_ui(self):
-        """Initialize the UI"""
         main_layout = QHBoxLayout(self)
         main_layout.setContentsMargins(4, 4, 4, 4)
         main_layout.setSpacing(8)
         main_layout.setAlignment(Qt.AlignLeft | Qt.AlignTop)
         
-        # Left side: Area Attribute group
         area_group = QGroupBox("Area attribute")
         area_layout = QVBoxLayout(area_group)
         area_layout.setContentsMargins(6, 6, 6, 6)
         area_layout.setSpacing(4)
         
-        # Layout section: Coordinates and dimensions
         layout_section = QHBoxLayout()
         layout_section.setSpacing(4)
         
-        # Coordinates (0, 0)
         coords_layout = QHBoxLayout()
         coords_layout.setSpacing(2)
         coords_label = QLabel("📍")
@@ -52,7 +44,6 @@ class WeatherPropertiesComponent(BasePropertiesComponent):
         coords_layout.addWidget(self.weather_coords_y)
         layout_section.addLayout(coords_layout)
         
-        # Dimensions
         dims_layout = QHBoxLayout()
         dims_layout.setSpacing(2)
         dims_label = QLabel("📐")
@@ -74,17 +65,14 @@ class WeatherPropertiesComponent(BasePropertiesComponent):
         layout_section.addStretch()
         area_layout.addLayout(layout_section)
         
-        # Connect signals
         self.weather_coords_x.textChanged.connect(self._on_coords_changed)
         self.weather_coords_y.textChanged.connect(self._on_coords_changed)
         self.weather_dims_width.textChanged.connect(self._on_dims_changed)
         self.weather_dims_height.textChanged.connect(self._on_dims_changed)
         
-        # Frame section with border, effect, and speed controls
         frame_group_layout = QVBoxLayout()
         frame_group_layout.setSpacing(4)
         
-        # Frame checkbox
         frame_checkbox_layout = QHBoxLayout()
         self.weather_frame_checkbox = QCheckBox("Frame")
         self.weather_frame_checkbox.toggled.connect(self._on_frame_enabled_changed)
@@ -92,7 +80,6 @@ class WeatherPropertiesComponent(BasePropertiesComponent):
         frame_checkbox_layout.addStretch()
         frame_group_layout.addLayout(frame_checkbox_layout)
         
-        # Border selection
         border_layout = QHBoxLayout()
         border_layout.addWidget(QLabel("Border:"))
         self.weather_frame_border_combo = QComboBox()
@@ -107,7 +94,6 @@ class WeatherPropertiesComponent(BasePropertiesComponent):
         border_layout.addWidget(self.weather_frame_border_combo, stretch=1)
         frame_group_layout.addLayout(border_layout)
         
-        # Effect selection
         effect_layout = QHBoxLayout()
         effect_layout.addWidget(QLabel("Effect:"))
         self.weather_frame_effect_combo = QComboBox()
@@ -118,7 +104,6 @@ class WeatherPropertiesComponent(BasePropertiesComponent):
         effect_layout.addWidget(self.weather_frame_effect_combo, stretch=1)
         frame_group_layout.addLayout(effect_layout)
         
-        # Speed selection
         speed_layout = QHBoxLayout()
         speed_layout.addWidget(QLabel("Speed:"))
         self.weather_frame_speed_combo = QComboBox()
@@ -135,12 +120,10 @@ class WeatherPropertiesComponent(BasePropertiesComponent):
         main_layout.addStretch()
     
     def set_program_data(self, program, element):
-        """Set program and element data"""
         self.set_element(element, program)
         self.update_properties()
     
     def update_properties(self):
-        """Update properties from current element"""
         if not self.current_element or not self.current_program:
             return
         
@@ -178,7 +161,7 @@ class WeatherPropertiesComponent(BasePropertiesComponent):
         frame_enabled = frame_props.get("enabled", False) if isinstance(frame_props, dict) else False
         self.weather_frame_checkbox.blockSignals(True)
         self.weather_frame_checkbox.setChecked(frame_enabled)
-        self.weather_frame_checkbox.setEnabled(True)  # Ensure checkbox is enabled
+        self.weather_frame_checkbox.setEnabled(True)
         self.weather_frame_checkbox.blockSignals(False)
         
         self.weather_frame_border_combo.setEnabled(frame_enabled)
@@ -206,8 +189,19 @@ class WeatherPropertiesComponent(BasePropertiesComponent):
         else:
             self.weather_frame_speed_combo.setCurrentIndex(1)
     
+    def _update_frame_property(self, key: str, value):
+        if not self.current_element or not self.current_program:
+            return
+        if "properties" not in self.current_element:
+            self.current_element["properties"] = {}
+        if "frame" not in self.current_element["properties"]:
+            self.current_element["properties"]["frame"] = {}
+        self.current_element["properties"]["frame"][key] = value
+        self.current_program.modified = datetime.now().isoformat()
+        self.property_changed.emit(f"weather_frame_{key}", value)
+        self._trigger_autosave()
+    
     def _on_coords_changed(self):
-        """Handle coordinates change"""
         if not self.current_element or not self.current_program:
             return
         try:
@@ -233,7 +227,6 @@ class WeatherPropertiesComponent(BasePropertiesComponent):
             pass
     
     def _on_dims_changed(self):
-        """Handle dimensions change"""
         if not self.current_element or not self.current_program:
             return
         try:
@@ -256,66 +249,25 @@ class WeatherPropertiesComponent(BasePropertiesComponent):
             pass
     
     def _on_frame_enabled_changed(self, enabled: bool):
-        """Handle frame enabled change"""
         if not self.current_element or not self.current_program:
-            # Disable checkbox if no element/program instead of reverting
             self.weather_frame_checkbox.blockSignals(True)
             self.weather_frame_checkbox.setEnabled(False)
             self.weather_frame_checkbox.setChecked(False)
             self.weather_frame_checkbox.blockSignals(False)
             return
         
-        # Ensure checkbox is enabled when we have element/program
         self.weather_frame_checkbox.setEnabled(True)
         self.weather_frame_border_combo.setEnabled(enabled)
         self.weather_frame_effect_combo.setEnabled(enabled)
         self.weather_frame_speed_combo.setEnabled(enabled)
-        if "properties" not in self.current_element:
-            self.current_element["properties"] = {}
-        if "frame" not in self.current_element["properties"]:
-            self.current_element["properties"]["frame"] = {}
-        self.current_element["properties"]["frame"]["enabled"] = enabled
-        self.current_program.modified = datetime.now().isoformat()
-        self.property_changed.emit("weather_frame_enabled", enabled)
-        self._trigger_autosave()
+        self._update_frame_property("enabled", enabled)
     
     def _on_frame_border_changed(self, border: str):
-        """Handle frame border change"""
-        if not self.current_element or not self.current_program:
-            return
-        if "properties" not in self.current_element:
-            self.current_element["properties"] = {}
-        if "frame" not in self.current_element["properties"]:
-            self.current_element["properties"]["frame"] = {}
-        self.current_element["properties"]["frame"]["border"] = border
-        self.current_program.modified = datetime.now().isoformat()
-        self.property_changed.emit("weather_frame_border", border)
-        self._trigger_autosave()
+        self._update_frame_property("border", border)
     
     def _on_frame_effect_changed(self, effect: str):
-        """Handle frame effect change"""
-        if not self.current_element or not self.current_program:
-            return
-        if "properties" not in self.current_element:
-            self.current_element["properties"] = {}
-        if "frame" not in self.current_element["properties"]:
-            self.current_element["properties"]["frame"] = {}
-        self.current_element["properties"]["frame"]["effect"] = effect
-        self.current_program.modified = datetime.now().isoformat()
-        self.property_changed.emit("weather_frame_effect", effect)
-        self._trigger_autosave()
+        self._update_frame_property("effect", effect)
     
     def _on_frame_speed_changed(self, speed: str):
-        """Handle frame speed change"""
-        if not self.current_element or not self.current_program:
-            return
-        if "properties" not in self.current_element:
-            self.current_element["properties"] = {}
-        if "frame" not in self.current_element["properties"]:
-            self.current_element["properties"]["frame"] = {}
-        self.current_element["properties"]["frame"]["speed"] = speed
-        self.current_program.modified = datetime.now().isoformat()
-        self.property_changed.emit("weather_frame_speed", speed)
-        self._trigger_autosave()
-    
+        self._update_frame_property("speed", speed)
 

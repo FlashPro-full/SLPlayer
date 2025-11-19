@@ -1,14 +1,10 @@
-"""
-Toolbar components for the main window
-"""
-from PyQt5.QtWidgets import QToolBar, QToolButton, QAction
+from PyQt5.QtWidgets import QToolBar, QToolButton, QAction, QSizePolicy
 from PyQt5.QtCore import Qt, pyqtSignal, QEvent, QTimer
 from config.constants import ContentType
 from config.i18n import tr
 
 
 class BaseToolbar(QToolBar):
-    """Base class for all toolbars with common styling"""
 
     def __init__(self, title: str, parent=None):
         super().__init__(title, parent)
@@ -24,7 +20,6 @@ class BaseToolbar(QToolBar):
         self.orientationChanged.connect(self._on_orientation_changed)
 
     def apply_style(self):
-        """Apply styling to toolbar"""
         self.setStyleSheet("""
             QToolBar {
                 background-color: #D6D6D6;
@@ -42,6 +37,19 @@ class BaseToolbar(QToolBar):
                 height: 1px;
                 background-color: #B0B0B0;
                 margin: 0px 2px;
+            }
+            QToolBar::extension {
+                background-color: #D6D6D6;
+                border: 1px solid #B0B0B0;
+                border-radius: 4px;
+                padding: 6px 10px;
+                margin: 1px;
+            }
+            QToolBar::extension:hover {
+                background-color: #E8F4F8;
+            }
+            QToolBar::extension:pressed {
+                background-color: #D0E8F2;
             }
             QToolButton {
                 background-color: transparent;
@@ -63,14 +71,9 @@ class BaseToolbar(QToolBar):
         self.update_vertical_alignment()
     
     def update_vertical_alignment(self):
-        """Update button alignment based on toolbar orientation"""
-        from PyQt5.QtWidgets import QApplication
-        from PyQt5.QtCore import QTimer
-        
         QTimer.singleShot(0, self._do_update_vertical_alignment)
     
     def _do_update_vertical_alignment(self):
-        """Actually update button alignment - called after widgets are created"""
         orientation = self.orientation()
         if orientation == Qt.Vertical:
             self.setLayoutDirection(Qt.LeftToRight)
@@ -83,7 +86,6 @@ class BaseToolbar(QToolBar):
                 if widget and isinstance(widget, QToolButton):
                     widget.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
                     widget.setLayoutDirection(Qt.LeftToRight)
-                    from PyQt5.QtWidgets import QSizePolicy
                     widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
                     widget.setStyleSheet("""
                         QToolButton {
@@ -115,41 +117,44 @@ class BaseToolbar(QToolBar):
                 if widget and isinstance(widget, QToolButton):
                     widget.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
                     widget.setLayoutDirection(Qt.LeftToRight)
-                    from PyQt5.QtWidgets import QSizePolicy
                     widget.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
                     widget.setStyleSheet("")
     
     def _on_top_level_changed(self, top_level):
-        """Handle toolbar becoming floating or docked"""
         QTimer.singleShot(10, self._do_update_vertical_alignment)
     
     def _on_orientation_changed(self, orientation):
-        """Handle orientation change signal"""
         QTimer.singleShot(10, self._do_update_vertical_alignment)
     
     def event(self, event):
-        """Handle events including orientation changes"""
         if event.type() == QEvent.OrientationChange:
             QTimer.singleShot(10, self._do_update_vertical_alignment)
         return super().event(event)
 
 
 class ProgramToolbar(BaseToolbar):
-    """Program toolbar with Program button"""
+    
+    new_program_requested = pyqtSignal()
+    new_screen_requested = pyqtSignal()
     
     def __init__(self, parent=None):
         super().__init__("Program", parent)
         self.init_ui()
     
     def init_ui(self):
-        """Initialize toolbar UI"""
+        from config.i18n import tr
         program_action = QAction("💽 Program", self)
-        program_action.setToolTip("Program")
+        program_action.setToolTip(tr("toolbar.program_tooltip"))
+        program_action.triggered.connect(self.new_program_requested.emit)
         self.addAction(program_action)
+        
+        screen_action = QAction("🖥 Screen", self)
+        screen_action.setToolTip(tr("toolbar.screen_tooltip"))
+        screen_action.triggered.connect(self.new_screen_requested.emit)
+        self.addAction(screen_action)
 
 
 class ContentTypesToolbar(BaseToolbar):
-    """Toolbar for visible content types"""
     
     content_type_selected = pyqtSignal(str)
     
@@ -158,7 +163,6 @@ class ContentTypesToolbar(BaseToolbar):
         self.init_ui()
     
     def init_ui(self):
-        """Initialize toolbar UI with all content types"""
         content_types = [
             ("🎞 Video", ContentType.VIDEO),
             ("🌄 Photo", ContentType.PHOTO),
@@ -169,6 +173,8 @@ class ContentTypesToolbar(BaseToolbar):
             ("⌛️ Timing", ContentType.TIMING),
             ("🌦 Weather", ContentType.WEATHER),
             ("📎 Sensor", ContentType.SENSOR),
+            ("🔌 HDMI", ContentType.HDMI),
+            ("🌐 HTML", ContentType.HTML)
         ]
         
         for emoji_text, content_type in content_types:
@@ -179,7 +185,6 @@ class ContentTypesToolbar(BaseToolbar):
 
 
 class PlaybackToolbar(BaseToolbar):
-    """Playback control toolbar"""
     
     action_triggered = pyqtSignal(str)
     
@@ -188,25 +193,24 @@ class PlaybackToolbar(BaseToolbar):
         self.init_ui()
     
     def init_ui(self):
-        """Initialize toolbar UI"""
+        from config.i18n import tr
         play_action = QAction("▶️ Play", self)
-        play_action.setToolTip("Play")
+        play_action.setToolTip(tr("toolbar.play_tooltip"))
         play_action.triggered.connect(lambda: self.action_triggered.emit("play"))
         self.addAction(play_action)
         
         pause_action = QAction("⏸ Pause", self)
-        pause_action.setToolTip("Pause")
+        pause_action.setToolTip(tr("toolbar.pause_tooltip"))
         pause_action.triggered.connect(lambda: self.action_triggered.emit("pause"))
         self.addAction(pause_action)
         
         stop_action = QAction("⏹ Stop", self)
-        stop_action.setToolTip("Stop")
+        stop_action.setToolTip(tr("toolbar.stop_tooltip"))
         stop_action.triggered.connect(lambda: self.action_triggered.emit("stop"))
         self.addAction(stop_action)
 
 
 class ControlToolbar(BaseToolbar):
-    """Controller toolbar with Download, Insert, Clear buttons"""
     
     action_triggered = pyqtSignal(str)
     
@@ -215,25 +219,33 @@ class ControlToolbar(BaseToolbar):
         self.init_ui()
     
     def init_ui(self):
-        """Initialize toolbar UI"""
-        download_action = QAction("⬇️ Download", self)
-        download_action.setToolTip(tr("toolbar.download"))
-        download_action.triggered.connect(lambda: self.action_triggered.emit("download"))
-        self.addAction(download_action)
+        from config.i18n import tr
+        send_action = QAction("⬆️ Send", self)
+        send_action.setToolTip(tr("toolbar.send"))
+        send_action.triggered.connect(lambda: self.action_triggered.emit("send"))
+        self.addAction(send_action)
+        
+        self.addSeparator()
+        
+        export_usb_action = QAction("💾 To U-Disk", self)
+        export_usb_action.setToolTip(tr("toolbar.export_to_usb"))
+        export_usb_action.triggered.connect(lambda: self.action_triggered.emit("export_to_usb"))
+        self.addAction(export_usb_action)
         
         insert_action = QAction("📲 Insert", self)
-        insert_action.setToolTip("Insert")
+        insert_action.setToolTip(tr("toolbar.insert"))
         insert_action.triggered.connect(lambda: self.action_triggered.emit("insert"))
         self.addAction(insert_action)
         
+        self.addSeparator()
+        
         clear_action = QAction("🧹 Clear", self)
-        clear_action.setToolTip("Clear")
+        clear_action.setToolTip(tr("toolbar.clear_tooltip"))
         clear_action.triggered.connect(lambda: self.action_triggered.emit("clear"))
         self.addAction(clear_action)
 
 
 class ToolbarManager(QToolBar):
-    """Manager for all toolbars - provides backward compatibility"""
     
     def __init__(self, parent=None):
         super().__init__("Toolbars", parent)
@@ -242,6 +254,5 @@ class ToolbarManager(QToolBar):
         self.toolbars = []
     
     def get_toolbars(self):
-        """Get all managed toolbars"""
         return self.toolbars
 

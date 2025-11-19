@@ -59,10 +59,10 @@ class FileService:
     
     def load_latest_files(self) -> bool:
         try:
-            result = self.file_manager.load_latest_soo_files()
-            if result:
+            success, files_loaded, files_total = self.file_manager.load_latest_soo_files()
+            if success:
                 event_bus.ui_program_list_refresh.emit()
-            return result
+            return success
         except Exception as e:
             logger.error(f"Error loading latest files: {e}", exc_info=True)
             return False

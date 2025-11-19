@@ -1,7 +1,3 @@
-"""
-Controller database module for storing controller connection information
-Uses SQLite to track controllers that have connected to the PC
-"""
 import sqlite3
 from pathlib import Path
 from typing import Optional, Dict, List, Any
@@ -13,15 +9,8 @@ logger = get_logger(__name__)
 
 
 class ControllerDatabase:
-    """Database for storing controller connection information"""
-    
+
     def __init__(self, db_path: Optional[Path] = None):
-        """
-        Initialize controller database.
-        
-        Args:
-            db_path: Path to database file (defaults to AppData/Local/SLPlayer/controllers.db)
-        """
         if db_path is None:
             # Prefer saving controllers.db in the application root (same level folder),
             # fall back to AppData if not writable.
@@ -42,7 +31,6 @@ class ControllerDatabase:
         self._init_database()
     
     def _init_database(self):
-        """Initialize SQLite database with controllers table"""
         try:
             conn = sqlite3.connect(str(self.db_path))
             cursor = conn.cursor()
@@ -67,11 +55,28 @@ class ControllerDatabase:
                     total_connection_time INTEGER DEFAULT 0,
                     last_disconnected TEXT,
                     is_active INTEGER DEFAULT 1,
+                    status TEXT DEFAULT 'disconnected',
                     notes TEXT
                 )
             """)
+            
+            try:
+                cursor.execute("ALTER TABLE controllers ADD COLUMN status TEXT DEFAULT 'disconnected'")
+                logger.info("Added status column to controllers table")
+            except sqlite3.OperationalError:
+                pass
+            
+            cursor.execute("""
+                UPDATE controllers 
+                SET status = CASE
+                    WHEN is_active = 1 AND ip_address != '0.0.0.0' THEN 'connected'
+                    WHEN is_active = 0 AND ip_address != '0.0.0.0' THEN 'disconnected'
+                    WHEN ip_address = '0.0.0.0' THEN 'license_only'
+                    ELSE 'disconnected'
+                END
+                WHERE status IS NULL OR status = ''
+            """)
 
-            # Create controller_models table to store brand/model specifications
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS controller_models (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -88,7 +93,6 @@ class ControllerDatabase:
                 )
             """)
 
-            # Table to store screen parameter selections/history
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS screen_parameters (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -102,11 +106,11 @@ class ControllerDatabase:
                 )
             """)
             
-            # Create indexes for faster queries
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_controller_id ON controllers(controller_id)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_ip_address ON controllers(ip_address)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_last_connected ON controllers(last_connected)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_is_active ON controllers(is_active)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_status ON controllers(status)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_models_brand ON controller_models(brand)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_models_brand_model ON controller_models(brand, model)")
             
@@ -118,24 +122,10 @@ class ControllerDatabase:
     
     def add_or_update_controller(self, controller_id: str, ip_address: str, port: int,
                                  controller_type: str, device_info: Optional[Dict] = None) -> bool:
-        """
-        Add a new controller or update existing one on connection.
-        
-        Args:
-            controller_id: Unique controller ID (e.g., "HD-M30-00123456")
-            ip_address: Controller IP address
-            port: Controller port
-            controller_type: Controller type (e.g., "novastar", "huidu")
-            device_info: Optional device information dictionary
-        
-        Returns:
-            True if successful, False otherwise
-        """
         try:
             conn = sqlite3.connect(str(self.db_path))
             cursor = conn.cursor()
             
-            # Extract device info
             device_name = device_info.get("name") if device_info else None
             mac_address = device_info.get("mac_address") if device_info else None
             firmware_version = device_info.get("firmware_version") or device_info.get("version") if device_info else None
@@ -145,13 +135,11 @@ class ControllerDatabase:
             
             now = datetime.now().isoformat()
             
-            # Check if controller already exists
             cursor.execute("SELECT id, connection_count FROM controllers WHERE controller_id = ?", 
                           (controller_id,))
             existing = cursor.fetchone()
             
             if existing:
-                # Update existing controller
                 controller_db_id, connection_count = existing
                 new_count = connection_count + 1
                 
@@ -168,7 +156,8 @@ class ControllerDatabase:
                         serial_number = COALESCE(?, serial_number),
                         last_connected = ?,
                         connection_count = ?,
-                        is_active = 1
+                        is_active = 1,
+                        status = 'connected'
                     WHERE controller_id = ?
                 """, (
                     ip_address, port, controller_type, device_name,
@@ -178,19 +167,20 @@ class ControllerDatabase:
                 
                 logger.info(f"Updated controller {controller_id} in database (connection #{new_count})")
             else:
-                # Insert new controller
+                status = 'connected' if ip_address != '0.0.0.0' else 'license_only'
+                
                 cursor.execute("""
                     INSERT INTO controllers (
                         controller_id, ip_address, port, controller_type,
                         device_name, mac_address, firmware_version,
                         display_resolution, model, serial_number,
-                        first_connected, last_connected, connection_count, is_active
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1)
+                        first_connected, last_connected, connection_count, is_active, status
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, ?)
                 """, (
                     controller_id, ip_address, port, controller_type,
                     device_name, mac_address, firmware_version,
                     display_resolution, model, serial_number,
-                    now, now
+                    now, now, status
                 ))
                 
                 logger.info(f"Added new controller {controller_id} to database")
@@ -203,24 +193,18 @@ class ControllerDatabase:
             return False
     
     def mark_controller_disconnected(self, controller_id: str) -> bool:
-        """
-        Mark controller as disconnected.
-        
-        Args:
-            controller_id: Controller ID to mark as disconnected
-        
-        Returns:
-            True if successful, False otherwise
-        """
         try:
             conn = sqlite3.connect(str(self.db_path))
             cursor = conn.cursor()
-            
             now = datetime.now().isoformat()
             
             cursor.execute("""
                 UPDATE controllers 
                 SET is_active = 0,
+                    status = CASE
+                        WHEN ip_address = '0.0.0.0' THEN 'license_only'
+                        ELSE 'disconnected'
+                    END,
                     last_disconnected = ?
                 WHERE controller_id = ?
             """, (now, controller_id))
@@ -234,16 +218,83 @@ class ControllerDatabase:
             logger.exception(f"Error marking controller as disconnected: {e}")
             return False
     
+    def add_controller_from_license(self, controller_id: str, license_data: Optional[Dict] = None) -> bool:
+        try:
+            # Check if controller already exists
+            existing = self.get_controller(controller_id)
+            if existing:
+                # Update status if needed
+                if existing.get('status') != 'license_only':
+                    conn = sqlite3.connect(str(self.db_path))
+                    cursor = conn.cursor()
+                    cursor.execute("""
+                        UPDATE controllers 
+                        SET status = 'license_only',
+                            ip_address = '0.0.0.0',
+                            port = 0
+                        WHERE controller_id = ?
+                    """, (controller_id,))
+                    conn.commit()
+                    conn.close()
+                logger.debug(f"Controller {controller_id} already exists in database")
+                return True
+            
+            controller_type = "Unknown"
+            model = None
+            device_name = None
+            
+            if license_data:
+                controller_type_str = license_data.get('controllerType', '') or ''
+                model = license_data.get('model', '') or ''
+                device_name = license_data.get('deviceName', '') or model
+            else:
+                ctrl_id_upper = controller_id.upper()
+                if 'HD-' in ctrl_id_upper or 'HUIDU' in ctrl_id_upper:
+                    controller_type = 'Huidu'
+                    for m in ['HD-M30', 'HD-C15', 'HD-C16', 'HD-C20', 'HD-C30', 'HD-M50', 'HD-M60', 'HD-A10', 'HD-A20']:
+                        if m in ctrl_id_upper:
+                            model = m
+                            break
+                    if not model:
+                        model = 'HD-C15'
+                elif 'NOVASTAR' in ctrl_id_upper or 'T' in ctrl_id_upper or 'MCTRL' in ctrl_id_upper:
+                    controller_type = 'NovaStar'
+                    for m in ['T3', 'T6', 'T8', 'TB3', 'MCTRL300', 'MCTRL600', 'MCTRL660', 'MCTRL4K']:
+                        if m in ctrl_id_upper:
+                            model = m
+                            break
+                    if not model:
+                        model = 'T3'
+            
+            if not device_name:
+                device_name = model or controller_id
+            
+            now = datetime.now().isoformat()
+            conn = sqlite3.connect(str(self.db_path))
+            cursor = conn.cursor()
+            
+            cursor.execute("""
+                INSERT INTO controllers (
+                    controller_id, ip_address, port, controller_type,
+                    device_name, model,
+                    first_connected, last_connected, connection_count, 
+                    is_active, status
+                ) VALUES (?, '0.0.0.0', 0, ?, ?, ?, ?, ?, 0, 0, 'license_only')
+            """, (
+                controller_id, controller_type, device_name, model,
+                now, now
+            ))
+            
+            conn.commit()
+            conn.close()
+            
+            logger.info(f"Added controller from license: {controller_id} ({controller_type} {model})")
+            return True
+        except Exception as e:
+            logger.exception(f"Error adding controller from license {controller_id}: {e}")
+            return False
+    
     def get_controller(self, controller_id: str) -> Optional[Dict[str, Any]]:
-        """
-        Get controller information by ID.
-        
-        Args:
-            controller_id: Controller ID to look up
-        
-        Returns:
-            Dictionary with controller info or None if not found
-        """
         try:
             conn = sqlite3.connect(str(self.db_path))
             conn.row_factory = sqlite3.Row
@@ -261,15 +312,6 @@ class ControllerDatabase:
             return None
     
     def get_all_controllers(self, active_only: bool = False) -> List[Dict[str, Any]]:
-        """
-        Get all controllers from database.
-        
-        Args:
-            active_only: If True, only return currently active controllers
-        
-        Returns:
-            List of controller dictionaries
-        """
         try:
             conn = sqlite3.connect(str(self.db_path))
             conn.row_factory = sqlite3.Row
@@ -289,15 +331,6 @@ class ControllerDatabase:
             return []
     
     def get_controllers_by_type(self, controller_type: str) -> List[Dict[str, Any]]:
-        """
-        Get all controllers of a specific type.
-        
-        Args:
-            controller_type: Controller type (e.g., "novastar", "huidu")
-        
-        Returns:
-            List of controller dictionaries
-        """
         try:
             conn = sqlite3.connect(str(self.db_path))
             conn.row_factory = sqlite3.Row
@@ -314,15 +347,6 @@ class ControllerDatabase:
             return []
     
     def search_controllers(self, query: str) -> List[Dict[str, Any]]:
-        """
-        Search controllers by ID, name, IP address, or model.
-        
-        Args:
-            query: Search query string
-        
-        Returns:
-            List of matching controller dictionaries
-        """
         try:
             conn = sqlite3.connect(str(self.db_path))
             conn.row_factory = sqlite3.Row
@@ -347,15 +371,6 @@ class ControllerDatabase:
             return []
     
     def delete_controller(self, controller_id: str) -> bool:
-        """
-        Delete controller from database.
-        
-        Args:
-            controller_id: Controller ID to delete
-        
-        Returns:
-            True if successful, False otherwise
-        """
         try:
             conn = sqlite3.connect(str(self.db_path))
             cursor = conn.cursor()
@@ -372,29 +387,19 @@ class ControllerDatabase:
             return False
     
     def get_connection_statistics(self) -> Dict[str, Any]:
-        """
-        Get connection statistics.
-        
-        Returns:
-            Dictionary with statistics
-        """
         try:
             conn = sqlite3.connect(str(self.db_path))
             cursor = conn.cursor()
             
-            # Total controllers
             cursor.execute("SELECT COUNT(*) FROM controllers")
             total_controllers = cursor.fetchone()[0]
             
-            # Active controllers
             cursor.execute("SELECT COUNT(*) FROM controllers WHERE is_active = 1")
             active_controllers = cursor.fetchone()[0]
             
-            # Total connections
             cursor.execute("SELECT SUM(connection_count) FROM controllers")
             total_connections = cursor.fetchone()[0] or 0
             
-            # Controllers by type
             cursor.execute("""
                 SELECT controller_type, COUNT(*) 
                 FROM controllers 
@@ -419,9 +424,7 @@ class ControllerDatabase:
                 "by_type": {}
             }
 
-    # -------- Controller models (brand/model specs) --------
     def upsert_controller_model(self, brand: str, model: str, specs: Dict[str, Any]) -> bool:
-        """Insert or update a controller model specification."""
         try:
             conn = sqlite3.connect(str(self.db_path))
             cursor = conn.cursor()
@@ -450,7 +453,6 @@ class ControllerDatabase:
             return False
 
     def get_models_by_brand(self, brand: str) -> List[Dict[str, Any]]:
-        """Return all models for a given brand."""
         try:
             conn = sqlite3.connect(str(self.db_path))
             conn.row_factory = sqlite3.Row
@@ -464,7 +466,6 @@ class ControllerDatabase:
             return []
 
     def get_model_spec(self, brand: str, model: str) -> Optional[Dict[str, Any]]:
-        """Return spec row for brand/model."""
         try:
             conn = sqlite3.connect(str(self.db_path))
             conn.row_factory = sqlite3.Row
@@ -478,7 +479,6 @@ class ControllerDatabase:
             return None
 
     def seed_models_if_empty(self, seeds: Dict[str, Dict[str, Any]]) -> None:
-        """Seed initial models if the controller_models table is empty."""
         try:
             conn = sqlite3.connect(str(self.db_path))
             cursor = conn.cursor()
@@ -495,7 +495,6 @@ class ControllerDatabase:
 
     # -------- Screen parameters (user selections) --------
     def save_screen_parameters(self, params: Dict[str, Any]) -> bool:
-        """Save selected screen parameters to DB."""
         try:
             conn = sqlite3.connect(str(self.db_path))
             cursor = conn.cursor()
@@ -520,11 +519,9 @@ class ControllerDatabase:
             return False
 
 
-# Global controller database instance
 _controller_db_instance: Optional[ControllerDatabase] = None
 
 def get_controller_database() -> ControllerDatabase:
-    """Get global controller database instance"""
     global _controller_db_instance
     if _controller_db_instance is None:
         _controller_db_instance = ControllerDatabase()

@@ -1,6 +1,3 @@
-"""
-Screen properties component
-"""
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
                              QGroupBox, QFormLayout)
 from PyQt5.QtCore import Qt
@@ -10,7 +7,6 @@ from ui.properties.base_properties_component import BasePropertiesComponent
 
 
 class ScreenPropertiesComponent(BasePropertiesComponent):
-    """Screen properties component"""
     
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -18,13 +14,11 @@ class ScreenPropertiesComponent(BasePropertiesComponent):
         self.init_ui()
     
     def init_ui(self):
-        """Initialize the UI"""
         layout = QHBoxLayout(self)
         layout.setContentsMargins(4, 4, 4, 4)
         layout.setSpacing(8)
         layout.setAlignment(Qt.AlignLeft | Qt.AlignTop)
         
-        # Set font size for labels and group boxes
         self.setStyleSheet("""
             QGroupBox {
                 font-size: 13px;
@@ -84,18 +78,15 @@ class ScreenPropertiesComponent(BasePropertiesComponent):
         layout.addStretch()
     
     def set_program_manager(self, program_manager):
-        """Set the program manager for accessing screen data"""
         self.program_manager = program_manager
     
     def set_program_data(self, program, element, screen_name=None, programs=None):
-        """Set program data for screen properties display"""
         if screen_name and programs:
             self.current_screen_name = screen_name
             self.current_screen_programs = programs
             self.update_properties()
     
     def update_properties(self):
-        """Update screen properties from current screen"""
         if not self.current_screen_programs or len(self.current_screen_programs) == 0:
             return
         
@@ -115,7 +106,6 @@ class ScreenPropertiesComponent(BasePropertiesComponent):
                 controller_type = model
         self.screen_controller_type_input.setText(controller_type if controller_type else "N/A")
         
-        # NEVER use program.width/height (PC canvas) - only use screen_properties (controller screen)
         screen_props = first_program.properties.get("screen", {})
         width = screen_props.get("width")
         height = screen_props.get("height")

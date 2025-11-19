@@ -12,6 +12,8 @@ class EventBus(QObject):
     program_deleted = pyqtSignal(str)
     program_selected = pyqtSignal(str)
     program_saved = pyqtSignal(object, str)
+    program_sent = pyqtSignal(object)
+    program_exported_to_usb = pyqtSignal(object, str)
     
     screen_created = pyqtSignal(str)
     screen_updated = pyqtSignal(str)

@@ -1,7 +1,3 @@
-"""
-Screen Parameters Setting dialog redesigned to match the provided layout.
-Populates controller list from local DB, supports NovaStar and Huidu presets.
-"""
 from PyQt5.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QComboBox,
     QSpinBox, QCheckBox, QTableWidget, QTableWidgetItem, QDialogButtonBox, QWidget, QGridLayout, QGroupBox, QHeaderView, QFormLayout
@@ -16,13 +12,22 @@ import json
 class ScreenSettingsDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Screen Parameters Setting")
+        self.setWindowTitle(tr("screen.title"))
         self.setMinimumSize(740, 520)
         self._controllers = []
         self._build_ui()
         self._load_controllers_from_db()
         self._wire_events()
         self.series_combo.setCurrentText("Huidu")
+        
+        try:
+            from core.controller_research_service import ControllerResearchService
+            ControllerResearchService.populate_database(force_update=False)
+        except Exception as e:
+            from utils.logger import get_logger
+            logger = get_logger(__name__)
+            logger.warning(f"Could not populate controller database: {e}")
+        
         try:
             from core.controller_database import get_controller_database
             db = get_controller_database()
@@ -49,10 +54,10 @@ class ScreenSettingsDialog(QDialog):
                     db.seed_models_if_empty(seeds)
         except Exception:
             pass
+        
         self._populate_models()
 
     def _is_first_screen(self) -> bool:
-        """Return True if this is the first screen (no programs exist)."""
         try:
             pm = getattr(self.parent(), "program_manager", None)
             return bool(pm is not None and not getattr(pm, "programs", []))
@@ -139,16 +144,16 @@ class ScreenSettingsDialog(QDialog):
         """)
 
         top_row = QHBoxLayout()
-        top_label = QLabel(tr("screen.controller_list") or "Controller list")
-        top_label.setToolTip("Controllers previously connected and stored locally")
+        top_label = QLabel(tr("screen.controller_list"))
+        top_label.setToolTip(tr("screen.controller_list_tooltip"))
         top_row.addWidget(top_label)
         self.controller_combo = QComboBox(self)
-        self.controller_combo.setToolTip("Choose a connected controller from the local database")
+        self.controller_combo.setToolTip(tr("screen.controller_tooltip"))
         self.controller_combo.setEditable(False)
         top_row.addWidget(self.controller_combo, stretch=1)
         root.addLayout(top_row)
 
-        self.header_label = QLabel("Controller Name", self)
+        self.header_label = QLabel(tr("screen.controller_name"), self)
         self.header_label.setObjectName("HeaderLabel")
         try:
             self.header_label.setIndent(300)
@@ -171,45 +176,45 @@ class ScreenSettingsDialog(QDialog):
             self.use_controller_setting.setStyleSheet("margin-top: 10px;")
         except Exception:
             pass
-        self.use_controller_setting.setToolTip("When enabled, parameters are derived from the selected controller")
+        self.use_controller_setting.setToolTip(tr("screen.use_controller_tooltip"))
         form.addRow(self.use_controller_setting)
 
         self.series_combo = QComboBox(left_group)
         self.series_combo.addItems(["NovaStar", "Huidu"])
-        self.series_combo.setToolTip("Controller brand / series")
+        self.series_combo.setToolTip(tr("screen.series_tooltip"))
         self.model_combo = QComboBox(left_group)
-        self.model_combo.setToolTip("Controller model")
+        self.model_combo.setToolTip(tr("screen.model_tooltip"))
         type_row = QWidget(left_group)
         type_row_layout = QHBoxLayout(type_row)
         type_row_layout.setContentsMargins(0, 0, 0, 0)
         type_row_layout.setSpacing(12)
         type_row_layout.addWidget(self.series_combo)
         type_row_layout.addWidget(self.model_combo)
-        form.addRow(QLabel("Controller type", left_group), type_row)
+        form.addRow(QLabel(tr("screen.controller_type"), left_group), type_row)
 
-        lbl_w = QLabel(tr("screen.width") or "Width", left_group)
-        lbl_w.setToolTip("Screen width (pixels)")
+        lbl_w = QLabel(tr("screen.width"), left_group)
+        lbl_w.setToolTip(tr("screen.width_tooltip"))
         self.width_spin = QSpinBox(left_group)
         self.width_spin.setRange(8, 16384)
         self.width_spin.setValue(256)
         self.width_spin.setSingleStep(1)
-        self.width_spin.setToolTip("Screen width in pixels")
+        self.width_spin.setToolTip(tr("screen.width_tooltip"))
         form.addRow(lbl_w, self.width_spin)
 
-        lbl_h = QLabel(tr("screen.height") or "Height", left_group)
-        lbl_h.setToolTip("Screen height (pixels)")
+        lbl_h = QLabel(tr("screen.height"), left_group)
+        lbl_h.setToolTip(tr("screen.height_tooltip"))
         self.height_spin = QSpinBox(left_group)
         self.height_spin.setRange(8, 16384)
         self.height_spin.setValue(480)
         self.height_spin.setSingleStep(1)
-        self.height_spin.setToolTip("Screen height in pixels")
+        self.height_spin.setToolTip(tr("screen.height_tooltip"))
         form.addRow(lbl_h, self.height_spin)
 
-        lbl_rot = QLabel(tr("screen.rotate") or "Rotate", left_group)
-        lbl_rot.setToolTip("Rotate output orientation")
+        lbl_rot = QLabel(tr("screen.rotate"), left_group)
+        lbl_rot.setToolTip(tr("screen.rotate_tooltip"))
         self.rotate_combo = QComboBox(left_group)
         self.rotate_combo.addItems(["0", "90", "180", "270"])
-        self.rotate_combo.setToolTip("Rotation in degrees")
+        self.rotate_combo.setToolTip(tr("screen.rotate_combo_tooltip"))
         form.addRow(lbl_rot, self.rotate_combo)
 
         self.table = QTableWidget(7, 2, self)
@@ -266,7 +271,7 @@ class ScreenSettingsDialog(QDialog):
                     cancel_btn.setEnabled(False)
                 try:
                     self.setWindowFlag(Qt.WindowCloseButtonHint, False)
-                    self.setWindowFlags(self.windowFlags())  # apply flag changes
+                    self.setWindowFlags(self.windowFlags())
                 except Exception:
                     pass
         except Exception:
@@ -281,17 +286,92 @@ class ScreenSettingsDialog(QDialog):
         self.controller_combo.currentIndexChanged.connect(self._on_controller_selected)
         self.use_controller_setting.toggled.connect(self._on_use_controller_setting_toggled)
 
-    def _load_controllers_from_db(self):
-        """Load controllers from database and populate the combo box"""
+    def _load_controllers_from_db(self, auto_select_detected: bool = True):
         try:
             from core.controller_database import get_controller_database
+            from core.license_manager import LicenseManager
+            from utils.logger import get_logger
+            logger = get_logger(__name__)
+            
             db = get_controller_database()
-            self._controllers = db.get_all_controllers(active_only=False) or []
+            license_manager = LicenseManager()
+            
+            all_controllers = db.get_all_controllers(active_only=False) or []
+            db_controller_ids = {row.get('controller_id') for row in all_controllers if row.get('controller_id')}
+            
+            detected_controller_id = None
+            try:
+                for license_file in license_manager.license_dir.glob("*.slp"):
+                    try:
+                        controller_id = None
+                        license_data = None
+                        
+                        try:
+                            with open(license_file, 'r', encoding='utf-8') as f:
+                                license_content = json.load(f)
+                            
+                            if isinstance(license_content, dict):
+                                controller_id = license_content.get('controller_id') or license_content.get('controllerId')
+                                license_data = license_content
+                        except Exception:
+                            license_file_stem = license_file.stem
+                            controller_id = license_file_stem
+                        
+                        if controller_id and controller_id not in db_controller_ids:
+                            try:
+                                if not license_data:
+                                    license_data = license_manager.load_license_file(controller_id)
+                                
+                                if hasattr(db, 'add_controller_from_license'):
+                                    db.add_controller_from_license(controller_id, license_data)
+                                    logger.info(f"Added controller from license file: {controller_id}")
+                                    all_controllers = db.get_all_controllers(active_only=False) or []
+                                    db_controller_ids.add(controller_id)
+                                
+                                if auto_select_detected and not detected_controller_id:
+                                    detected_controller_id = controller_id
+                            except Exception as e:
+                                logger.warning(f"Error processing license file {license_file.name}: {e}")
+                    except Exception as e:
+                        logger.warning(f"Error processing license file {license_file}: {e}")
+            except Exception as e:
+                logger.exception(f"Error scanning license files: {e}")
+            
+            connected_controllers = []
+            disconnected_controllers = []
+            license_only_controllers = []
+            
+            for row in all_controllers:
+                status = row.get('status', 'disconnected')
+                if status == 'connected':
+                    connected_controllers.append(row)
+                elif status == 'license_only':
+                    license_only_controllers.append(row)
+                else:
+                    disconnected_controllers.append(row)
+            
+            connected_controllers.sort(
+                key=lambda x: x.get('last_connected', '') or '', 
+                reverse=True
+            )
+            disconnected_controllers.sort(
+                key=lambda x: x.get('last_connected', '') or '', 
+                reverse=True
+            )
+            license_only_controllers.sort(
+                key=lambda x: x.get('controller_id', ''), 
+                reverse=False
+            )
+            
+            self._controllers = connected_controllers + disconnected_controllers + license_only_controllers
             self.controller_combo.clear()
+            
             if not self._controllers:
                 self.controller_combo.addItem("No controllers found", userData=None)
             else:
-                for row in self._controllers:
+                selected_index = -1
+                
+                for idx, row in enumerate(connected_controllers):
                     device_name = row.get('device_name') or row.get('model') or ''
                     controller_id = row.get('controller_id', '')
                     if device_name:
@@ -299,6 +379,44 @@ class ScreenSettingsDialog(QDialog):
                     else:
                         display = controller_id
                     self.controller_combo.addItem(display, userData=row)
+                    if auto_select_detected and controller_id == detected_controller_id:
+                        selected_index = idx
+                
+                if disconnected_controllers and connected_controllers:
+                    self.controller_combo.addItem("─── Disconnected ───", userData=None)
+                    self.controller_combo.model().item(self.controller_combo.count() - 1).setEnabled(False)
+                
+                start_idx = len(connected_controllers) + (1 if disconnected_controllers and connected_controllers else 0)
+                for idx, row in enumerate(disconnected_controllers):
+                    device_name = row.get('device_name') or row.get('model') or ''
+                    controller_id = row.get('controller_id', '')
+                    if device_name:
+                        display = f"{device_name}  ({controller_id}) [Disconnected]"
+                    else:
+                        display = f"{controller_id} [Disconnected]"
+                    self.controller_combo.addItem(display, userData=row)
+                    if auto_select_detected and controller_id == detected_controller_id:
+                        selected_index = start_idx + idx
+                
+                if license_only_controllers and (connected_controllers or disconnected_controllers):
+                    self.controller_combo.addItem("─── With License ───", userData=None)
+                    self.controller_combo.model().item(self.controller_combo.count() - 1).setEnabled(False)
+                
+                start_idx = self.controller_combo.count()
+                for idx, row in enumerate(license_only_controllers):
+                    device_name = row.get('device_name') or row.get('model') or ''
+                    controller_id = row.get('controller_id', '')
+                    if device_name:
+                        display = f"{device_name}  ({controller_id}) [License]"
+                    else:
+                        display = f"{controller_id} [License]"
+                    self.controller_combo.addItem(display, userData=row)
+                    if auto_select_detected and controller_id == detected_controller_id:
+                        selected_index = start_idx + idx
+                
+                if auto_select_detected and selected_index >= 0:
+                    self.controller_combo.setCurrentIndex(selected_index)
+                    logger.info(f"Auto-selected controller: {detected_controller_id}")
         except Exception as e:
             from utils.logger import get_logger
             logger = get_logger(__name__)
@@ -308,7 +426,6 @@ class ScreenSettingsDialog(QDialog):
             self.controller_combo.addItem("Error loading controllers", userData=None)
     
     def showEvent(self, event: QEvent):
-        """Refresh controller list when dialog is shown"""
         super().showEvent(event)
         self._load_controllers_from_db()
 
@@ -393,16 +510,34 @@ class ScreenSettingsDialog(QDialog):
             if range_str:
                 try:
                     range_str = str(range_str).strip()
-                    range_str = range_str.replace(',', 'x').replace(' ', '')
+                    range_str = range_str.replace('×', 'x').replace('X', 'x')
+                    range_str = range_str.replace(',', 'x')
+                    range_str = range_str.replace(' ', '')
+                    
                     if 'x' in range_str.lower():
                         parts = range_str.lower().split('x')
                         if len(parts) == 2:
                             suggested_w = int(parts[0].strip())
                             suggested_h = int(parts[1].strip())
-                            self.width_spin.setValue(min(suggested_w, self.width_spin.maximum()))
-                            self.height_spin.setValue(min(suggested_h, self.height_spin.maximum()))
-                except (ValueError, AttributeError, IndexError):
-                    pass
+                            suggested_w = max(8, min(suggested_w, self.width_spin.maximum()))
+                            suggested_h = max(8, min(suggested_h, self.height_spin.maximum()))
+                            
+                            self.width_spin.setValue(suggested_w)
+                            self.height_spin.setValue(suggested_h)
+                            
+                            try:
+                                from utils.logger import get_logger
+                                logger = get_logger(__name__)
+                                logger.debug(f"Set width×height from range '{preset.get('range')}': {suggested_w}×{suggested_h}")
+                            except Exception:
+                                pass
+                except (ValueError, AttributeError, IndexError) as e:
+                    try:
+                        from utils.logger import get_logger
+                        logger = get_logger(__name__)
+                        logger.warning(f"Failed to parse range string '{range_str}': {e}")
+                    except Exception:
+                        pass
 
     def _on_controller_selected(self, idx: int):
         data = self.controller_combo.itemData(idx)
@@ -530,7 +665,6 @@ class ScreenSettingsDialog(QDialog):
             self.header_label.setText("")
 
     def _clear_properties_table(self):
-        """Clear right-side values (keep labels)."""
         try:
             for i in range(7):
                 self.table.setItem(i, 1, QTableWidgetItem(""))
@@ -552,14 +686,12 @@ class ScreenSettingsDialog(QDialog):
         return self.model_combo.currentText()
     
     def selected_rotate(self):
-        """Get selected rotation value as integer"""
         try:
             return int(self.rotate_combo.currentText())
         except (ValueError, TypeError):
             return 0
     
     def selected_controller_id(self):
-        """Get selected controller ID from combo box"""
         try:
             idx = self.controller_combo.currentIndex()
             row = self.controller_combo.itemData(idx)
@@ -570,49 +702,139 @@ class ScreenSettingsDialog(QDialog):
         return None
 
     def accept(self):
-        """Save selection to local DB and close."""
         try:
             from core.controller_database import get_controller_database
             from core.license_manager import LicenseManager
+            from core.screen_config import set_screen_config
             from utils.logger import get_logger
             db = get_controller_database()
             license_manager = LicenseManager()
             logger = get_logger(__name__)
+            
+            use_controller_setting = self.use_controller_setting.isChecked()
+            brand = None
+            model_name = None
             ctrl_id = None
-            try:
-                idx = self.controller_combo.currentIndex()
-                row = self.controller_combo.itemData(idx)
-                if row:
-                    ctrl_id = row.get("controller_id")
-            except Exception:
-                ctrl_id = None
+            width = self.width_spin.value()
+            height = self.height_spin.value()
+            rotate = int(self.rotate_combo.currentText() if self.rotate_combo.currentText().isdigit() else 0)
             
-            if ctrl_id:
-                license_file = license_manager.get_license_file_path(ctrl_id)
-                logger.info(f"Checking license file for {ctrl_id}: {license_file}")
-                logger.info(f"License file exists: {license_file.exists()}")
-                if license_file.exists():
-                    license_data = license_manager.load_license_file(ctrl_id)
-                    if license_data:
-                        logger.info(f"License file exists and is valid for {ctrl_id}, skipping screen parameter save to DB")
-                        return super().accept()
+            if use_controller_setting:
+                controller_data = None
+                try:
+                    idx = self.controller_combo.currentIndex()
+                    controller_data = self.controller_combo.itemData(idx)
+                    if controller_data:
+                        ctrl_id = controller_data.get("controller_id")
+                        device_name = controller_data.get("device_name") or controller_data.get("model") or ctrl_id
+                        logger.info(f"Using controller setting: {device_name} ({ctrl_id})")
                     else:
-                        logger.warning(f"License file exists but is invalid for {ctrl_id}, saving screen parameters to DB")
-                else:
-                    logger.info(f"License file does not exist for {ctrl_id}, saving screen parameters to DB")
+                        logger.warning("Use Controller Setting is checked but no controller selected")
+                        from PyQt5.QtWidgets import QMessageBox
+                        QMessageBox.warning(
+                            self,
+                            "No Controller Selected",
+                            "Please select a connected controller from the list."
+                        )
+                        return
+                except Exception as e:
+                    logger.exception(f"Error getting controller data: {e}")
+                    ctrl_id = None
+                    controller_data = None
             
+                if ctrl_id:
+                    license_file = license_manager.get_license_file_path(ctrl_id)
+                    logger.info(f"Checking license file for {ctrl_id}: {license_file}")
+                    logger.info(f"License file exists: {license_file.exists()}")
+                    if license_file.exists():
+                        license_data = license_manager.load_license_file(ctrl_id)
+                        if license_data:
+                            logger.info(f"License file exists and is valid for {ctrl_id}, skipping screen parameter save to DB")  
+                            if controller_data:
+                                controller_type = (controller_data.get("controller_type") or "").lower()
+                                model = controller_data.get("model") or controller_data.get("device_name") or ""
+                                if "nova" in controller_type:
+                                    brand = "NovaStar"
+                                elif "huidu" in controller_type or "hd-" in model.lower():
+                                    brand = "Huidu"
+                            if brand and model:
+                                try:
+                                    db_models = db.get_models_by_brand(brand)
+                                    for m in db_models:
+                                        if m.get("model") and m.get("model").lower() in model.lower():
+                                            model_name = m.get("model")
+                                            break
+                                except Exception:
+                                    pass
+                            
+                            if not brand:
+                                brand = self.selected_series()
+                            if not model_name:
+                                model_name = self.selected_model()
+                            
+                            set_screen_config(brand, model_name, width, height, rotate, ctrl_id)
+                            return super().accept()
+                        else:
+                            logger.warning(f"License file exists but is invalid for {ctrl_id}, saving screen parameters to DB")
+                    else:
+                        logger.info(f"License file does not exist for {ctrl_id}, saving screen parameters to DB")
+                
+                    brand = None
+                    model_name = None
+                    
+                    if controller_data:
+                        controller_type = (controller_data.get("controller_type") or "").lower()
+                        model = controller_data.get("model") or controller_data.get("device_name") or ""
+                        if "nova" in controller_type:
+                            brand = "NovaStar"
+                        elif "huidu" in controller_type or "hd-" in model.lower():
+                            brand = "Huidu"
+                            if brand and model:
+                                try:
+                                    db_models = db.get_models_by_brand(brand)
+                                    for m in db_models:
+                                        if m.get("model") and m.get("model").lower() in model.lower():
+                                            model_name = m.get("model")
+                                            break
+                                except Exception:
+                                    pass
+                    
+                    if not brand:
+                        brand = self.selected_series()
+                    if not model_name:
+                        model_name = self.selected_model()
+                        db.save_screen_parameters({
+                                    "brand": brand or self.selected_series(),
+                                    "model": model_name or self.selected_model(),
+                                    "width": width,
+                                    "height": height,
+                                    "rotate": rotate,
+                            "controller_id": ctrl_id
+                        })
+                        logger.info(f"Saved screen parameters for controller {ctrl_id}")
+                        set_screen_config(brand, model_name, width, height, rotate, ctrl_id)
+                else:
+                    logger.warning("Use Controller Setting is checked but no valid controller ID found")
+                    return
+            else:
+                brand = self.selected_series()
+                model_name = self.selected_model()
+                logger.info(f"Using manual configuration: {brand} - {model_name}")
+                
             db.save_screen_parameters({
-                "brand": self.selected_series(),
-                "model": self.selected_model(),
-                "width": self.width_spin.value(),
-                "height": self.height_spin.value(),
-                "rotate": int(self.rotate_combo.currentText() if self.rotate_combo.currentText().isdigit() else 0),
-                "controller_id": ctrl_id
+                "brand": brand,
+                "model": model_name,
+                "width": width,
+                "height": height,
+                "rotate": rotate,
+                "controller_id": None
             })
+            logger.info(f"Saved screen parameters for manual configuration: {brand} - {model_name}")
+            set_screen_config(brand, model_name, width, height, rotate, None)
+            
         except Exception as e:
             from utils.logger import get_logger
             logger = get_logger(__name__)
             logger.exception(f"Error in accept: {e}")
+        
         super().accept()
-
-

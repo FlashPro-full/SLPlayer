@@ -38,7 +38,7 @@ class XMLImporter:
             screen_props = {}
             for attr in screen_node.findall("Attribute"):
                 name = attr.get("Name")
-                value = attr.get("Value", "")
+                value = attr.text if attr.text is not None else attr.get("Value", "")
                 if name:
                     screen_props[name] = value
             
@@ -54,7 +54,7 @@ class XMLImporter:
             program_attrs = {}
             for attr in program_node.findall("Attribute"):
                 name = attr.get("Name")
-                value = attr.get("Value", "")
+                value = attr.text if attr.text is not None else attr.get("Value", "")
                 if name:
                     program_attrs[name] = value
             
@@ -62,49 +62,7 @@ class XMLImporter:
             
             program = Program(name=program_name, width=screen_width, height=screen_height)
             
-            if "screen" not in program.properties:
-                program.properties["screen"] = {}
-            if isinstance(program.properties["screen"], dict):
-                program.properties["screen"].update({
-                    "screen_name": screen_name,
-                    "width": screen_width,
-                    "height": screen_height,
-                    "rotation": int(screen_props.get("Rotation", 0)),
-                    "stretch": int(screen_props.get("Stretch", 0)),
-                    "zoom_modulus": int(screen_props.get("ZoomModulus", 0))
-                })
-            
-            play_mode_str = program_attrs.get("PlayMode", "LoopTime")
-            if play_mode_str == "LoopTime":
-                program.play_mode["mode"] = "play_times"
-                program.play_mode["play_times"] = int(program_attrs.get("PlayTimes", 1))
-            else:
-                program.play_mode["mode"] = "fixed_length"
-                fixed_duration = int(program_attrs.get("FixedDuration", 30000))
-                seconds = fixed_duration // 1000
-                hours = seconds // 3600
-                minutes = (seconds % 3600) // 60
-                secs = seconds % 60
-                program.play_mode["fixed_length"] = f"{hours}:{minutes:02d}:{secs:02d}"
-            
-            use_specified = int(program_attrs.get("UseSpacifiled", 0))
-            if use_specified:
-                program.play_control["specified_time"]["enabled"] = True
-                start_time = program_attrs.get("SpaceStartTime", "00:00:00")
-                stop_time = program_attrs.get("SpaceStopTime", "23:59:59")
-                program.play_control["specified_time"]["time"] = f"{start_time}-{stop_time}"
-            
-            week_days = []
-            day_map = {
-                "Monday": 0, "Tuesday": 1, "Wednesday": 2, "Thursday": 3,
-                "Friday": 4, "Saturday": 5, "Sunday": 6
-            }
-            for day_name, day_index in day_map.items():
-                if int(program_attrs.get(day_name, 0)) == 1:
-                    week_days.append(day_index)
-            if week_days:
-                program.play_control["specify_week"]["enabled"] = True
-                program.play_control["specify_week"]["days"] = week_days
+            XMLImporter._apply_program_attributes(program, program_attrs, screen_props, screen_width, screen_height, screen_name)
             
             frame_nodes = program_node.findall(".//Node[@Type='HD_Frame_Plugin']")
             for frame_node in frame_nodes:
@@ -120,12 +78,94 @@ class XMLImporter:
             return None
     
     @staticmethod
+    def _parse_program_node(program_node: ET.Element, screen_properties: Dict) -> Optional[Program]:
+        try:
+            program_attrs = {}
+            for attr in program_node.findall("Attribute"):
+                name = attr.get("Name")
+                value = attr.text if attr.text is not None else attr.get("Value", "")
+                if name:
+                    program_attrs[name] = value
+            
+            program_name = program_attrs.get("__NAME__", "Program1")
+            screen_width = screen_properties.get("width", 640)
+            screen_height = screen_properties.get("height", 480)
+            screen_name = screen_properties.get("screen_name", "Screen")
+            
+            program = Program(name=program_name, width=screen_width, height=screen_height)
+            
+            screen_props = {
+                "Rotation": screen_properties.get("rotation", 0),
+                "Stretch": screen_properties.get("stretch", 0),
+                "ZoomModulus": screen_properties.get("zoom_modulus", 0)
+            }
+            
+            XMLImporter._apply_program_attributes(program, program_attrs, screen_props, screen_width, screen_height, screen_name)
+            
+            frame_nodes = program_node.findall(".//Node[@Type='HD_Frame_Plugin']")
+            for frame_node in frame_nodes:
+                element = XMLImporter._parse_frame_node(frame_node, screen_width, screen_height)
+                if element:
+                    program.elements.append(element)
+            
+            return program
+        except Exception as e:
+            logger.error(f"Error parsing program node: {e}", exc_info=True)
+            return None
+    
+    @staticmethod
+    def _apply_program_attributes(program: Program, program_attrs: Dict, screen_props: Dict, screen_width: int, screen_height: int, screen_name: str):
+        if "screen" not in program.properties:
+            program.properties["screen"] = {}
+        if isinstance(program.properties["screen"], dict):
+            program.properties["screen"].update({
+                "screen_name": screen_name,
+                "width": screen_width,
+                "height": screen_height,
+                "rotation": int(screen_props.get("Rotation", 0)),
+                "stretch": int(screen_props.get("Stretch", 0)),
+                "zoom_modulus": int(screen_props.get("ZoomModulus", 0))
+            })
+        
+        play_mode_str = program_attrs.get("PlayMode", "LoopTime")
+        if play_mode_str == "LoopTime":
+            program.play_mode["mode"] = "play_times"
+            program.play_mode["play_times"] = int(program_attrs.get("PlayTimes", 1))
+        else:
+            program.play_mode["mode"] = "fixed_length"
+            fixed_duration = int(program_attrs.get("FixedDuration", 30000))
+            seconds = fixed_duration // 1000
+            hours = seconds // 3600
+            minutes = (seconds % 3600) // 60
+            secs = seconds % 60
+            program.play_mode["fixed_length"] = f"{hours}:{minutes:02d}:{secs:02d}"
+        
+        use_specified = int(program_attrs.get("UseSpacifiled", 0))
+        if use_specified:
+            program.play_control["specified_time"]["enabled"] = True
+            start_time = program_attrs.get("SpaceStartTime", "00:00:00")
+            stop_time = program_attrs.get("SpaceStopTime", "23:59:59")
+            program.play_control["specified_time"]["time"] = f"{start_time}-{stop_time}"
+        
+        week_days = []
+        day_map = {
+            "Monday": 0, "Tuesday": 1, "Wednesday": 2, "Thursday": 3,
+            "Friday": 4, "Saturday": 5, "Sunday": 6
+        }
+        for day_name, day_index in day_map.items():
+            if int(program_attrs.get(day_name, 0)) == 1:
+                week_days.append(day_index)
+        if week_days:
+            program.play_control["specify_week"]["enabled"] = True
+            program.play_control["specify_week"]["days"] = week_days
+    
+    @staticmethod
     def _parse_frame_node(frame_node: ET.Element, screen_width: int, screen_height: int) -> Optional[Dict]:
         try:
             frame_attrs = {}
             for attr in frame_node.findall("Attribute"):
                 name = attr.get("Name")
-                value = attr.get("Value", "")
+                value = attr.text if attr.text is not None else attr.get("Value", "")
                 if name:
                     frame_attrs[name] = value
             
@@ -188,7 +228,7 @@ class XMLImporter:
         child_attrs = {}
         for attr in child_node.findall("Attribute"):
             name = attr.get("Name")
-            value = attr.get("Value", "")
+            value = attr.text if attr.text is not None else attr.get("Value", "")
             if name:
                 child_attrs[name] = value
         

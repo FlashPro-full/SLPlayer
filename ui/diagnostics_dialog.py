@@ -1,6 +1,3 @@
-"""
-Diagnostics and Log Dialog
-"""
 from PyQt5.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QGroupBox,
     QTextEdit, QTabWidget, QWidget, QTableWidget, QTableWidgetItem,
@@ -18,17 +15,15 @@ logger = get_logger(__name__)
 
 
 class PingThread(QThread):
-    """Thread for ping operations"""
-    ping_result = pyqtSignal(str, bool, float)  # host, success, time_ms
+    ping_result = pyqtSignal(str, bool, float)
     
     def __init__(self, host: str):
         super().__init__()
         self.host = host
     
     def run(self):
-        """Run ping command"""
         try:
-            # Determine ping command based on OS
+
             if platform.system().lower() == "windows":
                 cmd = ["ping", "-n", "1", "-w", "1000", self.host]
             else:
@@ -51,7 +46,6 @@ class PingThread(QThread):
 
 
 class DiagnosticsDialog(QDialog):
-    """Dialog for diagnostics, logs, and backup/restore"""
     
     def __init__(self, parent=None, controller=None):
         super().__init__(parent)
@@ -67,33 +61,32 @@ class DiagnosticsDialog(QDialog):
         self.load_logs()
     
     def init_ui(self):
-        """Initialize UI components"""
         layout = QVBoxLayout(self)
         layout.setSpacing(15)
         layout.setContentsMargins(20, 20, 20, 20)
         
-        # Create tab widget
+
         tabs = QTabWidget()
         
-        # Connection Test Tab
+
         connection_tab = self.create_connection_tab()
         tabs.addTab(connection_tab, "🔌 Connection Test")
         
-        # Event Log Tab
+
         event_log_tab = self.create_event_log_tab()
         tabs.addTab(event_log_tab, "📋 Event Log")
         
-        # Error Log Tab
+
         error_log_tab = self.create_error_log_tab()
         tabs.addTab(error_log_tab, "❌ Error Log")
         
-        # Backup/Restore Tab
+
         backup_tab = self.create_backup_tab()
         tabs.addTab(backup_tab, "💾 Backup/Restore")
         
         layout.addWidget(tabs)
         
-        # Buttons
+
         button_layout = QHBoxLayout()
         button_layout.addStretch()
         
@@ -112,16 +105,15 @@ class DiagnosticsDialog(QDialog):
         layout.addLayout(button_layout)
     
     def create_connection_tab(self) -> QWidget:
-        """Create connection test tab"""
         widget = QWidget()
         layout = QVBoxLayout(widget)
         layout.setSpacing(15)
         
-        # Connection Test Group
+
         test_group = QGroupBox("Connection Test")
         test_layout = QVBoxLayout(test_group)
         
-        # Test Controller Connection
+
         controller_layout = QHBoxLayout()
         controller_layout.addWidget(QLabel("Controller:"))
         
@@ -136,7 +128,7 @@ class DiagnosticsDialog(QDialog):
         controller_layout.addStretch()
         test_layout.addLayout(controller_layout)
         
-        # Ping Test
+
         ping_group = QGroupBox("Ping Test")
         ping_layout = QVBoxLayout(ping_group)
         
@@ -161,7 +153,7 @@ class DiagnosticsDialog(QDialog):
         
         test_layout.addWidget(ping_group)
         
-        # Network Info
+
         network_group = QGroupBox("Network Information")
         network_layout = QVBoxLayout(network_group)
         
@@ -182,12 +174,11 @@ class DiagnosticsDialog(QDialog):
         return widget
     
     def create_event_log_tab(self) -> QWidget:
-        """Create event log tab"""
         widget = QWidget()
         layout = QVBoxLayout(widget)
         layout.setSpacing(10)
         
-        # Event Log Table
+
         self.event_log_table = QTableWidget()
         self.event_log_table.setColumnCount(4)
         self.event_log_table.setHorizontalHeaderLabels(["Timestamp", "Type", "Event", "Details"])
@@ -197,7 +188,7 @@ class DiagnosticsDialog(QDialog):
         
         layout.addWidget(self.event_log_table)
         
-        # Buttons
+
         button_layout = QHBoxLayout()
         clear_btn = QPushButton("Clear Log")
         clear_btn.clicked.connect(self.clear_event_log)
@@ -209,12 +200,11 @@ class DiagnosticsDialog(QDialog):
         return widget
     
     def create_error_log_tab(self) -> QWidget:
-        """Create error log tab"""
         widget = QWidget()
         layout = QVBoxLayout(widget)
         layout.setSpacing(10)
         
-        # Error Log Table
+
         self.error_log_table = QTableWidget()
         self.error_log_table.setColumnCount(4)
         self.error_log_table.setHorizontalHeaderLabels(["Timestamp", "Level", "Error", "Details"])
@@ -224,7 +214,7 @@ class DiagnosticsDialog(QDialog):
         
         layout.addWidget(self.error_log_table)
         
-        # Buttons
+
         button_layout = QHBoxLayout()
         clear_btn = QPushButton("Clear Log")
         clear_btn.clicked.connect(self.clear_error_log)
@@ -236,12 +226,11 @@ class DiagnosticsDialog(QDialog):
         return widget
     
     def create_backup_tab(self) -> QWidget:
-        """Create backup/restore tab"""
         widget = QWidget()
         layout = QVBoxLayout(widget)
         layout.setSpacing(15)
         
-        # Backup Group
+
         backup_group = QGroupBox("Backup")
         backup_layout = QVBoxLayout(backup_group)
         
@@ -258,7 +247,7 @@ class DiagnosticsDialog(QDialog):
         
         layout.addWidget(backup_group)
         
-        # Restore Group
+
         restore_group = QGroupBox("Restore")
         restore_layout = QVBoxLayout(restore_group)
         
@@ -275,7 +264,7 @@ class DiagnosticsDialog(QDialog):
         
         layout.addWidget(restore_group)
         
-        # Import/Export Users Group
+
         users_group = QGroupBox("User Management")
         users_layout = QVBoxLayout(users_group)
         
@@ -300,7 +289,6 @@ class DiagnosticsDialog(QDialog):
         return widget
     
     def test_controller_connection(self):
-        """Test controller connection"""
         try:
             if not self.controller:
                 self.controller_status_label.setText("Not Connected")
@@ -308,12 +296,12 @@ class DiagnosticsDialog(QDialog):
                 QMessageBox.warning(self, "No Controller", "No controller connected.")
                 return
             
-            # Test connection
+
             if self.controller.status.value == "connected":
                 self.controller_status_label.setText("Connected ✓")
                 self.controller_status_label.setStyleSheet("color: green; font-weight: bold;")
                 
-                # Get device info
+
                 device_info = self.controller.get_device_info()
                 if device_info:
                     info_text = f"Controller: {device_info.get('name', 'Unknown')}\n"
@@ -323,7 +311,7 @@ class DiagnosticsDialog(QDialog):
                 else:
                     QMessageBox.information(self, "Connection Test", "Controller is connected.")
             else:
-                # Try to connect
+
                 if self.controller.connect():
                     self.controller_status_label.setText("Connected ✓")
                     self.controller_status_label.setStyleSheet("color: green; font-weight: bold;")
@@ -338,7 +326,6 @@ class DiagnosticsDialog(QDialog):
             QMessageBox.critical(self, "Error", f"Error testing connection: {str(e)}")
     
     def test_ping(self):
-        """Test ping to host"""
         host = self.ping_host_edit.text().strip()
         if not host:
             QMessageBox.warning(self, "No Host", "Please enter a host or IP address.")
@@ -347,13 +334,12 @@ class DiagnosticsDialog(QDialog):
         self.ping_result_label.setText(f"Pinging {host}...")
         self.ping_result_label.setStyleSheet("color: blue;")
         
-        # Create and start ping thread
+
         self.ping_thread = PingThread(host)
         self.ping_thread.ping_result.connect(self.on_ping_result)
         self.ping_thread.start()
     
     def on_ping_result(self, host: str, success: bool, time_ms: float):
-        """Handle ping result"""
         if success:
             self.ping_result_label.setText(f"✓ {host} is reachable (Response time: {time_ms:.2f} ms)")
             self.ping_result_label.setStyleSheet("color: green;")
@@ -362,7 +348,6 @@ class DiagnosticsDialog(QDialog):
             self.ping_result_label.setStyleSheet("color: red;")
     
     def refresh_network_info(self):
-        """Refresh network information"""
         try:
             info_text = ""
             
@@ -372,7 +357,7 @@ class DiagnosticsDialog(QDialog):
                 info_text += f"Controller Type: {self.controller.controller_type.value}\n"
                 info_text += f"Connection Status: {self.controller.status.value}\n\n"
             
-            # Get local network info
+
             import socket
             hostname = socket.gethostname()
             local_ip = socket.gethostbyname(hostname)
@@ -386,17 +371,16 @@ class DiagnosticsDialog(QDialog):
             self.network_info_text.setText(f"Error: {str(e)}")
     
     def load_logs(self):
-        """Load event and error logs"""
-        # Load event logs
+
         self.refresh_event_log()
         
-        # Load error logs
+
         self.refresh_error_log()
         
-        # Refresh network info
+
         self.refresh_network_info()
         
-        # Update controller status
+
         if self.controller:
             if self.controller.status.value == "connected":
                 self.controller_status_label.setText("Connected ✓")
@@ -406,9 +390,8 @@ class DiagnosticsDialog(QDialog):
                 self.controller_status_label.setStyleSheet("color: red; font-weight: bold;")
     
     def refresh_event_log(self):
-        """Refresh event log table"""
-        # This would load from actual log storage
-        # For now, add some sample events
+
+
         self.event_log_table.setRowCount(len(self.event_logs))
         
         for i, log in enumerate(self.event_logs):
@@ -418,9 +401,8 @@ class DiagnosticsDialog(QDialog):
             self.event_log_table.setItem(i, 3, QTableWidgetItem(log.get("details", "")))
     
     def refresh_error_log(self):
-        """Refresh error log table"""
-        # This would load from actual error log storage
-        # For now, add some sample errors
+
+
         self.error_log_table.setRowCount(len(self.error_logs))
         
         for i, log in enumerate(self.error_logs):
@@ -430,7 +412,6 @@ class DiagnosticsDialog(QDialog):
             self.error_log_table.setItem(i, 3, QTableWidgetItem(log.get("details", "")))
     
     def clear_event_log(self):
-        """Clear event log"""
         reply = QMessageBox.question(
             self, "Clear Event Log",
             "Are you sure you want to clear the event log?",
@@ -442,7 +423,6 @@ class DiagnosticsDialog(QDialog):
             self.refresh_event_log()
     
     def clear_error_log(self):
-        """Clear error log"""
         reply = QMessageBox.question(
             self, "Clear Error Log",
             "Are you sure you want to clear the error log?",
@@ -454,12 +434,10 @@ class DiagnosticsDialog(QDialog):
             self.refresh_error_log()
     
     def refresh_all(self):
-        """Refresh all diagnostics"""
         self.load_logs()
         QMessageBox.information(self, "Refreshed", "All diagnostics refreshed.")
     
     def export_logs(self):
-        """Export logs to file"""
         file_path, _ = QFileDialog.getSaveFileName(
             self, "Export Logs", "", "Text Files (*.txt);;All Files (*)"
         )
@@ -480,7 +458,6 @@ class DiagnosticsDialog(QDialog):
                 QMessageBox.critical(self, "Error", f"Error exporting logs: {str(e)}")
     
     def create_backup(self):
-        """Create backup"""
         file_path, _ = QFileDialog.getSaveFileName(
             self, "Create Backup", "", "Backup Files (*.backup);;All Files (*)"
         )
@@ -489,7 +466,7 @@ class DiagnosticsDialog(QDialog):
                 from core.backup_restore import BackupRestore
                 from core.program_manager import ProgramManager
                 
-                # Get program manager from parent window if available
+
                 program_manager = None
                 if self.parent() and hasattr(self.parent(), 'program_manager'):
                     program_manager = self.parent().program_manager
@@ -506,7 +483,6 @@ class DiagnosticsDialog(QDialog):
                 QMessageBox.critical(self, "Error", f"Error creating backup: {str(e)}")
     
     def restore_backup(self):
-        """Restore from backup"""
         file_path, _ = QFileDialog.getOpenFileName(
             self, "Restore Backup", "", "Backup Files (*.backup);;All Files (*)"
         )
@@ -522,7 +498,7 @@ class DiagnosticsDialog(QDialog):
                     from core.backup_restore import BackupRestore
                     from core.program_manager import ProgramManager
                     
-                    # Get program manager from parent window if available
+
                     program_manager = None
                     if self.parent() and hasattr(self.parent(), 'program_manager'):
                         program_manager = self.parent().program_manager
@@ -532,9 +508,9 @@ class DiagnosticsDialog(QDialog):
                     backup_service = BackupRestore()
                     if backup_service.restore_backup(file_path, program_manager=program_manager):
                         QMessageBox.information(self, "Success", "Backup restored successfully.")
-                        # Refresh UI if parent window exists
-                        if self.parent() and hasattr(self.parent(), 'program_list_panel'):
-                            self.parent().program_list_panel.refresh_programs()
+
+                        if self.parent() and hasattr(self.parent(), 'screen_list_panel'):
+                            self.parent().screen_list_panel.refresh_screens()
                     else:
                         QMessageBox.warning(self, "Failed", "Failed to restore backup.")
                 except Exception as e:
@@ -542,7 +518,6 @@ class DiagnosticsDialog(QDialog):
                     QMessageBox.critical(self, "Error", f"Error restoring backup: {str(e)}")
     
     def import_users(self):
-        """Import users"""
         file_path, _ = QFileDialog.getOpenFileName(
             self, "Import Users", "", "User Files (*.users);;All Files (*)"
         )
@@ -550,7 +525,6 @@ class DiagnosticsDialog(QDialog):
             QMessageBox.information(self, "Import Users", f"Import users from: {file_path}\n\n(Implementation pending)")
     
     def export_users(self):
-        """Export users"""
         file_path, _ = QFileDialog.getSaveFileName(
             self, "Export Users", "", "User Files (*.users);;All Files (*)"
         )

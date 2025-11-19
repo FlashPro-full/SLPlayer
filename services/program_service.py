@@ -12,8 +12,9 @@ logger = get_logger(__name__)
 
 class ProgramService:
     
-    def __init__(self, program_manager: ProgramManager):
+    def __init__(self, program_manager: ProgramManager, screen_manager: Optional[ScreenManager] = None):
         self.program_manager = program_manager
+        self.screen_manager = screen_manager
     
     def create_program(self, name: str = None, width: int = 1920, 
                       height: int = 1080, screen_name: str = None) -> Optional[Program]:
@@ -40,6 +41,15 @@ class ProgramService:
             
             self.program_manager.programs.append(program)
             self.program_manager.current_program = program
+            
+            if self.screen_manager:
+                screen = self.screen_manager.get_screen_by_name(screen_name)
+                if not screen:
+                    screen_props = program.properties.get("screen", {})
+                    screen_width = screen_props.get("width", width) if isinstance(screen_props, dict) else width
+                    screen_height = screen_props.get("height", height) if isinstance(screen_props, dict) else height
+                    screen = self.screen_manager.create_screen(screen_name, screen_width, screen_height)
+                screen.add_program(program)
             
             event_bus.program_created.emit(program)
             event_bus.screen_created.emit(screen_name)
@@ -97,10 +107,18 @@ class ProgramService:
         try:
             program = self.program_manager.get_program_by_id(program_id)
             if not program:
-                return False
+                if self.screen_manager:
+                    program = self.screen_manager.get_program_by_id(program_id)
+                if not program:
+                    return False
             
             if program in self.program_manager.programs:
                 self.program_manager.programs.remove(program)
+            
+            if self.screen_manager:
+                screen_name = ScreenManager.get_screen_name_from_program(program)
+                if screen_name:
+                    self.screen_manager.remove_program_from_screen(screen_name, program)
             
             if self.program_manager.current_program == program:
                 self.program_manager.current_program = None
@@ -135,6 +153,11 @@ class ProgramService:
             
             self.program_manager.programs.append(new_program)
             self.program_manager.current_program = new_program
+            
+            if self.screen_manager:
+                screen_name = ScreenManager.get_screen_name_from_program(program)
+                if screen_name:
+                    self.screen_manager.add_program_to_screen(screen_name, new_program)
             
             event_bus.program_created.emit(new_program)
             

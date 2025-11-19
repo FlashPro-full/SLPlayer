@@ -81,29 +81,69 @@ class ControllerService(QObject):
             logger.error(f"Error getting device info: {e}", exc_info=True)
             return None
     
-    def upload_program(self, program: 'Program') -> bool:
+    def send_program(self, program: 'Program') -> bool:
         try:
             if not self.current_controller:
                 logger.warning("No controller connected")
+                event_bus.controller_error.emit("No controller connected")
                 return False
             
-            result = self.current_controller.upload_program(program)
+            if not self.is_connected():
+                logger.warning("Controller not connected")
+                event_bus.controller_error.emit("Controller not connected")
+                return False
+            
+            program_dict = program.to_dict() if hasattr(program, 'to_dict') else program
+            result = self.current_controller.upload_program(program_dict)
+            
+            if result:
+                event_bus.program_sent.emit(program)
+                logger.info(f"Program '{program.name if hasattr(program, 'name') else 'Unknown'}' sent successfully")
+            else:
+                event_bus.controller_error.emit("Failed to send program")
+            
             return result
         except Exception as e:
-            logger.error(f"Error uploading program: {e}", exc_info=True)
+            logger.error(f"Error sending program: {e}", exc_info=True)
+            event_bus.controller_error.emit(f"Error sending program: {e}")
             return False
     
-    def download_program(self) -> Optional['Program']:
+    def export_to_usb(self, program: 'Program', usb_path: str) -> bool:
         try:
-            if not self.current_controller:
-                logger.warning("No controller connected")
-                return None
+            from core.xml_exporter import XMLExporter
+            from pathlib import Path
             
-            program = self.current_controller.download_program()
-            return program
+            usb_path_obj = Path(usb_path)
+            if not usb_path_obj.exists():
+                logger.error(f"USB path does not exist: {usb_path}")
+                event_bus.controller_error.emit(f"USB path does not exist: {usb_path}")
+                return False
+            
+            if not usb_path_obj.is_dir():
+                logger.error(f"USB path is not a directory: {usb_path}")
+                event_bus.controller_error.emit(f"USB path is not a directory: {usb_path}")
+                return False
+            
+            screen_properties = program.properties.get("screen", {}) if hasattr(program, 'properties') else {}
+            program_name = program.name if hasattr(program, 'name') else "Program"
+            safe_name = "".join(c for c in program_name if c.isalnum() or c in (' ', '-', '_')).rstrip()
+            safe_name = safe_name.replace(' ', '_')
+            
+            xml_file_path = usb_path_obj / f"{safe_name}.xml"
+            
+            result = XMLExporter.export_program(program, str(xml_file_path), screen_properties)
+            
+            if result:
+                event_bus.program_exported_to_usb.emit(program, str(usb_path))
+                logger.info(f"Program '{program_name}' exported to USB: {xml_file_path}")
+            else:
+                event_bus.controller_error.emit("Failed to export program to USB")
+            
+            return result
         except Exception as e:
-            logger.error(f"Error downloading program: {e}", exc_info=True)
-            return None
+            logger.error(f"Error exporting program to USB: {e}", exc_info=True)
+            event_bus.controller_error.emit(f"Error exporting program to USB: {e}")
+            return False
     
     def get_connection_status(self) -> ConnectionStatus:
         if not self.current_controller:

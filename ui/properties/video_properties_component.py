@@ -1,6 +1,3 @@
-"""
-Video properties component
-"""
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QComboBox,
                              QSpinBox, QPushButton, QFileDialog, QLineEdit,
                              QGroupBox, QFormLayout, QTimeEdit, QCheckBox)
@@ -13,14 +10,12 @@ from ui.widgets.video_icon_view import VideoIconView
 
 
 class VideoPropertiesComponent(BasePropertiesComponent):
-    """Video properties component"""
     
     def __init__(self, parent=None):
         super().__init__(parent)
         self.init_ui()
     
     def init_ui(self):
-        """Initialize the UI"""
         layout = QHBoxLayout(self)
         layout.setContentsMargins(4, 4, 4, 4)
         layout.setSpacing(8)
@@ -31,12 +26,10 @@ class VideoPropertiesComponent(BasePropertiesComponent):
         area_layout.setContentsMargins(6, 6, 6, 6)
         area_layout.setSpacing(4)
         
-        # Layout section: Coordinates and dimensions (flex-column, flex-start)
         layout_section = QVBoxLayout()
         layout_section.setSpacing(4)
-        layout_section.setAlignment(Qt.AlignTop)  # flex-start
+        layout_section.setAlignment(Qt.AlignTop)
         
-        # Coordinates (0, 0)
         coords_layout = QHBoxLayout()
         coords_layout.setSpacing(2)
         coords_label = QLabel("📍")
@@ -56,7 +49,6 @@ class VideoPropertiesComponent(BasePropertiesComponent):
         coords_layout.addStretch()
         layout_section.addLayout(coords_layout)
         
-        # Dimensions
         dims_layout = QHBoxLayout()
         dims_layout.setSpacing(2)
         dims_label = QLabel("📐")
@@ -78,32 +70,28 @@ class VideoPropertiesComponent(BasePropertiesComponent):
         
         area_layout.addLayout(layout_section)
         
-        # Connect signals
         self.video_coords_x.textChanged.connect(self._on_video_coords_changed)
         self.video_coords_y.textChanged.connect(self._on_video_coords_changed)
         self.video_dims_width.textChanged.connect(self._on_video_dims_changed)
         self.video_dims_height.textChanged.connect(self._on_video_dims_changed)
         
-        # Add Area Attribute group to main layout
         layout.addWidget(area_group)
         
         video_list_group = QGroupBox("Video List")
-        video_list_group.setMinimumWidth(400)  # Make Video List the largest width
-        video_list_layout = QHBoxLayout(video_list_group)  # flex-row
-        video_list_layout.setAlignment(Qt.AlignCenter)  # align-items: center
+        video_list_group.setMinimumWidth(400)
+        video_list_layout = QHBoxLayout(video_list_group)
+        video_list_layout.setAlignment(Qt.AlignCenter)
         
-        # Large icon view for videos
         self.video_list = VideoIconView()
         self.video_list.setMinimumHeight(150)
         self.video_list.item_selected.connect(self._on_video_item_selected)
         self.video_list.item_deleted.connect(self._on_video_item_deleted)
         video_list_layout.addWidget(self.video_list, stretch=1)
         
-        # Button group inside video list group (flex-column)
         video_buttons_layout = QVBoxLayout()
         video_buttons_layout.setContentsMargins(0, 0, 0, 0)
         video_buttons_layout.setSpacing(4)
-        video_buttons_layout.setAlignment(Qt.AlignCenter)  # align-items: center
+        video_buttons_layout.setAlignment(Qt.AlignCenter)
         
         self.video_add_btn = QPushButton("➕")
         self.video_add_btn.clicked.connect(self._on_video_add)
@@ -122,10 +110,10 @@ class VideoPropertiesComponent(BasePropertiesComponent):
         
         video_list_layout.addLayout(video_buttons_layout)
         
-        layout.addWidget(video_list_group, stretch=1)  # Make Video List expand to be the largest
+        layout.addWidget(video_list_group, stretch=1)
         
         video_shot_group = QGroupBox("Video Shot")
-        video_shot_group.setMinimumWidth(250)  # Smaller width for Video Shot
+        video_shot_group.setMinimumWidth(250)
         video_shot_layout = QFormLayout(video_shot_group)
         
         self.video_shot_width_spin = QSpinBox()
@@ -155,26 +143,22 @@ class VideoPropertiesComponent(BasePropertiesComponent):
         self.video_shot_duration_label = QLabel("00:00:30")
         video_shot_layout.addRow("Duration:", self.video_shot_duration_label)
         
-        layout.addWidget(video_shot_group)  # Video Shot with fixed smaller width
+        layout.addWidget(video_shot_group)
     
     def set_program_data(self, program, element):
-        """Set program and element data"""
         self.set_element(element, program)
         self.update_properties()
     
     def update_properties(self):
-        """Update video properties from current element"""
         if not self.current_element or not self.current_program:
             return
         
-        # Get screen dimensions for defaults
         screen_width, screen_height = self._get_screen_bounds()
         default_width = screen_width if screen_width else 1920
         default_height = screen_height if screen_height else 1080
         
         element_props = self.current_element.get("properties", {})
         
-        # Update coordinates
         x = element_props.get("x", 0)
         y = element_props.get("y", 0)
         self.video_coords_x.blockSignals(True)
@@ -184,11 +168,9 @@ class VideoPropertiesComponent(BasePropertiesComponent):
         self.video_coords_x.blockSignals(False)
         self.video_coords_y.blockSignals(False)
         
-        # Update dimensions - initialize to screen dimensions if missing or invalid
         width = element_props.get("width", self.current_element.get("width", default_width))
         height = element_props.get("height", self.current_element.get("height", default_height))
         
-        # If width/height are missing or invalid, set to screen dimensions
         if not width or width <= 0:
             width = default_width
             if "properties" not in self.current_element:
@@ -209,16 +191,14 @@ class VideoPropertiesComponent(BasePropertiesComponent):
         self.video_dims_height.setText(str(height))
         self.video_dims_width.blockSignals(False)
         self.video_dims_height.blockSignals(False)
-        # Update frame (only if checkbox exists)
         frame_props = element_props.get("frame", {})
         if hasattr(self, 'video_frame_checkbox'):
             frame_enabled = frame_props.get("enabled", False) if isinstance(frame_props, dict) else False
             self.video_frame_checkbox.blockSignals(True)
             self.video_frame_checkbox.setChecked(frame_enabled)
-            self.video_frame_checkbox.setEnabled(True)  # Ensure checkbox is enabled
+            self.video_frame_checkbox.setEnabled(True)
             self.video_frame_checkbox.blockSignals(False)
             
-            # Enable/disable frame controls
             if hasattr(self, 'video_frame_border_combo'):
                 self.video_frame_border_combo.setEnabled(frame_enabled)
             if hasattr(self, 'video_frame_effect_combo'):
@@ -226,7 +206,6 @@ class VideoPropertiesComponent(BasePropertiesComponent):
             if hasattr(self, 'video_frame_speed_combo'):
                 self.video_frame_speed_combo.setEnabled(frame_enabled)
             
-            # Update border selection
             if hasattr(self, 'video_frame_border_combo'):
                 border = frame_props.get("border", "---")
                 border_index = self.video_frame_border_combo.findText(border)
@@ -235,7 +214,6 @@ class VideoPropertiesComponent(BasePropertiesComponent):
                 else:
                     self.video_frame_border_combo.setCurrentIndex(0)
             
-            # Update effect selection
             if hasattr(self, 'video_frame_effect_combo'):
                 effect = frame_props.get("effect", "static")
                 effect_index = self.video_frame_effect_combo.findText(effect)
@@ -244,28 +222,24 @@ class VideoPropertiesComponent(BasePropertiesComponent):
                 else:
                     self.video_frame_effect_combo.setCurrentIndex(0)
             
-            # Update speed selection
             if hasattr(self, 'video_frame_speed_combo'):
                 speed = frame_props.get("speed", "in")
                 speed_index = self.video_frame_speed_combo.findText(speed)
                 if speed_index >= 0:
                     self.video_frame_speed_combo.setCurrentIndex(speed_index)
                 else:
-                    self.video_frame_speed_combo.setCurrentIndex(1)  # Default to "in"
+                    self.video_frame_speed_combo.setCurrentIndex(1)
         
         video_list = element_props.get("video_list", [])
         self.video_list.set_videos(video_list)
         
         video_shot = element_props.get("video_shot", {})
-        # Use screen dimensions as defaults for video shot, not hardcoded 100
         video_shot_width = video_shot.get("width", default_width)
         video_shot_height = video_shot.get("height", default_height)
         
-        # Validate video shot dimensions - if too small, use screen dimensions
         if video_shot_width < 10 or video_shot_height < 10:
             video_shot_width = default_width
             video_shot_height = default_height
-            # Update the video shot with correct values
             if "video_shot" not in element_props:
                 element_props["video_shot"] = {}
             element_props["video_shot"]["width"] = video_shot_width
@@ -287,7 +261,6 @@ class VideoPropertiesComponent(BasePropertiesComponent):
         self._update_duration()
     
     def _update_duration(self):
-        """Update duration label based on start and end time"""
         start = self.video_shot_start_time.time()
         end = self.video_shot_end_time.time()
         start_secs = start.hour() * 3600 + start.minute() * 60 + start.second()
@@ -299,7 +272,6 @@ class VideoPropertiesComponent(BasePropertiesComponent):
         self.video_shot_duration_label.setText(f"{hours:02d}:{minutes:02d}:{seconds:02d}")
     
     def _on_video_coords_changed(self):
-        """Handle video coordinates change"""
         if not self.current_element or not self.current_program:
             return
         
@@ -309,7 +281,6 @@ class VideoPropertiesComponent(BasePropertiesComponent):
         except ValueError:
             return
         
-        # Get current dimensions
         try:
             width = int(self.video_dims_width.text() or "1920")
             height = int(self.video_dims_height.text() or "1080")
@@ -319,7 +290,6 @@ class VideoPropertiesComponent(BasePropertiesComponent):
         
         x, y, width, height = self._constrain_to_screen(x, y, width, height)
         
-        # Update UI if constrained
         if x != int(self.video_coords_x.text() or "0") or y != int(self.video_coords_y.text() or "0"):
             self.video_coords_x.blockSignals(True)
             self.video_coords_y.blockSignals(True)
@@ -339,7 +309,6 @@ class VideoPropertiesComponent(BasePropertiesComponent):
         self._trigger_autosave()
     
     def _on_video_dims_changed(self):
-        """Handle video dimensions change"""
         if not self.current_element or not self.current_program:
             return
         
@@ -349,13 +318,11 @@ class VideoPropertiesComponent(BasePropertiesComponent):
         except ValueError:
             return
         
-        # Ensure minimum size
         if width <= 0:
             width = 1
         if height <= 0:
             height = 1
         
-        # Get current position
         try:
             x = int(self.video_coords_x.text() or "0")
             y = int(self.video_coords_y.text() or "0")
@@ -365,7 +332,6 @@ class VideoPropertiesComponent(BasePropertiesComponent):
         
         x, y, width, height = self._constrain_to_screen(x, y, width, height)
         
-        # Update UI if constrained
         if width != int(self.video_dims_width.text() or "1920") or height != int(self.video_dims_height.text() or "1080"):
             self.video_dims_width.blockSignals(True)
             self.video_dims_height.blockSignals(True)
@@ -385,21 +351,17 @@ class VideoPropertiesComponent(BasePropertiesComponent):
         self._trigger_autosave()
     
     def _on_video_frame_enabled_changed(self, enabled: bool):
-        """Handle video frame enabled change"""
         if not hasattr(self, 'video_frame_checkbox'):
             return
         if not self.current_element or not self.current_program:
-            # Disable checkbox if no element/program instead of reverting
             self.video_frame_checkbox.blockSignals(True)
             self.video_frame_checkbox.setEnabled(False)
             self.video_frame_checkbox.setChecked(False)
             self.video_frame_checkbox.blockSignals(False)
             return
         
-        # Ensure checkbox is enabled when we have element/program
         self.video_frame_checkbox.setEnabled(True)
         
-        # Enable/disable all frame controls
         self.video_frame_border_combo.setEnabled(enabled)
         self.video_frame_effect_combo.setEnabled(enabled)
         self.video_frame_speed_combo.setEnabled(enabled)
@@ -415,7 +377,6 @@ class VideoPropertiesComponent(BasePropertiesComponent):
         self._trigger_autosave()
     
     def _on_video_frame_border_changed(self, border: str):
-        """Handle video frame border selection change"""
         if not self.current_element or not self.current_program:
             return
         
@@ -430,7 +391,6 @@ class VideoPropertiesComponent(BasePropertiesComponent):
         self._trigger_autosave()
     
     def _on_video_frame_effect_changed(self, effect: str):
-        """Handle video frame effect selection change"""
         if not self.current_element or not self.current_program:
             return
         
@@ -445,7 +405,6 @@ class VideoPropertiesComponent(BasePropertiesComponent):
         self._trigger_autosave()
     
     def _on_video_frame_speed_changed(self, speed: str):
-        """Handle video frame speed selection change"""
         if not self.current_element or not self.current_program:
             return
         
@@ -460,7 +419,6 @@ class VideoPropertiesComponent(BasePropertiesComponent):
         self._trigger_autosave()
     
     def _on_video_add(self):
-        """Handle video add button"""
         file_path, _ = QFileDialog.getOpenFileName(
             self, "Select Video File", "",
             "Video Files (*.mp4 *.avi *.mov *.mkv *.wmv);;All Files (*)"
@@ -477,12 +435,9 @@ class VideoPropertiesComponent(BasePropertiesComponent):
                 self._trigger_autosave()
     
     def _on_video_item_selected(self, index: int):
-        """Handle video item selection"""
-        # Could be used for preview or other actions
         pass
     
     def _on_video_item_deleted(self, index: int):
-        """Handle video item delete from icon view"""
         if self.current_element and self.current_program:
             if "properties" in self.current_element and "video_list" in self.current_element["properties"]:
                 self.current_element["properties"]["video_list"].pop(index)
@@ -492,7 +447,6 @@ class VideoPropertiesComponent(BasePropertiesComponent):
                 self._trigger_autosave()
     
     def _on_video_delete(self):
-        """Handle video delete button"""
         current_index = self.video_list.get_current_index()
         if current_index >= 0 and self.current_element and self.current_program:
             if "properties" in self.current_element and "video_list" in self.current_element["properties"]:
@@ -505,7 +459,6 @@ class VideoPropertiesComponent(BasePropertiesComponent):
                 self._trigger_autosave()
     
     def _on_video_up(self):
-        """Handle video up button"""
         current_index = self.video_list.get_current_index()
         if current_index > 0 and self.current_element and self.current_program:
             if "properties" in self.current_element and "video_list" in self.current_element["properties"]:
@@ -517,7 +470,6 @@ class VideoPropertiesComponent(BasePropertiesComponent):
                 self._trigger_autosave()
     
     def _on_video_down(self):
-        """Handle video down button"""
         current_index = self.video_list.get_current_index()
         if self.current_element and self.current_program and "properties" in self.current_element and "video_list" in self.current_element["properties"]:
             video_list = self.current_element["properties"]["video_list"]
@@ -529,7 +481,6 @@ class VideoPropertiesComponent(BasePropertiesComponent):
                 self._trigger_autosave()
     
     def _on_video_shot_size_changed(self):
-        """Handle video shot size change"""
         if not self.current_element:
             return
         
@@ -546,7 +497,6 @@ class VideoPropertiesComponent(BasePropertiesComponent):
         self.property_changed.emit("video_shot_size", (width, height))
     
     def _on_video_shot_time_changed(self):
-        """Handle video shot time change"""
         if self.current_element:
             if "properties" not in self.current_element:
                 self.current_element["properties"] = {}

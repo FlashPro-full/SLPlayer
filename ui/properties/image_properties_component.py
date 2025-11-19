@@ -1,6 +1,3 @@
-"""
-Image properties component
-"""
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QComboBox,
                              QPushButton, QFileDialog, QGroupBox, QLineEdit,
                              QDoubleSpinBox, QFormLayout)
@@ -14,14 +11,12 @@ from config.animation_effects import get_animation_index, get_animation_name
 
 
 class ImagePropertiesComponent(BasePropertiesComponent):
-    """Image/Photo properties component"""
     
     def __init__(self, parent=None):
         super().__init__(parent)
         self.init_ui()
     
     def init_ui(self):
-        """Initialize the UI"""
         layout = QHBoxLayout(self)
         layout.setContentsMargins(4, 4, 4, 4)
         layout.setSpacing(8)
@@ -32,12 +27,10 @@ class ImagePropertiesComponent(BasePropertiesComponent):
         area_layout.setContentsMargins(6, 6, 6, 6)
         area_layout.setSpacing(4)
         
-        # Layout section: Coordinates and dimensions (flex-column, flex-start)
         layout_section = QVBoxLayout()
         layout_section.setSpacing(4)
-        layout_section.setAlignment(Qt.AlignTop)  # flex-start
+        layout_section.setAlignment(Qt.AlignTop)
         
-        # Coordinates (0, 0)
         coords_layout = QHBoxLayout()
         coords_layout.setSpacing(2)
         coords_label = QLabel("📍")
@@ -57,7 +50,6 @@ class ImagePropertiesComponent(BasePropertiesComponent):
         coords_layout.addStretch()
         layout_section.addLayout(coords_layout)
         
-        # Dimensions
         dims_layout = QHBoxLayout()
         dims_layout.setSpacing(2)
         dims_label = QLabel("📐")
@@ -77,33 +69,28 @@ class ImagePropertiesComponent(BasePropertiesComponent):
         
         area_layout.addLayout(layout_section)
         
-        # Connect signals
         self.image_coords_x.textChanged.connect(self._on_image_coords_changed)
         self.image_coords_y.textChanged.connect(self._on_image_coords_changed)
         self.image_dims_width.textChanged.connect(self._on_image_dims_changed)
         self.image_dims_height.textChanged.connect(self._on_image_dims_changed)
         
-        # Add Area Attribute group to main layout
         layout.addWidget(area_group)
         
-        # Photo list group (same style as video list group)
         photo_list_group = QGroupBox("Photo List")
-        photo_list_group.setMinimumWidth(400)  # Make Photo List the largest width
-        photo_list_layout = QHBoxLayout(photo_list_group)  # flex-row
-        photo_list_layout.setAlignment(Qt.AlignCenter)  # align-items: center
+        photo_list_group.setMinimumWidth(400)
+        photo_list_layout = QHBoxLayout(photo_list_group)
+        photo_list_layout.setAlignment(Qt.AlignCenter)
         
-        # Large icon view for photos
         self.photo_list = PhotoIconView()
         self.photo_list.setMinimumHeight(150)
         self.photo_list.item_selected.connect(self._on_photo_item_selected)
         self.photo_list.item_deleted.connect(self._on_photo_item_deleted)
         photo_list_layout.addWidget(self.photo_list, stretch=1)
         
-        # Button group inside photo list group (flex-column)
         photo_buttons_layout = QVBoxLayout()
         photo_buttons_layout.setContentsMargins(0, 0, 0, 0)
         photo_buttons_layout.setSpacing(4)
-        photo_buttons_layout.setAlignment(Qt.AlignCenter)  # align-items: center
+        photo_buttons_layout.setAlignment(Qt.AlignCenter)
         
         self.photo_add_btn = QPushButton("➕")
         self.photo_add_btn.clicked.connect(self._on_photo_add)
@@ -122,14 +109,12 @@ class ImagePropertiesComponent(BasePropertiesComponent):
         
         photo_list_layout.addLayout(photo_buttons_layout)
         
-        layout.addWidget(photo_list_group, stretch=1)  # Make Photo List expand to be the largest
+        layout.addWidget(photo_list_group, stretch=1)
         
-        # Animation section (replacing Video Shot)
         animation_group = QGroupBox("Animation")
         animation_group.setMinimumWidth(250)
         animation_layout = QFormLayout(animation_group)
         
-        # Entrance animation (Display)
         entrance_animation_layout = QHBoxLayout()
         entrance_icon = QLabel("🚫")
         entrance_animation_layout.addWidget(entrance_icon)
@@ -146,7 +131,6 @@ class ImagePropertiesComponent(BasePropertiesComponent):
         entrance_animation_layout.addWidget(self.image_entrance_animation_combo, stretch=1)
         animation_layout.addRow("Display", entrance_animation_layout)
         
-        # Entrance speed
         entrance_speed_layout = QHBoxLayout()
         entrance_speed_layout.addStretch()
         self.image_entrance_speed_combo = QComboBox()
@@ -156,9 +140,8 @@ class ImagePropertiesComponent(BasePropertiesComponent):
         entrance_speed_layout.addWidget(self.image_entrance_speed_combo, stretch=1)
         animation_layout.addRow("", entrance_speed_layout)
         
-        # Exit animation (Clear)
         exit_animation_layout = QHBoxLayout()
-        exit_icon = QLabel("🔄")  # Green circular arrows
+        exit_icon = QLabel("🔄")
         exit_animation_layout.addWidget(exit_icon)
         self.image_exit_animation_combo = QComboBox()
         self.image_exit_animation_combo.addItems([
@@ -173,7 +156,6 @@ class ImagePropertiesComponent(BasePropertiesComponent):
         exit_animation_layout.addWidget(self.image_exit_animation_combo, stretch=1)
         animation_layout.addRow("Clear", exit_animation_layout)
         
-        # Exit speed
         exit_speed_layout = QHBoxLayout()
         exit_speed_layout.addStretch()
         self.image_exit_speed_combo = QComboBox()
@@ -183,7 +165,6 @@ class ImagePropertiesComponent(BasePropertiesComponent):
         exit_speed_layout.addWidget(self.image_exit_speed_combo, stretch=1)
         animation_layout.addRow("", exit_speed_layout)
         
-        # Hold time
         self.image_hold_time_spin = QDoubleSpinBox()
         self.image_hold_time_spin.setMinimum(0.0)
         self.image_hold_time_spin.setMaximum(999.9)
@@ -197,23 +178,19 @@ class ImagePropertiesComponent(BasePropertiesComponent):
         layout.addWidget(animation_group)
     
     def set_program_data(self, program, element):
-        """Set program and element data"""
         self.set_element(element, program)
         self.update_properties()
     
     def update_properties(self):
-        """Update image properties from current element"""
         if not self.current_element or not self.current_program:
             return
         
-        # Get screen dimensions for defaults
         screen_width, screen_height = self._get_screen_bounds()
         default_width = screen_width if screen_width else 1920
         default_height = screen_height if screen_height else 1080
         
         element_props = self.current_element.get("properties", {})
         
-        # Update coordinates
         x = element_props.get("x", 0)
         y = element_props.get("y", 0)
         self.image_coords_x.blockSignals(True)
@@ -223,11 +200,9 @@ class ImagePropertiesComponent(BasePropertiesComponent):
         self.image_coords_x.blockSignals(False)
         self.image_coords_y.blockSignals(False)
         
-        # Update dimensions - initialize to screen dimensions if missing or invalid
         width = element_props.get("width", self.current_element.get("width", default_width))
         height = element_props.get("height", self.current_element.get("height", default_height))
         
-        # If width/height are missing or invalid, set to screen dimensions
         if not width or width <= 0:
             width = default_width
             if "properties" not in self.current_element:
@@ -249,14 +224,11 @@ class ImagePropertiesComponent(BasePropertiesComponent):
         self.image_dims_width.blockSignals(False)
         self.image_dims_height.blockSignals(False)
         
-        # Update animation settings
         animation = element_props.get("animation", {})
         
-        # Handle both string names and numeric indices
         entrance_animation = animation.get("entrance", "Random")
         entrance_animation_index = animation.get("entrance_animation", None)
         
-        # If we have an index, convert to name; otherwise use the string
         if entrance_animation_index is not None:
             entrance_animation = get_animation_name(entrance_animation_index)
         elif isinstance(entrance_animation, int):
@@ -274,7 +246,6 @@ class ImagePropertiesComponent(BasePropertiesComponent):
         exit_animation = animation.get("exit", "Random")
         exit_animation_index = animation.get("exit_animation", None)
         
-        # If we have an index, convert to name; otherwise use the string
         if exit_animation_index is not None:
             exit_animation = get_animation_name(exit_animation_index)
         elif isinstance(exit_animation, int):
@@ -294,12 +265,10 @@ class ImagePropertiesComponent(BasePropertiesComponent):
         self.image_hold_time_spin.setValue(hold_time)
         self.image_hold_time_spin.blockSignals(False)
         
-        # Update photo list
         photo_list = element_props.get("photo_list", element_props.get("image_list", []))
         self.photo_list.set_photos(photo_list)
     
     def _on_entrance_animation_changed(self, animation: str):
-        """Handle entrance animation change"""
         if not self.current_element or not self.current_program:
             return
         
@@ -308,7 +277,6 @@ class ImagePropertiesComponent(BasePropertiesComponent):
         if "animation" not in self.current_element["properties"]:
             self.current_element["properties"]["animation"] = {}
         
-        # Save both name and index for compatibility
         self.current_element["properties"]["animation"]["entrance"] = animation
         self.current_element["properties"]["animation"]["entrance_animation"] = get_animation_index(animation)
         self.current_program.modified = datetime.now().isoformat()
@@ -316,7 +284,6 @@ class ImagePropertiesComponent(BasePropertiesComponent):
         self._trigger_autosave()
     
     def _on_entrance_speed_changed(self, speed: str):
-        """Handle entrance speed change"""
         if not self.current_element or not self.current_program:
             return
         
@@ -331,7 +298,6 @@ class ImagePropertiesComponent(BasePropertiesComponent):
         self._trigger_autosave()
     
     def _on_exit_animation_changed(self, animation: str):
-        """Handle exit animation change"""
         if not self.current_element or not self.current_program:
             return
         
@@ -340,7 +306,6 @@ class ImagePropertiesComponent(BasePropertiesComponent):
         if "animation" not in self.current_element["properties"]:
             self.current_element["properties"]["animation"] = {}
         
-        # Save both name and index for compatibility
         self.current_element["properties"]["animation"]["exit"] = animation
         self.current_element["properties"]["animation"]["exit_animation"] = get_animation_index(animation)
         self.current_program.modified = datetime.now().isoformat()
@@ -348,7 +313,6 @@ class ImagePropertiesComponent(BasePropertiesComponent):
         self._trigger_autosave()
     
     def _on_exit_speed_changed(self, speed: str):
-        """Handle exit speed change"""
         if not self.current_element or not self.current_program:
             return
         
@@ -363,7 +327,6 @@ class ImagePropertiesComponent(BasePropertiesComponent):
         self._trigger_autosave()
     
     def _on_hold_time_changed(self, value: float):
-        """Handle hold time change"""
         if not self.current_element or not self.current_program:
             return
         
@@ -378,7 +341,6 @@ class ImagePropertiesComponent(BasePropertiesComponent):
         self._trigger_autosave()
     
     def _on_image_coords_changed(self):
-        """Handle image coordinates change"""
         if not self.current_element or not self.current_program:
             return
         
@@ -386,7 +348,6 @@ class ImagePropertiesComponent(BasePropertiesComponent):
             x = int(self.image_coords_x.text() or "0")
             y = int(self.image_coords_y.text() or "0")
             
-            # Get screen dimensions for defaults
             screen_width, screen_height = self._get_screen_bounds()
             default_width = screen_width if screen_width else 640
             default_height = screen_height if screen_height else 480
@@ -418,7 +379,6 @@ class ImagePropertiesComponent(BasePropertiesComponent):
             pass
     
     def _on_image_dims_changed(self):
-        """Handle image dimensions change"""
         if not self.current_element or not self.current_program:
             return
         
@@ -453,7 +413,6 @@ class ImagePropertiesComponent(BasePropertiesComponent):
             pass
     
     def _on_photo_add(self):
-        """Handle photo add button"""
         file_path, _ = QFileDialog.getOpenFileName(
             self, "Select Image File", "",
             "Image Files (*.png *.jpg *.jpeg *.bmp *.gif *.svg);;All Files (*)"
@@ -470,12 +429,9 @@ class ImagePropertiesComponent(BasePropertiesComponent):
                 self._trigger_autosave()
     
     def _on_photo_item_selected(self, index: int):
-        """Handle photo item selection"""
-        # Could be used for preview or other actions
         pass
     
     def _on_photo_item_deleted(self, index: int):
-        """Handle photo item delete from icon view"""
         if self.current_element:
             if "properties" in self.current_element and "photo_list" in self.current_element["properties"]:
                 self.current_element["properties"]["photo_list"].pop(index)
@@ -485,7 +441,6 @@ class ImagePropertiesComponent(BasePropertiesComponent):
                 self._trigger_autosave()
     
     def _on_photo_delete(self):
-        """Handle photo delete button"""
         current_index = self.photo_list.get_current_index()
         if current_index >= 0 and self.current_element:
             if "properties" in self.current_element and "photo_list" in self.current_element["properties"]:
@@ -498,7 +453,6 @@ class ImagePropertiesComponent(BasePropertiesComponent):
                     self._trigger_autosave()
     
     def _on_photo_up(self):
-        """Handle photo up button"""
         current_index = self.photo_list.get_current_index()
         if current_index > 0 and self.current_element:
             if "properties" in self.current_element and "photo_list" in self.current_element["properties"]:
@@ -510,7 +464,6 @@ class ImagePropertiesComponent(BasePropertiesComponent):
                 self._trigger_autosave()
     
     def _on_photo_down(self):
-        """Handle photo down button"""
         current_index = self.photo_list.get_current_index()
         if self.current_element and "properties" in self.current_element and "photo_list" in self.current_element["properties"]:
             photo_list = self.current_element["properties"]["photo_list"]

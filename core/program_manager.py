@@ -74,6 +74,7 @@ class ProgramManager:
     def __init__(self):
         self.programs: List[Program] = []
         self.current_program: Optional[Program] = None
+        self._programs_by_id: Dict[str, Program] = {}  # O(1) lookup index
     
     def create_program(self, name: str = None, width: int = DEFAULT_CANVAS_WIDTH,
                       height: int = DEFAULT_CANVAS_HEIGHT) -> Program:
@@ -88,6 +89,7 @@ class ProgramManager:
                 n += 1
         program = Program(name, width, height)
         self.programs.append(program)
+        self._programs_by_id[program.id] = program  # Maintain index
         self.current_program = program
         return program
     
@@ -110,6 +112,7 @@ class ProgramManager:
                 return existing
             else:
                 self.programs.append(program)
+                self._programs_by_id[program.id] = program  # Maintain index
                 self.current_program = program
                 return program
         except json.JSONDecodeError as e:
@@ -151,6 +154,7 @@ class ProgramManager:
         try:
             if program in self.programs:
                 self.programs.remove(program)
+                self._programs_by_id.pop(program.id, None)  # Remove from index
                 if self.current_program == program:
                     self.current_program = self.programs[0] if self.programs else None
                 return True
@@ -160,8 +164,5 @@ class ProgramManager:
             return False
     
     def get_program_by_id(self, program_id: str) -> Optional[Program]:
-        for program in self.programs:
-            if program.id == program_id:
-                return program
-        return None
+        return self._programs_by_id.get(program_id)  # O(1) lookup
 

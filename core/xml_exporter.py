@@ -86,7 +86,8 @@ class XMLExporter:
     
     @staticmethod
     def _add_attribute(parent: ET.Element, name: str, value: str):
-        ET.SubElement(parent, "Attribute", Name=name, Value=str(value))
+        attr_elem = ET.SubElement(parent, "Attribute", Name=name)
+        attr_elem.text = str(value)
     
     @staticmethod
     def _add_program_attributes(program_node: ET.Element, program: Program):
