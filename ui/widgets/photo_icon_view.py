@@ -1,22 +1,22 @@
 """
-Video icon view widget - displays videos as large icons with hover trash button
+Photo icon view widget - displays photos as large icons with hover trash button
 """
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QScrollArea, 
                              QPushButton, QLabel, QFrame)
 from PyQt5.QtCore import Qt, pyqtSignal, QSize, QPoint, QEvent
-from PyQt5.QtGui import QPixmap, QIcon, QPainter, QColor, QFont, QImage
+from PyQt5.QtGui import QPixmap, QIcon, QPainter, QColor, QFont
 from pathlib import Path
 from typing import List, Dict, Optional
 
 
-class VideoIconItem(QFrame):
-    """Single video icon item with hover trash button"""
+class PhotoIconItem(QFrame):
+    """Single photo icon item with hover trash button"""
     
     delete_requested = pyqtSignal(int)  # Emits index when delete is clicked
     
-    def __init__(self, video_path: str, index: int, parent=None):
+    def __init__(self, photo_path: str, index: int, parent=None):
         super().__init__(parent)
-        self.video_path = video_path
+        self.photo_path = photo_path
         self.index = index
         self.hovered = False
         self.setFixedSize(120, 140)
@@ -52,13 +52,13 @@ class VideoIconItem(QFrame):
             }
         """)
         
-        # Try to extract video thumbnail (first frame)
-        thumbnail = self._get_video_thumbnail()
-        if thumbnail and not thumbnail.isNull():
-            scaled = thumbnail.scaled(100, 100, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+        # Try to load image thumbnail
+        pixmap = self._get_image_thumbnail()
+        if pixmap and not pixmap.isNull():
+            scaled = pixmap.scaled(100, 100, Qt.KeepAspectRatio, Qt.SmoothTransformation)
             self.icon_label.setPixmap(scaled)
         else:
-            self.icon_label.setText("🎬")
+            self.icon_label.setText("🖼️")
         
         layout.addWidget(self.icon_label)
         
@@ -67,7 +67,7 @@ class VideoIconItem(QFrame):
         self.name_label.setAlignment(Qt.AlignCenter)
         self.name_label.setWordWrap(True)
         self.name_label.setMaximumHeight(30)
-        file_name = Path(self.video_path).name if self.video_path else "Unknown"
+        file_name = Path(self.photo_path).name if self.photo_path else "Unknown"
         self.name_label.setText(file_name)
         self.name_label.setStyleSheet("""
             QLabel {
@@ -109,43 +109,17 @@ class VideoIconItem(QFrame):
         # Make sure trash button doesn't propagate clicks
         self.trash_btn.installEventFilter(self)
     
-    def _get_video_thumbnail(self) -> Optional[QPixmap]:
-        """Extract first frame from video file as thumbnail using VideoPlayer"""
-        if not self.video_path:
+    def _get_image_thumbnail(self) -> Optional[QPixmap]:
+        """Get thumbnail for image file"""
+        if not self.photo_path:
             return None
         
         try:
-            # Use VideoPlayer to extract thumbnail
-            from media.video_player import VideoPlayer
-            thumbnail = VideoPlayer.get_video_thumbnail(self.video_path)
-            if thumbnail and not thumbnail.isNull():
-                return thumbnail
+            pixmap = QPixmap(self.photo_path)
+            if not pixmap.isNull():
+                return pixmap
         except Exception:
             pass
-        
-        # Fallback to OpenCV if VideoPlayer fails
-        try:
-            import cv2
-            import numpy as np
-            cap = cv2.VideoCapture(self.video_path)
-            if cap.isOpened():
-                ret, frame = cap.read()
-                cap.release()
-                if ret and frame is not None:
-                    # Convert BGR to RGB
-                    frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                    # Ensure contiguous array
-                    frame_rgb = np.ascontiguousarray(frame_rgb)
-                    # Convert to QPixmap
-                    height, width, channel = frame_rgb.shape
-                    bytes_per_line = 3 * width
-                    q_image = QImage(frame_rgb.data, width, height, bytes_per_line, QImage.Format_RGB888)
-                    # Create a copy to ensure data persists
-                    q_image = q_image.copy()
-                    return QPixmap.fromImage(q_image)
-        except Exception:
-            pass
-        
         return None
     
     def enterEvent(self, event):
@@ -174,22 +148,21 @@ class VideoIconItem(QFrame):
         """Filter events to prevent trash button clicks from propagating"""
         if obj == self.trash_btn:
             if event.type() == QEvent.MouseButtonPress:
-                # Let the button handle it, but don't propagate to parent
                 event.accept()
                 return False  # Let button process it
         return False
 
 
-class VideoIconView(QWidget):
-    """Video list displayed as large icons in a grid"""
+class PhotoIconView(QWidget):
+    """Photo list displayed as large icons in a grid"""
     
     item_selected = pyqtSignal(int)
     item_deleted = pyqtSignal(int)
     
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.video_items: List[VideoIconItem] = []
-        self.video_data: List[Dict] = []
+        self.photo_items: List[PhotoIconItem] = []
+        self.photo_data: List[Dict] = []
         self.init_ui()
     
     def init_ui(self):
@@ -224,9 +197,9 @@ class VideoIconView(QWidget):
         scroll_area.setWidget(self.grid_widget)
         layout.addWidget(scroll_area)
     
-    def set_videos(self, video_list: List[Dict]):
-        """Set the list of videos to display"""
-        self.video_data = video_list
+    def set_photos(self, photo_list: List[Dict]):
+        """Set the list of photos to display"""
+        self.photo_data = photo_list
         self._update_display()
     
     def _create_new_row(self):
@@ -242,9 +215,9 @@ class VideoIconView(QWidget):
     def _update_display(self):
         """Update the icon display"""
         # Clear existing items
-        for item in self.video_items:
+        for item in self.photo_items:
             item.deleteLater()
-        self.video_items.clear()
+        self.photo_items.clear()
         
         # Clear all layouts
         while self.grid_layout.count() > 0:
@@ -262,15 +235,15 @@ class VideoIconView(QWidget):
         items_in_current_row = 0
         
         # Create icon items
-        for i, video in enumerate(self.video_data):
-            video_path = video.get("path", "")
-            if video_path:
+        for i, photo in enumerate(self.photo_data):
+            photo_path = photo.get("path", "")
+            if photo_path:
                 # Create new row if current row is full
                 if items_in_current_row >= self.items_per_row:
                     self._create_new_row()
                     items_in_current_row = 0
                 
-                item = VideoIconItem(video_path, i, self.grid_widget)
+                item = PhotoIconItem(photo_path, i, self.grid_widget)
                 item.delete_requested.connect(self._on_item_delete)
                 # Use a closure to properly capture the index
                 def make_click_handler(idx):
@@ -284,7 +257,7 @@ class VideoIconView(QWidget):
                         self._on_item_clicked(idx)
                     return handler
                 item.mousePressEvent = make_click_handler(i)
-                self.video_items.append(item)
+                self.photo_items.append(item)
                 
                 # Insert before stretch
                 self.current_row_layout.insertWidget(self.current_row_layout.count() - 1, item)
@@ -300,31 +273,31 @@ class VideoIconView(QWidget):
     
     def clear(self):
         """Clear all items"""
-        self.set_videos([])
+        self.set_photos([])
     
-    def add_item(self, video_path: str):
-        """Add a new video item"""
-        self.video_data.append({"path": video_path})
+    def add_item(self, photo_path: str):
+        """Add a new photo item"""
+        self.photo_data.append({"path": photo_path})
         self._update_display()
     
     def remove_item(self, index: int):
         """Remove an item at index"""
-        if 0 <= index < len(self.video_data):
-            self.video_data.pop(index)
+        if 0 <= index < len(self.photo_data):
+            self.photo_data.pop(index)
             self._update_display()
     
     def move_item_up(self, index: int):
         """Move item up in the list"""
         if index > 0:
-            self.video_data[index], self.video_data[index - 1] = self.video_data[index - 1], self.video_data[index]
+            self.photo_data[index], self.photo_data[index - 1] = self.photo_data[index - 1], self.photo_data[index]
             self._update_display()
             return index - 1
         return index
     
     def move_item_down(self, index: int):
         """Move item down in the list"""
-        if 0 <= index < len(self.video_data) - 1:
-            self.video_data[index], self.video_data[index + 1] = self.video_data[index + 1], self.video_data[index]
+        if 0 <= index < len(self.photo_data) - 1:
+            self.photo_data[index], self.photo_data[index + 1] = self.photo_data[index + 1], self.photo_data[index]
             self._update_display()
             return index + 1
         return index

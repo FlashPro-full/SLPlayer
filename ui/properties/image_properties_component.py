@@ -2,12 +2,15 @@
 Image properties component
 """
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QComboBox,
-                             QPushButton, QFileDialog, QGroupBox, QLineEdit, QCheckBox)
+                             QPushButton, QFileDialog, QGroupBox, QLineEdit,
+                             QDoubleSpinBox, QFormLayout)
 from PyQt5.QtCore import Qt
 from pathlib import Path
 from typing import Optional, Dict
 from datetime import datetime
 from ui.properties.base_properties_component import BasePropertiesComponent
+from ui.widgets.photo_icon_view import PhotoIconView
+from config.animation_effects import get_animation_index, get_animation_name
 
 
 class ImagePropertiesComponent(BasePropertiesComponent):
@@ -19,20 +22,20 @@ class ImagePropertiesComponent(BasePropertiesComponent):
     
     def init_ui(self):
         """Initialize the UI"""
-        main_layout = QHBoxLayout(self)
-        main_layout.setContentsMargins(4, 4, 4, 4)
-        main_layout.setSpacing(8)
-        main_layout.setAlignment(Qt.AlignLeft | Qt.AlignTop)
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(4, 4, 4, 4)
+        layout.setSpacing(8)
+        layout.setAlignment(Qt.AlignLeft | Qt.AlignTop)
         
-        # Left side: Area Attribute group
-        area_group = QGroupBox("Area attribute")
+        area_group = QGroupBox("Area Attribute")
         area_layout = QVBoxLayout(area_group)
-        area_layout.setContentsMargins(8, 8, 8, 8)
-        area_layout.setSpacing(8)
+        area_layout.setContentsMargins(6, 6, 6, 6)
+        area_layout.setSpacing(4)
         
-        # Layout section: Coordinates and dimensions
-        layout_section = QHBoxLayout()
+        # Layout section: Coordinates and dimensions (flex-column, flex-start)
+        layout_section = QVBoxLayout()
         layout_section.setSpacing(4)
+        layout_section.setAlignment(Qt.AlignTop)  # flex-start
         
         # Coordinates (0, 0)
         coords_layout = QHBoxLayout()
@@ -51,34 +54,27 @@ class ImagePropertiesComponent(BasePropertiesComponent):
         coords_layout.addWidget(self.image_coords_x)
         coords_layout.addWidget(coords_comma)
         coords_layout.addWidget(self.image_coords_y)
+        coords_layout.addStretch()
         layout_section.addLayout(coords_layout)
         
-        # Dimensions with padlock
+        # Dimensions
         dims_layout = QHBoxLayout()
         dims_layout.setSpacing(2)
         dims_label = QLabel("📐")
         self.image_dims_width = QLineEdit()
-        self.image_dims_width.setPlaceholderText("1920")
+        self.image_dims_width.setPlaceholderText("screen width")
         self.image_dims_width.setMinimumWidth(60)
-        self.image_dims_width.setText("1920")
         dims_comma = QLabel(",")
         self.image_dims_height = QLineEdit()
-        self.image_dims_height.setPlaceholderText("1080")
+        self.image_dims_height.setPlaceholderText("screen height")
         self.image_dims_height.setMinimumWidth(60)
-        self.image_dims_height.setText("1080")
-        self.image_padlock_btn = QPushButton("🔒")
-        self.image_padlock_btn.setCheckable(True)
-        self.image_padlock_btn.setChecked(True)
-        self.image_padlock_btn.setMaximumWidth(30)
-        self.image_padlock_btn.setToolTip("Lock/Unlock dimensions")
         dims_layout.addWidget(dims_label)
         dims_layout.addWidget(self.image_dims_width)
         dims_layout.addWidget(dims_comma)
         dims_layout.addWidget(self.image_dims_height)
-        dims_layout.addWidget(self.image_padlock_btn)
+        dims_layout.addStretch()
         layout_section.addLayout(dims_layout)
         
-        layout_section.addStretch()
         area_layout.addLayout(layout_section)
         
         # Connect signals
@@ -87,113 +83,123 @@ class ImagePropertiesComponent(BasePropertiesComponent):
         self.image_dims_width.textChanged.connect(self._on_image_dims_changed)
         self.image_dims_height.textChanged.connect(self._on_image_dims_changed)
         
-        # Frame section with border, effect, and speed controls
-        frame_group_layout = QVBoxLayout()
-        frame_group_layout.setSpacing(4)
+        # Add Area Attribute group to main layout
+        layout.addWidget(area_group)
         
-        # Frame checkbox
-        frame_checkbox_layout = QHBoxLayout()
-        self.image_frame_checkbox = QCheckBox("Frame")
-        self.image_frame_checkbox.toggled.connect(self._on_image_frame_enabled_changed)
-        frame_checkbox_layout.addWidget(self.image_frame_checkbox)
-        frame_checkbox_layout.addStretch()
-        frame_group_layout.addLayout(frame_checkbox_layout)
+        # Photo list group (same style as video list group)
+        photo_list_group = QGroupBox("Photo List")
+        photo_list_group.setMinimumWidth(400)  # Make Photo List the largest width
+        photo_list_layout = QHBoxLayout(photo_list_group)  # flex-row
+        photo_list_layout.setAlignment(Qt.AlignCenter)  # align-items: center
         
-        # Border selection
-        border_layout = QHBoxLayout()
-        border_layout.addWidget(QLabel("Border:"))
-        self.image_frame_border_combo = QComboBox()
-        borders = self.get_available_borders()
-        if borders:
-            self.image_frame_border_combo.addItems(["---"] + borders)
-        else:
-            self.image_frame_border_combo.addItems(["---", "000", "001", "002", "003"])
-        self.image_frame_border_combo.setCurrentText("---")
-        self.image_frame_border_combo.setEnabled(False)
-        self.image_frame_border_combo.currentTextChanged.connect(self._on_image_frame_border_changed)
-        border_layout.addWidget(self.image_frame_border_combo, stretch=1)
-        frame_group_layout.addLayout(border_layout)
+        # Large icon view for photos
+        self.photo_list = PhotoIconView()
+        self.photo_list.setMinimumHeight(150)
+        self.photo_list.item_selected.connect(self._on_photo_item_selected)
+        self.photo_list.item_deleted.connect(self._on_photo_item_deleted)
+        photo_list_layout.addWidget(self.photo_list, stretch=1)
         
-        # Effect selection
-        effect_layout = QHBoxLayout()
-        effect_layout.addWidget(QLabel("Effect:"))
-        self.image_frame_effect_combo = QComboBox()
-        self.image_frame_effect_combo.addItems(["static", "rotate", "twinkle"])
-        self.image_frame_effect_combo.setCurrentText("static")
-        self.image_frame_effect_combo.setEnabled(False)
-        self.image_frame_effect_combo.currentTextChanged.connect(self._on_image_frame_effect_changed)
-        effect_layout.addWidget(self.image_frame_effect_combo, stretch=1)
-        frame_group_layout.addLayout(effect_layout)
+        # Button group inside photo list group (flex-column)
+        photo_buttons_layout = QVBoxLayout()
+        photo_buttons_layout.setContentsMargins(0, 0, 0, 0)
+        photo_buttons_layout.setSpacing(4)
+        photo_buttons_layout.setAlignment(Qt.AlignCenter)  # align-items: center
         
-        # Speed selection
-        speed_layout = QHBoxLayout()
-        speed_layout.addWidget(QLabel("Speed:"))
-        self.image_frame_speed_combo = QComboBox()
-        self.image_frame_speed_combo.addItems(["slow", "in", "fast"])
-        self.image_frame_speed_combo.setCurrentText("in")
-        self.image_frame_speed_combo.setEnabled(False)
-        self.image_frame_speed_combo.currentTextChanged.connect(self._on_image_frame_speed_changed)
-        speed_layout.addWidget(self.image_frame_speed_combo, stretch=1)
-        frame_group_layout.addLayout(speed_layout)
+        self.photo_add_btn = QPushButton("➕")
+        self.photo_add_btn.clicked.connect(self._on_photo_add)
+        self.photo_delete_btn = QPushButton("🗑")
+        self.photo_delete_btn.clicked.connect(self._on_photo_delete)
+        self.photo_up_btn = QPushButton("🔼")
+        self.photo_up_btn.clicked.connect(self._on_photo_up)
+        self.photo_down_btn = QPushButton("🔽")
+        self.photo_down_btn.clicked.connect(self._on_photo_down)
         
-        area_layout.addLayout(frame_group_layout)
+        photo_buttons_layout.addWidget(self.photo_add_btn)
+        photo_buttons_layout.addWidget(self.photo_delete_btn)
+        photo_buttons_layout.addWidget(self.photo_up_btn)
+        photo_buttons_layout.addWidget(self.photo_down_btn)
+        photo_buttons_layout.addStretch()
         
-        # Transparency section
-        transparency_layout = QHBoxLayout()
-        transparency_layout.setSpacing(4)
-        transparency_label = QLabel("Transparency")
-        transparency_layout.addWidget(transparency_label)
-        self.image_transparency_input = QLineEdit()
-        self.image_transparency_input.setMaximumWidth(60)
-        self.image_transparency_input.setText("100%")
-        self.image_transparency_input.textChanged.connect(self._on_image_transparency_changed)
-        transparency_layout.addWidget(self.image_transparency_input)
-        transparency_minus_btn = QPushButton("-")
-        transparency_minus_btn.setMaximumWidth(30)
-        transparency_minus_btn.clicked.connect(lambda: self._adjust_image_transparency(-1))
-        transparency_plus_btn = QPushButton("+")
-        transparency_plus_btn.setMaximumWidth(30)
-        transparency_plus_btn.clicked.connect(lambda: self._adjust_image_transparency(1))
-        transparency_layout.addWidget(transparency_minus_btn)
-        transparency_layout.addWidget(transparency_plus_btn)
-        transparency_layout.addStretch()
-        area_layout.addLayout(transparency_layout)
+        photo_list_layout.addLayout(photo_buttons_layout)
         
-        main_layout.addWidget(area_group)
+        layout.addWidget(photo_list_group, stretch=1)  # Make Photo List expand to be the largest
         
-        # Right side: Action buttons
-        actions_layout = QVBoxLayout()
-        actions_layout.setSpacing(4)
-        actions_layout.setAlignment(Qt.AlignTop)
+        # Animation section (replacing Video Shot)
+        animation_group = QGroupBox("Animation")
+        animation_group.setMinimumWidth(250)
+        animation_layout = QFormLayout(animation_group)
         
-        add_btn = QPushButton("➕")
-        add_btn.setMaximumSize(40, 40)
-        add_btn.setToolTip("Add")
-        add_btn.clicked.connect(self._on_image_add)
-        actions_layout.addWidget(add_btn)
+        # Entrance animation (Display)
+        entrance_animation_layout = QHBoxLayout()
+        entrance_icon = QLabel("🚫")
+        entrance_animation_layout.addWidget(entrance_icon)
+        self.image_entrance_animation_combo = QComboBox()
+        self.image_entrance_animation_combo.addItems([
+            "Random", "None", "Fade", "Fly In", "Wipe", "Split", "Strips",
+            "Circle", "Wheel", "Zoom", "Box", "Plus", "Checkerboard", "Blinds",
+            "Diamond", "Dissolve", "Peek", "Bounce", "Flash", "Grow & Turn",
+            "Spiral", "Swivel", "Unfold", "Fade & Zoom", "Float In", "Pinwheel",
+            "Rise Up", "Swing", "Zoom & Fade", "Zoom & Turn"
+        ])
+        self.image_entrance_animation_combo.setCurrentText("Random")
+        self.image_entrance_animation_combo.currentTextChanged.connect(self._on_entrance_animation_changed)
+        entrance_animation_layout.addWidget(self.image_entrance_animation_combo, stretch=1)
+        animation_layout.addRow("Display", entrance_animation_layout)
         
-        delete_btn = QPushButton("🗑")
-        delete_btn.setMaximumSize(40, 40)
-        delete_btn.setToolTip("Delete")
-        delete_btn.clicked.connect(self._on_image_delete)
-        actions_layout.addWidget(delete_btn)
+        # Entrance speed
+        entrance_speed_layout = QHBoxLayout()
+        entrance_speed_layout.addStretch()
+        self.image_entrance_speed_combo = QComboBox()
+        self.image_entrance_speed_combo.addItems([f"{i} fast" if i > 1 else "1 fast" for i in range(1, 11)])
+        self.image_entrance_speed_combo.setCurrentText("1 fast")
+        self.image_entrance_speed_combo.currentTextChanged.connect(self._on_entrance_speed_changed)
+        entrance_speed_layout.addWidget(self.image_entrance_speed_combo, stretch=1)
+        animation_layout.addRow("", entrance_speed_layout)
         
-        down_btn = QPushButton("🔽")
-        down_btn.setMaximumSize(40, 40)
-        down_btn.setToolTip("Move Down")
-        down_btn.clicked.connect(self._on_image_move_down)
-        actions_layout.addWidget(down_btn)
+        # Exit animation (Clear)
+        exit_animation_layout = QHBoxLayout()
+        exit_icon = QLabel("🔄")  # Green circular arrows
+        exit_animation_layout.addWidget(exit_icon)
+        self.image_exit_animation_combo = QComboBox()
+        self.image_exit_animation_combo.addItems([
+            "Random", "None", "Fade", "Fly Out", "Wipe", "Split", "Strips",
+            "Circle", "Wheel", "Zoom", "Box", "Plus", "Checkerboard", "Blinds",
+            "Diamond", "Dissolve", "Peek", "Bounce", "Flash", "Grow & Turn",
+            "Spiral", "Swivel", "Unfold", "Fade & Zoom", "Float Out", "Pinwheel",
+            "Rise Up", "Swing", "Zoom & Fade", "Zoom & Turn"
+        ])
+        self.image_exit_animation_combo.setCurrentText("Random")
+        self.image_exit_animation_combo.currentTextChanged.connect(self._on_exit_animation_changed)
+        exit_animation_layout.addWidget(self.image_exit_animation_combo, stretch=1)
+        animation_layout.addRow("Clear", exit_animation_layout)
         
-        up_btn = QPushButton("🔼")
-        up_btn.setMaximumSize(40, 40)
-        up_btn.setToolTip("Move Up")
-        up_btn.clicked.connect(self._on_image_move_up)
-        actions_layout.addWidget(up_btn)
+        # Exit speed
+        exit_speed_layout = QHBoxLayout()
+        exit_speed_layout.addStretch()
+        self.image_exit_speed_combo = QComboBox()
+        self.image_exit_speed_combo.addItems([f"{i} fast" if i > 1 else "1 fast" for i in range(1, 11)])
+        self.image_exit_speed_combo.setCurrentText("1 fast")
+        self.image_exit_speed_combo.currentTextChanged.connect(self._on_exit_speed_changed)
+        exit_speed_layout.addWidget(self.image_exit_speed_combo, stretch=1)
+        animation_layout.addRow("", exit_speed_layout)
         
-        actions_layout.addStretch()
-        main_layout.addLayout(actions_layout)
+        # Hold time
+        self.image_hold_time_spin = QDoubleSpinBox()
+        self.image_hold_time_spin.setMinimum(0.0)
+        self.image_hold_time_spin.setMaximum(999.9)
+        self.image_hold_time_spin.setSingleStep(0.1)
+        self.image_hold_time_spin.setDecimals(1)
+        self.image_hold_time_spin.setSuffix(" second")
+        self.image_hold_time_spin.setValue(0.0)
+        self.image_hold_time_spin.valueChanged.connect(self._on_hold_time_changed)
+        animation_layout.addRow("Hold", self.image_hold_time_spin)
         
-        main_layout.addStretch()
+        layout.addWidget(animation_group)
+    
+    def set_program_data(self, program, element):
+        """Set program and element data"""
+        self.set_element(element, program)
+        self.update_properties()
     
     def update_properties(self):
         """Update image properties from current element"""
@@ -243,139 +249,133 @@ class ImagePropertiesComponent(BasePropertiesComponent):
         self.image_dims_width.blockSignals(False)
         self.image_dims_height.blockSignals(False)
         
-        # Update frame
-        frame_props = element_props.get("frame", {})
-        frame_enabled = frame_props.get("enabled", False) if isinstance(frame_props, dict) else False
-        self.image_frame_checkbox.blockSignals(True)
-        self.image_frame_checkbox.setChecked(frame_enabled)
-        self.image_frame_checkbox.blockSignals(False)
+        # Update animation settings
+        animation = element_props.get("animation", {})
         
-        # Enable/disable frame controls
-        self.image_frame_border_combo.setEnabled(frame_enabled)
-        self.image_frame_effect_combo.setEnabled(frame_enabled)
-        self.image_frame_speed_combo.setEnabled(frame_enabled)
+        # Handle both string names and numeric indices
+        entrance_animation = animation.get("entrance", "Random")
+        entrance_animation_index = animation.get("entrance_animation", None)
         
-        # Update border selection
-        border = frame_props.get("border", "---") if isinstance(frame_props, dict) else "---"
-        border_index = self.image_frame_border_combo.findText(border)
-        if border_index >= 0:
-            self.image_frame_border_combo.setCurrentIndex(border_index)
-        else:
-            self.image_frame_border_combo.setCurrentIndex(0)
+        # If we have an index, convert to name; otherwise use the string
+        if entrance_animation_index is not None:
+            entrance_animation = get_animation_name(entrance_animation_index)
+        elif isinstance(entrance_animation, int):
+            entrance_animation = get_animation_name(entrance_animation)
         
-        # Update effect selection
-        effect = frame_props.get("effect", "static") if isinstance(frame_props, dict) else "static"
-        effect_index = self.image_frame_effect_combo.findText(effect)
-        if effect_index >= 0:
-            self.image_frame_effect_combo.setCurrentIndex(effect_index)
-        else:
-            self.image_frame_effect_combo.setCurrentIndex(0)
+        entrance_index = self.image_entrance_animation_combo.findText(entrance_animation)
+        if entrance_index >= 0:
+            self.image_entrance_animation_combo.setCurrentIndex(entrance_index)
         
-        # Update speed selection
-        speed = frame_props.get("speed", "in") if isinstance(frame_props, dict) else "in"
-        speed_index = self.image_frame_speed_combo.findText(speed)
-        if speed_index >= 0:
-            self.image_frame_speed_combo.setCurrentIndex(speed_index)
-        else:
-            self.image_frame_speed_combo.setCurrentIndex(1)  # Default to "in"
+        entrance_speed = animation.get("entrance_speed", "1 fast")
+        entrance_speed_index = self.image_entrance_speed_combo.findText(entrance_speed)
+        if entrance_speed_index >= 0:
+            self.image_entrance_speed_combo.setCurrentIndex(entrance_speed_index)
         
-        # Update transparency
-        transparency = element_props.get("transparency", 100)
-        self.image_transparency_input.blockSignals(True)
-        self.image_transparency_input.setText(f"{transparency}%")
-        self.image_transparency_input.blockSignals(False)
+        exit_animation = animation.get("exit", "Random")
+        exit_animation_index = animation.get("exit_animation", None)
+        
+        # If we have an index, convert to name; otherwise use the string
+        if exit_animation_index is not None:
+            exit_animation = get_animation_name(exit_animation_index)
+        elif isinstance(exit_animation, int):
+            exit_animation = get_animation_name(exit_animation)
+        
+        exit_index = self.image_exit_animation_combo.findText(exit_animation)
+        if exit_index >= 0:
+            self.image_exit_animation_combo.setCurrentIndex(exit_index)
+        
+        exit_speed = animation.get("exit_speed", "1 fast")
+        exit_speed_index = self.image_exit_speed_combo.findText(exit_speed)
+        if exit_speed_index >= 0:
+            self.image_exit_speed_combo.setCurrentIndex(exit_speed_index)
+        
+        hold_time = animation.get("hold_time", 0.0)
+        self.image_hold_time_spin.blockSignals(True)
+        self.image_hold_time_spin.setValue(hold_time)
+        self.image_hold_time_spin.blockSignals(False)
+        
+        # Update photo list
+        photo_list = element_props.get("photo_list", element_props.get("image_list", []))
+        self.photo_list.set_photos(photo_list)
     
-    def _on_image_frame_enabled_changed(self, enabled: bool):
-        """Handle image frame enabled change"""
-        if not self.current_element or not self.current_program:
-            return
-        
-        # Enable/disable all frame controls
-        self.image_frame_border_combo.setEnabled(enabled)
-        self.image_frame_effect_combo.setEnabled(enabled)
-        self.image_frame_speed_combo.setEnabled(enabled)
-        
-        if "properties" not in self.current_element:
-            self.current_element["properties"] = {}
-        if "frame" not in self.current_element["properties"]:
-            self.current_element["properties"]["frame"] = {}
-        
-        self.current_element["properties"]["frame"]["enabled"] = enabled
-        self.current_program.modified = datetime.now().isoformat()
-        self.property_changed.emit("image_frame_enabled", enabled)
-        self._trigger_autosave()
-    
-    def _on_image_frame_border_changed(self, border: str):
-        """Handle image frame border selection change"""
+    def _on_entrance_animation_changed(self, animation: str):
+        """Handle entrance animation change"""
         if not self.current_element or not self.current_program:
             return
         
         if "properties" not in self.current_element:
             self.current_element["properties"] = {}
-        if "frame" not in self.current_element["properties"]:
-            self.current_element["properties"]["frame"] = {}
+        if "animation" not in self.current_element["properties"]:
+            self.current_element["properties"]["animation"] = {}
         
-        self.current_element["properties"]["frame"]["border"] = border
+        # Save both name and index for compatibility
+        self.current_element["properties"]["animation"]["entrance"] = animation
+        self.current_element["properties"]["animation"]["entrance_animation"] = get_animation_index(animation)
         self.current_program.modified = datetime.now().isoformat()
-        self.property_changed.emit("image_frame_border", border)
+        self.property_changed.emit("image_entrance_animation", animation)
         self._trigger_autosave()
     
-    def _on_image_frame_effect_changed(self, effect: str):
-        """Handle image frame effect selection change"""
+    def _on_entrance_speed_changed(self, speed: str):
+        """Handle entrance speed change"""
         if not self.current_element or not self.current_program:
             return
         
         if "properties" not in self.current_element:
             self.current_element["properties"] = {}
-        if "frame" not in self.current_element["properties"]:
-            self.current_element["properties"]["frame"] = {}
+        if "animation" not in self.current_element["properties"]:
+            self.current_element["properties"]["animation"] = {}
         
-        self.current_element["properties"]["frame"]["effect"] = effect
+        self.current_element["properties"]["animation"]["entrance_speed"] = speed
         self.current_program.modified = datetime.now().isoformat()
-        self.property_changed.emit("image_frame_effect", effect)
+        self.property_changed.emit("image_entrance_speed", speed)
         self._trigger_autosave()
     
-    def _on_image_frame_speed_changed(self, speed: str):
-        """Handle image frame speed selection change"""
+    def _on_exit_animation_changed(self, animation: str):
+        """Handle exit animation change"""
         if not self.current_element or not self.current_program:
             return
         
         if "properties" not in self.current_element:
             self.current_element["properties"] = {}
-        if "frame" not in self.current_element["properties"]:
-            self.current_element["properties"]["frame"] = {}
+        if "animation" not in self.current_element["properties"]:
+            self.current_element["properties"]["animation"] = {}
         
-        self.current_element["properties"]["frame"]["speed"] = speed
+        # Save both name and index for compatibility
+        self.current_element["properties"]["animation"]["exit"] = animation
+        self.current_element["properties"]["animation"]["exit_animation"] = get_animation_index(animation)
         self.current_program.modified = datetime.now().isoformat()
-        self.property_changed.emit("image_frame_speed", speed)
+        self.property_changed.emit("image_exit_animation", animation)
         self._trigger_autosave()
     
-    def _on_image_transparency_changed(self, text: str):
-        """Handle image transparency change"""
-        if not self.current_element:
+    def _on_exit_speed_changed(self, speed: str):
+        """Handle exit speed change"""
+        if not self.current_element or not self.current_program:
             return
-        try:
-            transparency = int(text.replace("%", "").strip())
-            transparency = max(0, min(100, transparency))
-            if "properties" not in self.current_element:
-                self.current_element["properties"] = {}
-            self.current_element["properties"]["transparency"] = transparency
-            self.property_changed.emit("image_transparency", transparency)
-            self._trigger_autosave()
-        except ValueError:
-            pass
+        
+        if "properties" not in self.current_element:
+            self.current_element["properties"] = {}
+        if "animation" not in self.current_element["properties"]:
+            self.current_element["properties"]["animation"] = {}
+        
+        self.current_element["properties"]["animation"]["exit_speed"] = speed
+        self.current_program.modified = datetime.now().isoformat()
+        self.property_changed.emit("image_exit_speed", speed)
+        self._trigger_autosave()
     
-    def _adjust_image_transparency(self, delta: int):
-        """Adjust image transparency by delta"""
-        if not self.current_element:
+    def _on_hold_time_changed(self, value: float):
+        """Handle hold time change"""
+        if not self.current_element or not self.current_program:
             return
-        try:
-            current_text = self.image_transparency_input.text()
-            current = int(current_text.replace("%", "").strip())
-            new_value = max(0, min(100, current + delta))
-            self.image_transparency_input.setText(f"{new_value}%")
-        except ValueError:
-            pass
+        
+        if "properties" not in self.current_element:
+            self.current_element["properties"] = {}
+        if "animation" not in self.current_element["properties"]:
+            self.current_element["properties"]["animation"] = {}
+        
+        self.current_element["properties"]["animation"]["hold_time"] = value
+        self.current_program.modified = datetime.now().isoformat()
+        self.property_changed.emit("image_hold_time", value)
+        self._trigger_autosave()
     
     def _on_image_coords_changed(self):
         """Handle image coordinates change"""
@@ -452,33 +452,73 @@ class ImagePropertiesComponent(BasePropertiesComponent):
         except ValueError:
             pass
     
-    def _on_image_add(self):
-        """Handle image add button"""
+    def _on_photo_add(self):
+        """Handle photo add button"""
         file_path, _ = QFileDialog.getOpenFileName(
             self, "Select Image File", "",
             "Image Files (*.png *.jpg *.jpeg *.bmp *.gif *.svg);;All Files (*)"
         )
-        if file_path and self.current_element:
-            if "properties" not in self.current_element:
-                self.current_element["properties"] = {}
-            if "image_list" not in self.current_element["properties"]:
-                self.current_element["properties"]["image_list"] = []
-            self.current_element["properties"]["image_list"].append({"path": file_path})
-            self.property_changed.emit("image_list", self.current_element["properties"]["image_list"])
-            self._trigger_autosave()
+        if file_path:
+            if self.current_element:
+                if "properties" not in self.current_element:
+                    self.current_element["properties"] = {}
+                if "photo_list" not in self.current_element["properties"]:
+                    self.current_element["properties"]["photo_list"] = []
+                self.current_element["properties"]["photo_list"].append({"path": file_path})
+                self.photo_list.add_item(file_path)
+                self.property_changed.emit("photo_list", self.current_element["properties"]["photo_list"])
+                self._trigger_autosave()
     
-    def _on_image_delete(self):
-        """Handle image delete button"""
-        # Implementation depends on requirements
+    def _on_photo_item_selected(self, index: int):
+        """Handle photo item selection"""
+        # Could be used for preview or other actions
         pass
     
-    def _on_image_move_down(self):
-        """Handle image move down button"""
-        # Implementation depends on requirements
-        pass
+    def _on_photo_item_deleted(self, index: int):
+        """Handle photo item delete from icon view"""
+        if self.current_element:
+            if "properties" in self.current_element and "photo_list" in self.current_element["properties"]:
+                self.current_element["properties"]["photo_list"].pop(index)
+                self.photo_list.remove_item(index)
+                self.current_program.modified = datetime.now().isoformat()
+                self.property_changed.emit("photo_list", self.current_element["properties"]["photo_list"])
+                self._trigger_autosave()
     
-    def _on_image_move_up(self):
-        """Handle image move up button"""
-        # Implementation depends on requirements
-        pass
+    def _on_photo_delete(self):
+        """Handle photo delete button"""
+        current_index = self.photo_list.get_current_index()
+        if current_index >= 0 and self.current_element:
+            if "properties" in self.current_element and "photo_list" in self.current_element["properties"]:
+                photo_list = self.current_element["properties"]["photo_list"]
+                if 0 <= current_index < len(photo_list):
+                    self.current_element["properties"]["photo_list"].pop(current_index)
+                    self.photo_list.remove_item(current_index)
+                    self.current_program.modified = datetime.now().isoformat()
+                    self.property_changed.emit("photo_list", self.current_element["properties"]["photo_list"])
+                    self._trigger_autosave()
+    
+    def _on_photo_up(self):
+        """Handle photo up button"""
+        current_index = self.photo_list.get_current_index()
+        if current_index > 0 and self.current_element:
+            if "properties" in self.current_element and "photo_list" in self.current_element["properties"]:
+                photo_list = self.current_element["properties"]["photo_list"]
+                new_index = self.photo_list.move_item_up(current_index)
+                photo_list[current_index], photo_list[current_index - 1] = photo_list[current_index - 1], photo_list[current_index]
+                self.current_program.modified = datetime.now().isoformat()
+                self.property_changed.emit("photo_list", photo_list)
+                self._trigger_autosave()
+    
+    def _on_photo_down(self):
+        """Handle photo down button"""
+        current_index = self.photo_list.get_current_index()
+        if self.current_element and "properties" in self.current_element and "photo_list" in self.current_element["properties"]:
+            photo_list = self.current_element["properties"]["photo_list"]
+            if 0 <= current_index < len(photo_list) - 1:
+                new_index = self.photo_list.move_item_down(current_index)
+                photo_list[current_index], photo_list[current_index + 1] = photo_list[current_index + 1], photo_list[current_index]
+                self.current_program.modified = datetime.now().isoformat()
+                self.property_changed.emit("photo_list", photo_list)
+                self._trigger_autosave()
+    
 

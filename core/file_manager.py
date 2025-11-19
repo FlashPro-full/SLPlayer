@@ -1,11 +1,10 @@
-"""
-File management - Handles .soo file operations
-"""
 import json
 from pathlib import Path
 from typing import Optional, List, Dict
 from core.program_manager import Program, ProgramManager
 from core.screen_manager import ScreenManager
+from core.xml_importer import XMLImporter
+from core.xml_exporter import XMLExporter
 from utils.app_data import get_app_data_dir
 from utils.logger import get_logger
 
@@ -13,7 +12,6 @@ logger = get_logger(__name__)
 
 
 class FileManager:
-    """Manages .soo file operations"""
     
     def __init__(self, program_manager: ProgramManager):
         self.program_manager = program_manager
@@ -21,16 +19,6 @@ class FileManager:
         self.work_dir.mkdir(parents=True, exist_ok=True)
     
     def load_soo_file(self, file_path: str, clear_existing: bool = False) -> bool:
-        """
-        Load a .soo file.
-        
-        Args:
-            file_path: Path to .soo file
-            clear_existing: Whether to clear existing programs before loading
-            
-        Returns:
-            True if loaded successfully, False otherwise
-        """
         try:
             soo_path = Path(file_path)
             if not soo_path.exists():
@@ -41,8 +29,23 @@ class FileManager:
                 self.program_manager.programs.clear()
                 self.program_manager.current_program = None
             
-            with open(soo_path, 'r', encoding='utf-8') as f:
-                screen_data = json.load(f)
+            try:
+                with open(soo_path, 'r', encoding='utf-8') as f:
+                    screen_data = json.load(f)
+            except json.JSONDecodeError as json_err:
+                logger.error(f"JSON decode error in {soo_path.name} at line {json_err.lineno}, column {json_err.colno}: {json_err.msg}")
+                try:
+                    with open(soo_path, 'r', encoding='utf-8') as f:
+                        content = f.read()
+                    logger.warning(f"Attempting to recover corrupted .soo file: {soo_path.name}")
+                    backup_path = soo_path.with_suffix('.soo.corrupted')
+                    with open(backup_path, 'w', encoding='utf-8') as backup:
+                        backup.write(content)
+                    logger.info(f"Created backup of corrupted file: {backup_path.name}")
+                    return False
+                except Exception as recovery_err:
+                    logger.error(f"Failed to recover corrupted file: {recovery_err}")
+                    return False
             
             screen_properties = screen_data.get("screen_properties", {})
             programs_data = screen_data.get("programs", [])
@@ -50,12 +53,9 @@ class FileManager:
             screen_name = soo_path.stem
             logger.info(f"Loading .soo file '{soo_path.name}' as screen '{screen_name}'")
             
-            # Ensure screen_properties has required fields
             screen_properties["screen_name"] = screen_name
             screen_properties["working_file_path"] = str(soo_path)
             
-            # CRITICAL: Validate that width/height exist in screen_properties (controller screen dimensions)
-            # If missing, log a warning - these should always be set from screen settings dialog or controller
             if "width" not in screen_properties or "height" not in screen_properties:
                 logger.warning(
                     f"Screen '{screen_name}' missing width/height in screen_properties. "
@@ -75,7 +75,6 @@ class FileManager:
                 program.properties["screen"].update(screen_properties)
                 program.properties["working_file_path"] = str(soo_path)
                 
-                # Check if program already exists
                 existing_program = None
                 for existing in self.program_manager.programs:
                     existing_screen_name = ScreenManager.get_screen_name_from_program(existing)
@@ -109,12 +108,6 @@ class FileManager:
             return False
     
     def load_latest_soo_files(self) -> bool:
-        """
-        Load all .soo files from work directory.
-        
-        Returns:
-            True if any files were loaded successfully, False otherwise
-        """
         try:
             if not self.work_dir.exists():
                 self.work_dir.mkdir(parents=True, exist_ok=True)
@@ -184,24 +177,16 @@ class FileManager:
             else:
                 soo_file = self.work_dir / f"{safe_name}.soo"
             
-            # Collect screen properties from all programs in the screen
             screen_programs = ScreenManager.get_programs_for_screen(
                 self.program_manager.programs, screen_name
             )
             
-            # Start with the current program's screen properties as base
             screen_properties = program.properties.get("screen", {}).copy()
             screen_properties["screen_name"] = screen_name
             
-            # Merge screen properties from all programs in this screen
-            # CRITICAL: Use screen properties from programs, NEVER program.width/height (which is PC canvas size)
-            # The screen_properties["width"] and ["height"] MUST be the actual controller screen dimensions
-            # Priority: Use the first non-None width/height found, or keep existing if already set
             for p in screen_programs:
                 p_screen_props = p.properties.get("screen", {})
                 
-                # CRITICAL: Always collect width/height from screen properties (controller screen dimensions)
-                # Use the first valid width/height found, or keep existing if already valid
                 if "width" not in screen_properties or not screen_properties.get("width"):
                     screen_width = p_screen_props.get("width")
                     if screen_width is not None:
@@ -218,7 +203,6 @@ class FileManager:
                         except (ValueError, TypeError):
                             pass
                 
-                # Other properties can be merged (only if not already set)
                 if "rotate" not in screen_properties and "rotate" in p_screen_props:
                     screen_properties["rotate"] = p_screen_props["rotate"]
                 if "brand" not in screen_properties and "brand" in p_screen_props:
@@ -230,8 +214,6 @@ class FileManager:
                 if "controller_id" not in screen_properties and "controller_id" in p_screen_props:
                     screen_properties["controller_id"] = p_screen_props["controller_id"]
             
-            # CRITICAL: Ensure width/height are always in screen_properties before saving
-            # If still missing, use defaults or log warning
             if "width" not in screen_properties or not screen_properties.get("width"):
                 logger.warning(f"Screen '{screen_name}' missing width in screen_properties, using default 640")
                 screen_properties["width"] = 640
@@ -239,22 +221,16 @@ class FileManager:
                 logger.warning(f"Screen '{screen_name}' missing height in screen_properties, using default 480")
                 screen_properties["height"] = 480
             
-            # Prepare programs data
-            # Remove program-level width/height (PC canvas) but keep screen-level width/height (controller screen)
             programs = []
             for p in screen_programs:
                 program_dict = p.to_dict()
-                # Remove PC canvas dimensions (program.width/height) - these are not controller screen dimensions
                 program_dict.pop("width", None)
                 program_dict.pop("height", None)
                 
-                # Keep screen properties but ensure width/height are preserved from screen_properties
+                program_dict = self._clean_non_serializable(program_dict)
+                
                 if "screen" in program_dict.get("properties", {}):
                     screen_props_copy = program_dict["properties"]["screen"].copy()
-                    # Don't remove width/height from screen properties - they are controller screen dimensions
-                    # They will be overwritten by screen_properties anyway, but keep them for reference
-                    # Only remove if they're the PC canvas dimensions (which shouldn't be in screen properties)
-                    # Actually, keep them - they should be the controller screen dimensions
                     program_dict["properties"]["screen"] = screen_props_copy
                 programs.append(program_dict)
             
@@ -267,7 +243,6 @@ class FileManager:
             with open(soo_file, 'w', encoding='utf-8') as f:
                 json.dump(screen_data, f, indent=2, ensure_ascii=False)
             
-            # Update program with file path
             program.properties["working_file_path"] = str(soo_file)
             if "screen" not in program.properties:
                 program.properties["screen"] = {}
@@ -280,32 +255,67 @@ class FileManager:
             logger.error(f"Error creating .soo file: {e}", exc_info=True)
             return False
     
-    def cleanup_orphaned_files(self, current_screen_names: set):
-        """
-        Remove .soo files from work directory that don't correspond to any current screen.
+    def _clean_non_serializable(self, data):
+        if data is None:
+            return None
         
-        Args:
-            current_screen_names: Set of screen names that currently exist in the program list
-        """
+        if isinstance(data, (str, int, float, bool)):
+            return data
+        
+        if isinstance(data, dict):
+            cleaned = {}
+            for key, value in data.items():
+                if key.startswith('_'):
+                    continue
+                
+                try:
+                    cleaned_value = self._clean_non_serializable(value)
+                    if self._is_serializable(cleaned_value):
+                        cleaned[key] = cleaned_value
+                except (TypeError, ValueError, AttributeError):
+                    continue
+            return cleaned
+        
+        elif isinstance(data, list):
+            cleaned_list = []
+            for item in data:
+                try:
+                    cleaned_item = self._clean_non_serializable(item)
+                    if self._is_serializable(cleaned_item):
+                        cleaned_list.append(cleaned_item)
+                except (TypeError, ValueError, AttributeError):
+                    continue
+            return cleaned_list
+        
+        else:
+            if isinstance(data, (str, int, float, bool)):
+                return data
+            return None
+    
+    def _is_serializable(self, obj):
+        import json
+        try:
+            json.dumps(obj)
+            return True
+        except (TypeError, ValueError):
+            return False
+    
+    def cleanup_orphaned_files(self, current_screen_names: set):
         try:
             if not self.work_dir.exists():
                 return
             
-            # Get all .soo files in work directory
             soo_files = list(self.work_dir.glob("*.soo"))
             
             if not soo_files:
                 return
             
-            # Create set of sanitized current screen names for comparison
             sanitized_current_names = {ScreenManager.sanitize_screen_name(name) for name in current_screen_names}
             
             deleted_count = 0
             for soo_file in soo_files:
-                # Get screen name from filename (remove .soo extension)
                 file_stem = soo_file.stem
                 
-                # Check if this file corresponds to a current screen
                 if file_stem not in sanitized_current_names:
                     try:
                         soo_file.unlink()
@@ -318,4 +328,24 @@ class FileManager:
                 logger.info(f"Cleaned up {deleted_count} orphaned autosave file(s)")
         except Exception as e:
             logger.error(f"Error cleaning up orphaned files: {e}", exc_info=True)
+    
+    def import_xml_file(self, file_path: str) -> Optional[Program]:
+        try:
+            program = XMLImporter.import_xml_file(file_path)
+            if program:
+                self.program_manager.programs.append(program)
+                self.program_manager.current_program = program
+                logger.info(f"Successfully imported XML file: {file_path}")
+            return program
+        except Exception as e:
+            logger.error(f"Error importing XML file: {e}", exc_info=True)
+            return None
+    
+    def export_to_xml(self, program: Program, file_path: str) -> bool:
+        try:
+            screen_properties = program.properties.get("screen", {})
+            return XMLExporter.export_program(program, file_path, screen_properties)
+        except Exception as e:
+            logger.error(f"Error exporting to XML: {e}", exc_info=True)
+            return False
 

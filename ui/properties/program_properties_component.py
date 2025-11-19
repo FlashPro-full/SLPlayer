@@ -16,18 +16,19 @@ class ProgramPropertiesComponent(BasePropertiesComponent):
     
     def __init__(self, parent=None):
         super().__init__(parent)
+        self._updating_properties = False  # Flag to prevent recursive updates
         self.init_ui()
     
     def init_ui(self):
         """Initialize the UI"""
         
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(8, 8, 8, 8)
-        layout.setSpacing(8)
+        layout.setContentsMargins(6, 6, 6, 6)
+        layout.setSpacing(4)
         layout.setAlignment(Qt.AlignTop)  # align-items: top
         
         # Set minimum height for the component
-        self.setMinimumHeight(200)
+        self.setMinimumHeight(100)
         
         # Specified time section
         specified_time_layout = QVBoxLayout()
@@ -127,64 +128,81 @@ class ProgramPropertiesComponent(BasePropertiesComponent):
     
     def update_properties(self):
         """Update program properties from current program"""
-        if not self.current_program:
+        if not self.current_program or self._updating_properties:
             return
         
-        play_control = self.current_program.play_control
+        self._updating_properties = True
+        try:
+            play_control = self.current_program.play_control
         
-        # Load specified time ranges
-        specified_time = play_control.get("specified_time", {})
-        self.specified_time_checkbox.blockSignals(True)
-        self.specified_time_checkbox.setChecked(specified_time.get("enabled", False))
-        self.specified_time_checkbox.blockSignals(False)
-        
-        time_ranges = specified_time.get("ranges", [])
-        if not time_ranges and specified_time.get("enabled", False):
-            # Migrate old single range format to new list format
-            start_time_str = specified_time.get("start_time", "00:00:00")
-            end_time_str = specified_time.get("end_time", "23:59:59")
-            if start_time_str and end_time_str:
-                time_ranges = [{"start": start_time_str, "end": end_time_str}]
-        
-        # Set all time ranges in the selector (all selected by default for backward compatibility)
-        self.time_range_selector.set_time_ranges(time_ranges, selected_indices=list(range(len(time_ranges))))
-        
-        enabled = specified_time.get("enabled", False)
-        self.time_range_selector.set_enabled(enabled)
-        
-        # Load specify week
-        specify_week = play_control.get("specify_week", {})
-        self.specify_week_checkbox.blockSignals(True)
-        self.specify_week_checkbox.setChecked(specify_week.get("enabled", False))
-        self.specify_week_checkbox.blockSignals(False)
-        week_enabled = specify_week.get("enabled", False)
-        week_days_list = specify_week.get("days", [])
-        self.selected_week_days = week_days_list
-        self._update_week_selector_text()
-        self.week_days_selector.setEnabled(week_enabled)
-        
-        # Load specify date ranges
-        specify_date = play_control.get("specify_date", {})
-        self.specify_date_checkbox.blockSignals(True)
-        self.specify_date_checkbox.setChecked(specify_date.get("enabled", False))
-        self.specify_date_checkbox.blockSignals(False)
-        
-        date_ranges = specify_date.get("ranges", [])
-        if not date_ranges and specify_date.get("enabled", False):
-            # Migrate old single range format to new list format
-            start_date_str = specify_date.get("start_date", "")
-            end_date_str = specify_date.get("end_date", "")
-            if start_date_str and end_date_str:
-                date_ranges = [{"start": start_date_str, "end": end_date_str}]
-        
-        # Set all date ranges in the selector (all selected by default for backward compatibility)
-        self.date_range_selector.set_date_ranges(date_ranges, selected_indices=list(range(len(date_ranges))))
-        
-        enabled = specify_date.get("enabled", False)
-        self.date_range_selector.set_enabled(enabled)
+            # Load specified time ranges
+            specified_time = play_control.get("specified_time", {})
+            self.specified_time_checkbox.blockSignals(True)
+            self.specified_time_checkbox.setChecked(specified_time.get("enabled", False))
+            self.specified_time_checkbox.setEnabled(True)  # Ensure checkbox is enabled
+            self.specified_time_checkbox.blockSignals(False)
+            
+            time_ranges = specified_time.get("ranges", [])
+            if not time_ranges and specified_time.get("enabled", False):
+                # Migrate old single range format to new list format
+                start_time_str = specified_time.get("start_time", "00:00:00")
+                end_time_str = specified_time.get("end_time", "23:59:59")
+                if start_time_str and end_time_str:
+                    time_ranges = [{"start": start_time_str, "end": end_time_str}]
+            
+            # Set all time ranges in the selector (all selected by default for backward compatibility)
+            self.time_range_selector.set_time_ranges(time_ranges, selected_indices=list(range(len(time_ranges))))
+            
+            enabled = specified_time.get("enabled", False)
+            self.time_range_selector.set_enabled(enabled)
+            
+            # Load specify week
+            specify_week = play_control.get("specify_week", {})
+            self.specify_week_checkbox.blockSignals(True)
+            self.specify_week_checkbox.setChecked(specify_week.get("enabled", False))
+            self.specify_week_checkbox.setEnabled(True)  # Ensure checkbox is enabled
+            self.specify_week_checkbox.blockSignals(False)
+            week_enabled = specify_week.get("enabled", False)
+            week_days_list = specify_week.get("days", [])
+            self.selected_week_days = week_days_list
+            self._update_week_selector_text()
+            self.week_days_selector.setEnabled(week_enabled)
+            
+            # Load specify date ranges
+            specify_date = play_control.get("specify_date", {})
+            self.specify_date_checkbox.blockSignals(True)
+            self.specify_date_checkbox.setChecked(specify_date.get("enabled", False))
+            self.specify_date_checkbox.setEnabled(True)  # Ensure checkbox is enabled
+            self.specify_date_checkbox.blockSignals(False)
+            
+            date_ranges = specify_date.get("ranges", [])
+            if not date_ranges and specify_date.get("enabled", False):
+                # Migrate old single range format to new list format
+                start_date_str = specify_date.get("start_date", "")
+                end_date_str = specify_date.get("end_date", "")
+                if start_date_str and end_date_str:
+                    date_ranges = [{"start": start_date_str, "end": end_date_str}]
+            
+            # Set all date ranges in the selector (all selected by default for backward compatibility)
+            self.date_range_selector.set_date_ranges(date_ranges, selected_indices=list(range(len(date_ranges))))
+            
+            enabled = specify_date.get("enabled", False)
+            self.date_range_selector.set_enabled(enabled)
+        finally:
+            self._updating_properties = False
     
     def _on_specified_time_enabled_changed(self, checked):
         """Handle specified time checkbox toggle"""
+        if not self.current_program:
+            # Disable checkbox if no program
+            self.specified_time_checkbox.blockSignals(True)
+            self.specified_time_checkbox.setEnabled(False)
+            self.specified_time_checkbox.setChecked(False)
+            self.specified_time_checkbox.blockSignals(False)
+            return
+        
+        # Ensure checkbox is enabled when we have program
+        self.specified_time_checkbox.setEnabled(True)
         self.time_range_selector.set_enabled(checked)
         
         if self.current_program:
@@ -200,15 +218,19 @@ class ProgramPropertiesComponent(BasePropertiesComponent):
     
     def _on_time_ranges_changed(self, selected_ranges):
         """Handle time ranges change from TimeRangeMultiSelector"""
-        if not self.current_program:
+        if not self.current_program or self._updating_properties:
             return
         
-        if "specified_time" not in self.current_program.play_control:
-            self.current_program.play_control["specified_time"] = {}
+            if "specified_time" not in self.current_program.play_control:
+                self.current_program.play_control["specified_time"] = {}
         
         # Save all time ranges (not just selected ones)
         all_ranges = self.time_range_selector.get_all_time_ranges()
-        self.current_program.play_control["specified_time"]["ranges"] = all_ranges
+        
+        # Only update if values actually changed to prevent feedback loops
+        current_ranges = self.current_program.play_control["specified_time"].get("ranges", [])
+        if all_ranges != current_ranges:
+            self.current_program.play_control["specified_time"]["ranges"] = all_ranges
         
         # Also save selected ranges separately if needed
         self.current_program.play_control["specified_time"]["selected_ranges"] = selected_ranges
@@ -219,6 +241,16 @@ class ProgramPropertiesComponent(BasePropertiesComponent):
     
     def _on_specify_week_enabled_changed(self, checked):
         """Handle specify week checkbox toggle"""
+        if not self.current_program:
+            # Disable checkbox if no program
+            self.specify_week_checkbox.blockSignals(True)
+            self.specify_week_checkbox.setEnabled(False)
+            self.specify_week_checkbox.setChecked(False)
+            self.specify_week_checkbox.blockSignals(False)
+            return
+        
+        # Ensure checkbox is enabled when we have program
+        self.specify_week_checkbox.setEnabled(True)
         self.week_days_selector.setEnabled(checked)
         if self.current_program:
             if "specify_week" not in self.current_program.play_control:
@@ -293,6 +325,16 @@ class ProgramPropertiesComponent(BasePropertiesComponent):
     
     def _on_specify_date_enabled_changed(self, checked):
         """Handle specify date checkbox toggle"""
+        if not self.current_program:
+            # Disable checkbox if no program
+            self.specify_date_checkbox.blockSignals(True)
+            self.specify_date_checkbox.setEnabled(False)
+            self.specify_date_checkbox.setChecked(False)
+            self.specify_date_checkbox.blockSignals(False)
+            return
+        
+        # Ensure checkbox is enabled when we have program
+        self.specify_date_checkbox.setEnabled(True)
         self.date_range_selector.set_enabled(checked)
         
         if self.current_program:
@@ -308,15 +350,19 @@ class ProgramPropertiesComponent(BasePropertiesComponent):
     
     def _on_date_ranges_changed(self, selected_ranges):
         """Handle date ranges change from DateRangeMultiSelector"""
-        if not self.current_program:
+        if not self.current_program or self._updating_properties:
             return
         
-        if "specify_date" not in self.current_program.play_control:
-            self.current_program.play_control["specify_date"] = {}
+            if "specify_date" not in self.current_program.play_control:
+                self.current_program.play_control["specify_date"] = {}
         
         # Save all date ranges (not just selected ones)
         all_ranges = self.date_range_selector.get_all_date_ranges()
-        self.current_program.play_control["specify_date"]["ranges"] = all_ranges
+        
+        # Only update if values actually changed to prevent feedback loops
+        current_ranges = self.current_program.play_control["specify_date"].get("ranges", [])
+        if all_ranges != current_ranges:
+            self.current_program.play_control["specify_date"]["ranges"] = all_ranges
         
         # Also save selected ranges separately if needed
         self.current_program.play_control["specify_date"]["selected_ranges"] = selected_ranges

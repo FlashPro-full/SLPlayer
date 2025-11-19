@@ -1,6 +1,3 @@
-"""
-Synchronization manager for PC ↔ Controller sync with diff comparison
-"""
 from typing import Dict, List, Optional, Any
 from pathlib import Path
 from datetime import datetime
@@ -12,7 +9,6 @@ logger = get_logger(__name__)
 
 
 class SyncManager:
-    """Manages synchronization between PC and controller with diff comparison"""
     
     def __init__(self):
         from utils.app_data import get_app_data_dir
@@ -21,7 +17,6 @@ class SyncManager:
         self.load_local_db()
     
     def load_local_db(self):
-        """Load local database"""
         if self.local_db_path.exists():
             try:
                 with open(self.local_db_path, 'r', encoding='utf-8') as f:
@@ -41,7 +36,6 @@ class SyncManager:
             }
     
     def save_local_db(self):
-        """Save local database"""
         try:
             self.local_db_path.parent.mkdir(parents=True, exist_ok=True)
             with open(self.local_db_path, 'w', encoding='utf-8') as f:
@@ -50,15 +44,10 @@ class SyncManager:
             logger.exception(f"Error saving local DB: {e}")
     
     def calculate_hash(self, data: Any) -> str:
-        """Calculate hash of data for comparison"""
         data_str = json.dumps(data, sort_keys=True, ensure_ascii=False)
         return hashlib.sha256(data_str.encode('utf-8')).hexdigest()
     
     def import_from_controller(self, controller) -> Dict[str, Any]:
-        """
-        Import all data from controller and create local database.
-        Returns imported data dictionary.
-        """
         imported_data = {
             "programs": {},
             "media": {},
@@ -69,7 +58,6 @@ class SyncManager:
         }
         
         try:
-            # Import programs
             if hasattr(controller, 'get_program_list'):
                 program_list = controller.get_program_list()
                 for program_info in program_list:
@@ -83,17 +71,11 @@ class SyncManager:
                                 "modified": datetime.now().isoformat()
                             }
             
-            # Import media (if supported)
-            # Note: Actual media files would need to be downloaded separately
-            
-            # Import time, brightness, power schedule, network, and CRITICALLY: screen resolution
             device_info = controller.get_device_info()
             if device_info:
                 imported_data["brightness"] = device_info.get("brightness")
                 imported_data["network"] = device_info.get("network")
                 
-                # CRITICAL: Extract controller screen resolution from device_info
-                # This is the actual LED display resolution, not PC canvas size
                 resolution = (
                     device_info.get("display_resolution") or
                     device_info.get("resolution") or
@@ -115,7 +97,6 @@ class SyncManager:
                         screen_resolution["width"] = resolution.get("width") or resolution.get("w")
                         screen_resolution["height"] = resolution.get("height") or resolution.get("h")
                 
-                # Also try direct width/height fields
                 if not screen_resolution:
                     ctrl_width = device_info.get("width") or device_info.get("screen_width")
                     ctrl_height = device_info.get("height") or device_info.get("screen_height")
@@ -127,7 +108,6 @@ class SyncManager:
                     imported_data["screen_resolution"] = screen_resolution
                     logger.info(f"Imported controller screen resolution: {screen_resolution.get('width')}x{screen_resolution.get('height')}")
             
-            # Update local database
             self.local_db.update(imported_data)
             self.local_db["last_sync"] = datetime.now().isoformat()
             self.save_local_db()
@@ -140,10 +120,6 @@ class SyncManager:
             return imported_data
     
     def compare_and_sync(self, controller, program_manager) -> Dict[str, Any]:
-        """
-        Compare local DB with controller and return changes.
-        Returns dictionary with changes to send.
-        """
         changes = {
             "programs_to_upload": [],
             "programs_to_delete": [],
@@ -151,7 +127,6 @@ class SyncManager:
         }
         
         try:
-            # Get current programs from program manager
             current_programs = {}
             programs_dir = program_manager.programs_dir
             if programs_dir.exists():
@@ -168,22 +143,16 @@ class SyncManager:
                     except Exception as e:
                         logger.warning(f"Error reading program {program_file}: {e}")
             
-            # Compare with local DB
             local_programs = self.local_db.get("programs", {})
             
-            # Find programs to upload (new or modified)
             for program_id, program_info in current_programs.items():
                 local_program = local_programs.get(program_id)
                 if not local_program or local_program.get("hash") != program_info["hash"]:
                     changes["programs_to_upload"].append(program_info["data"])
             
-            # Find programs to delete (removed locally)
             for program_id in local_programs.keys():
                 if program_id not in current_programs:
                     changes["programs_to_delete"].append(program_id)
-            
-            # Compare parameters
-            # Brightness, time, power schedule, network changes would be detected here
             
             return changes
             
@@ -192,29 +161,19 @@ class SyncManager:
             return changes
     
     def export_to_controller(self, controller, program_manager) -> bool:
-        """
-        Export changes to controller (only send what changed).
-        Returns True if successful.
-        """
         try:
             changes = self.compare_and_sync(controller, program_manager)
             
-            # Upload changed programs
             for program_data in changes["programs_to_upload"]:
                 if not controller.upload_program(program_data):
                     logger.warning(f"Failed to upload program {program_data.get('name', 'Unknown')}")
             
-            # Delete removed programs
             for program_id in changes["programs_to_delete"]:
-                # Note: Controller-specific delete method would be called here
                 logger.info(f"Program {program_id} marked for deletion")
             
-            # Update parameters if changed
             if changes["parameters_to_update"]:
-                # Update brightness, time, etc.
                 pass
             
-            # Update local DB after successful sync
             self.local_db["last_sync"] = datetime.now().isoformat()
             self.save_local_db()
             

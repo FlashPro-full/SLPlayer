@@ -3,7 +3,7 @@ Video properties component
 """
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QComboBox,
                              QSpinBox, QPushButton, QFileDialog, QLineEdit,
-                             QGroupBox, QFormLayout, QTimeEdit, QSlider, QCheckBox)
+                             QGroupBox, QFormLayout, QTimeEdit, QCheckBox)
 from PyQt5.QtCore import Qt, QTime
 from pathlib import Path
 from typing import Optional, Dict
@@ -28,12 +28,13 @@ class VideoPropertiesComponent(BasePropertiesComponent):
         
         area_group = QGroupBox("Area Attribute")
         area_layout = QVBoxLayout(area_group)
-        area_layout.setContentsMargins(8, 8, 8, 8)
-        area_layout.setSpacing(8)
+        area_layout.setContentsMargins(6, 6, 6, 6)
+        area_layout.setSpacing(4)
         
-        # Layout section: Coordinates and dimensions
-        layout_section = QHBoxLayout()
+        # Layout section: Coordinates and dimensions (flex-column, flex-start)
+        layout_section = QVBoxLayout()
         layout_section.setSpacing(4)
+        layout_section.setAlignment(Qt.AlignTop)  # flex-start
         
         # Coordinates (0, 0)
         coords_layout = QHBoxLayout()
@@ -52,9 +53,10 @@ class VideoPropertiesComponent(BasePropertiesComponent):
         coords_layout.addWidget(self.video_coords_x)
         coords_layout.addWidget(coords_comma)
         coords_layout.addWidget(self.video_coords_y)
+        coords_layout.addStretch()
         layout_section.addLayout(coords_layout)
         
-        # Dimensions with padlock
+        # Dimensions
         dims_layout = QHBoxLayout()
         dims_layout.setSpacing(2)
         dims_label = QLabel("📐")
@@ -67,19 +69,13 @@ class VideoPropertiesComponent(BasePropertiesComponent):
         self.video_dims_height.setPlaceholderText("1080")
         self.video_dims_height.setMinimumWidth(60)
         self.video_dims_height.setText("1080")
-        self.video_padlock_btn = QPushButton("🔒")
-        self.video_padlock_btn.setCheckable(True)
-        self.video_padlock_btn.setChecked(True)
-        self.video_padlock_btn.setMaximumWidth(30)
-        self.video_padlock_btn.setToolTip("Lock/Unlock dimensions")
         dims_layout.addWidget(dims_label)
         dims_layout.addWidget(self.video_dims_width)
         dims_layout.addWidget(dims_comma)
         dims_layout.addWidget(self.video_dims_height)
-        dims_layout.addWidget(self.video_padlock_btn)
+        dims_layout.addStretch()
         layout_section.addLayout(dims_layout)
         
-        layout_section.addStretch()
         area_layout.addLayout(layout_section)
         
         # Connect signals
@@ -87,43 +83,44 @@ class VideoPropertiesComponent(BasePropertiesComponent):
         self.video_coords_y.textChanged.connect(self._on_video_coords_changed)
         self.video_dims_width.textChanged.connect(self._on_video_dims_changed)
         self.video_dims_height.textChanged.connect(self._on_video_dims_changed)
-        self.video_padlock_btn.toggled.connect(self._on_video_padlock_toggled)
         
-        # Frame section with border, effect, and speed controls
-        frame_group_layout = QVBoxLayout()
-        frame_group_layout.setSpacing(4)
-        
-        # Frame checkbox
-        frame_checkbox_layout = QHBoxLayout()
-        self.video_frame_checkbox = QCheckBox("Frame")
-        self.video_frame_checkbox.toggled.connect(self._on_video_frame_enabled_changed)
-        frame_checkbox_layout.addWidget(self.video_frame_checkbox)
-        frame_checkbox_layout.addStretch()
-        frame_group_layout.addLayout(frame_checkbox_layout)
+        # Add Area Attribute group to main layout
+        layout.addWidget(area_group)
         
         video_list_group = QGroupBox("Video List")
         video_list_group.setMinimumWidth(400)  # Make Video List the largest width
-        video_list_layout = QVBoxLayout(video_list_group)
+        video_list_layout = QHBoxLayout(video_list_group)  # flex-row
+        video_list_layout.setAlignment(Qt.AlignCenter)  # align-items: center
         
         # Large icon view for videos
         self.video_list = VideoIconView()
-        self.video_list.setMinimumHeight(300)
+        self.video_list.setMinimumHeight(150)
         self.video_list.item_selected.connect(self._on_video_item_selected)
         self.video_list.item_deleted.connect(self._on_video_item_deleted)
-        video_list_layout.addWidget(self.video_list)
+        video_list_layout.addWidget(self.video_list, stretch=1)
         
-        video_list_buttons = QHBoxLayout()
-        self.video_add_btn = QPushButton("+")
+        # Button group inside video list group (flex-column)
+        video_buttons_layout = QVBoxLayout()
+        video_buttons_layout.setContentsMargins(0, 0, 0, 0)
+        video_buttons_layout.setSpacing(4)
+        video_buttons_layout.setAlignment(Qt.AlignCenter)  # align-items: center
+        
+        self.video_add_btn = QPushButton("➕")
         self.video_add_btn.clicked.connect(self._on_video_add)
+        self.video_delete_btn = QPushButton("🗑")
+        self.video_delete_btn.clicked.connect(self._on_video_delete)
         self.video_up_btn = QPushButton("🔼")
         self.video_up_btn.clicked.connect(self._on_video_up)
         self.video_down_btn = QPushButton("🔽")
         self.video_down_btn.clicked.connect(self._on_video_down)
-        video_list_buttons.addWidget(self.video_add_btn)
-        video_list_buttons.addWidget(self.video_up_btn)
-        video_list_buttons.addWidget(self.video_down_btn)
-        video_list_buttons.addStretch()
-        video_list_layout.addLayout(video_list_buttons)
+        
+        video_buttons_layout.addWidget(self.video_add_btn)
+        video_buttons_layout.addWidget(self.video_delete_btn)
+        video_buttons_layout.addWidget(self.video_up_btn)
+        video_buttons_layout.addWidget(self.video_down_btn)
+        video_buttons_layout.addStretch()
+        
+        video_list_layout.addLayout(video_buttons_layout)
         
         layout.addWidget(video_list_group, stretch=1)  # Make Video List expand to be the largest
         
@@ -159,6 +156,11 @@ class VideoPropertiesComponent(BasePropertiesComponent):
         video_shot_layout.addRow("Duration:", self.video_shot_duration_label)
         
         layout.addWidget(video_shot_group)  # Video Shot with fixed smaller width
+    
+    def set_program_data(self, program, element):
+        """Set program and element data"""
+        self.set_element(element, program)
+        self.update_properties()
     
     def update_properties(self):
         """Update video properties from current element"""
@@ -207,45 +209,49 @@ class VideoPropertiesComponent(BasePropertiesComponent):
         self.video_dims_height.setText(str(height))
         self.video_dims_width.blockSignals(False)
         self.video_dims_height.blockSignals(False)
-        # Update frame
+        # Update frame (only if checkbox exists)
         frame_props = element_props.get("frame", {})
-        frame_enabled = frame_props.get("enabled", False) if isinstance(frame_props, dict) else False
-        self.video_frame_checkbox.blockSignals(True)
-        self.video_frame_checkbox.setChecked(frame_enabled)
-        self.video_frame_checkbox.blockSignals(False)
-        
-        # Enable/disable frame controls
-        self.video_frame_border_combo.setEnabled(frame_enabled)
-        self.video_frame_effect_combo.setEnabled(frame_enabled)
-        self.video_frame_speed_combo.setEnabled(frame_enabled)
-        
-        # Update border selection
-        border = frame_props.get("border", "---") if isinstance(frame_props, dict) else "---"
-        border_index = self.video_frame_border_combo.findText(border)
-        if border_index >= 0:
-            self.video_frame_border_combo.setCurrentIndex(border_index)
-        else:
-            self.video_frame_border_combo.setCurrentIndex(0)
-        
-        # Update effect selection
-        effect = frame_props.get("effect", "static") if isinstance(frame_props, dict) else "static"
-        effect_index = self.video_frame_effect_combo.findText(effect)
-        if effect_index >= 0:
-            self.video_frame_effect_combo.setCurrentIndex(effect_index)
-        else:
-            self.video_frame_effect_combo.setCurrentIndex(0)
-        
-        # Update speed selection
-        speed = frame_props.get("speed", "in") if isinstance(frame_props, dict) else "in"
-        speed_index = self.video_frame_speed_combo.findText(speed)
-        if speed_index >= 0:
-            self.video_frame_speed_combo.setCurrentIndex(speed_index)
-        else:
-            self.video_frame_speed_combo.setCurrentIndex(1)  # Default to "in"
-        
-        transparency = element_props.get("transparency", 100)
-        self.video_transparency_slider.setValue(transparency)
-        self.video_transparency_label.setText(f"{transparency}%")
+        if hasattr(self, 'video_frame_checkbox'):
+            frame_enabled = frame_props.get("enabled", False) if isinstance(frame_props, dict) else False
+            self.video_frame_checkbox.blockSignals(True)
+            self.video_frame_checkbox.setChecked(frame_enabled)
+            self.video_frame_checkbox.setEnabled(True)  # Ensure checkbox is enabled
+            self.video_frame_checkbox.blockSignals(False)
+            
+            # Enable/disable frame controls
+            if hasattr(self, 'video_frame_border_combo'):
+                self.video_frame_border_combo.setEnabled(frame_enabled)
+            if hasattr(self, 'video_frame_effect_combo'):
+                self.video_frame_effect_combo.setEnabled(frame_enabled)
+            if hasattr(self, 'video_frame_speed_combo'):
+                self.video_frame_speed_combo.setEnabled(frame_enabled)
+            
+            # Update border selection
+            if hasattr(self, 'video_frame_border_combo'):
+                border = frame_props.get("border", "---")
+                border_index = self.video_frame_border_combo.findText(border)
+                if border_index >= 0:
+                    self.video_frame_border_combo.setCurrentIndex(border_index)
+                else:
+                    self.video_frame_border_combo.setCurrentIndex(0)
+            
+            # Update effect selection
+            if hasattr(self, 'video_frame_effect_combo'):
+                effect = frame_props.get("effect", "static")
+                effect_index = self.video_frame_effect_combo.findText(effect)
+                if effect_index >= 0:
+                    self.video_frame_effect_combo.setCurrentIndex(effect_index)
+                else:
+                    self.video_frame_effect_combo.setCurrentIndex(0)
+            
+            # Update speed selection
+            if hasattr(self, 'video_frame_speed_combo'):
+                speed = frame_props.get("speed", "in")
+                speed_index = self.video_frame_speed_combo.findText(speed)
+                if speed_index >= 0:
+                    self.video_frame_speed_combo.setCurrentIndex(speed_index)
+                else:
+                    self.video_frame_speed_combo.setCurrentIndex(1)  # Default to "in"
         
         video_list = element_props.get("video_list", [])
         self.video_list.set_videos(video_list)
@@ -378,15 +384,20 @@ class VideoPropertiesComponent(BasePropertiesComponent):
         self.property_changed.emit("video_size", (width, height))
         self._trigger_autosave()
     
-    def _on_video_padlock_toggled(self, checked: bool):
-        """Handle video padlock toggle"""
-        # TODO: Implement aspect ratio locking
-        pass
-    
     def _on_video_frame_enabled_changed(self, enabled: bool):
         """Handle video frame enabled change"""
-        if not self.current_element or not self.current_program:
+        if not hasattr(self, 'video_frame_checkbox'):
             return
+        if not self.current_element or not self.current_program:
+            # Disable checkbox if no element/program instead of reverting
+            self.video_frame_checkbox.blockSignals(True)
+            self.video_frame_checkbox.setEnabled(False)
+            self.video_frame_checkbox.setChecked(False)
+            self.video_frame_checkbox.blockSignals(False)
+            return
+        
+        # Ensure checkbox is enabled when we have element/program
+        self.video_frame_checkbox.setEnabled(True)
         
         # Enable/disable all frame controls
         self.video_frame_border_combo.setEnabled(enabled)
@@ -448,15 +459,6 @@ class VideoPropertiesComponent(BasePropertiesComponent):
         self.property_changed.emit("video_frame_speed", speed)
         self._trigger_autosave()
     
-    def _on_video_transparency_changed(self, value):
-        """Handle video transparency change"""
-        self.video_transparency_label.setText(f"{value}%")
-        if self.current_element:
-            if "properties" not in self.current_element:
-                self.current_element["properties"] = {}
-            self.current_element["properties"]["transparency"] = value
-            self.property_changed.emit("video_transparency", value)
-    
     def _on_video_add(self):
         """Handle video add button"""
         file_path, _ = QFileDialog.getOpenFileName(
@@ -481,7 +483,7 @@ class VideoPropertiesComponent(BasePropertiesComponent):
     
     def _on_video_item_deleted(self, index: int):
         """Handle video item delete from icon view"""
-        if self.current_element:
+        if self.current_element and self.current_program:
             if "properties" in self.current_element and "video_list" in self.current_element["properties"]:
                 self.current_element["properties"]["video_list"].pop(index)
                 self.video_list.remove_item(index)
@@ -489,10 +491,23 @@ class VideoPropertiesComponent(BasePropertiesComponent):
                 self.property_changed.emit("video_list", self.current_element["properties"]["video_list"])
                 self._trigger_autosave()
     
+    def _on_video_delete(self):
+        """Handle video delete button"""
+        current_index = self.video_list.get_current_index()
+        if current_index >= 0 and self.current_element and self.current_program:
+            if "properties" in self.current_element and "video_list" in self.current_element["properties"]:
+                video_list = self.current_element["properties"]["video_list"]
+                if 0 <= current_index < len(video_list):
+                    self.current_element["properties"]["video_list"].pop(current_index)
+                    self.video_list.remove_item(current_index)
+                self.current_program.modified = datetime.now().isoformat()
+                self.property_changed.emit("video_list", self.current_element["properties"]["video_list"])
+                self._trigger_autosave()
+    
     def _on_video_up(self):
         """Handle video up button"""
         current_index = self.video_list.get_current_index()
-        if current_index > 0 and self.current_element:
+        if current_index > 0 and self.current_element and self.current_program:
             if "properties" in self.current_element and "video_list" in self.current_element["properties"]:
                 video_list = self.current_element["properties"]["video_list"]
                 new_index = self.video_list.move_item_up(current_index)
@@ -504,7 +519,7 @@ class VideoPropertiesComponent(BasePropertiesComponent):
     def _on_video_down(self):
         """Handle video down button"""
         current_index = self.video_list.get_current_index()
-        if self.current_element and "properties" in self.current_element and "video_list" in self.current_element["properties"]:
+        if self.current_element and self.current_program and "properties" in self.current_element and "video_list" in self.current_element["properties"]:
             video_list = self.current_element["properties"]["video_list"]
             if 0 <= current_index < len(video_list) - 1:
                 new_index = self.video_list.move_item_down(current_index)

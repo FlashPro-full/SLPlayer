@@ -1,6 +1,3 @@
-"""
-Backup and restore functionality for complete system backup
-"""
 import json
 import shutil
 from pathlib import Path
@@ -12,17 +9,12 @@ logger = get_logger(__name__)
 
 
 class BackupRestore:
-    """Manages complete backup and restore operations"""
     
     def __init__(self):
         self.backup_dir = Path.home() / ".slplayer" / "backups"
         self.backup_dir.mkdir(parents=True, exist_ok=True)
     
     def create_backup(self, output_path: Optional[str] = None, program_manager=None, media_library=None, settings=None) -> bool:
-        """
-        Create complete backup of all application data.
-        Returns True if successful.
-        """
         try:
             if output_path is None:
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -39,7 +31,6 @@ class BackupRestore:
                 "schedules": []
             }
             
-            # Backup all programs (if program_manager provided)
             if program_manager:
                 if hasattr(program_manager, 'programs_dir') and program_manager.programs_dir.exists():
                     programs_dir = program_manager.programs_dir
@@ -54,7 +45,6 @@ class BackupRestore:
                         except Exception as e:
                             logger.warning(f"Error backing up program {program_file}: {e}")
                 elif hasattr(program_manager, 'programs'):
-                    # Backup programs from ProgramManager
                     for program in program_manager.programs:
                         try:
                             backup_data["programs"].append({
@@ -64,7 +54,6 @@ class BackupRestore:
                         except Exception as e:
                             logger.warning(f"Error backing up program {program.id}: {e}")
             
-            # Backup media library (if provided)
             if media_library:
                 try:
                     if hasattr(media_library, 'get_media_files'):
@@ -73,18 +62,15 @@ class BackupRestore:
                 except Exception as e:
                     logger.warning(f"Error backing up media library: {e}")
             
-            # Backup settings
             if settings is None:
                 from config.settings import settings as app_settings
                 backup_data["settings"] = app_settings.settings.copy()
             else:
                 backup_data["settings"] = settings.settings.copy() if hasattr(settings, 'settings') else settings
             
-            # Backup schedules (if schedule manager exists)
             try:
                 from core.schedule_manager import ScheduleManager
                 schedule_manager = ScheduleManager()
-                # Load schedules if they exist
                 schedule_file = get_app_data_dir() / "schedules.json"
                 if schedule_file.exists():
                     with open(schedule_file, 'r', encoding='utf-8') as f:
@@ -92,7 +78,6 @@ class BackupRestore:
             except Exception as e:
                 logger.warning(f"Error backing up schedules: {e}")
             
-            # Save backup file
             with open(output_path, 'w', encoding='utf-8') as f:
                 json.dump(backup_data, f, indent=2, ensure_ascii=False)
             
@@ -104,10 +89,6 @@ class BackupRestore:
             return False
     
     def restore_backup(self, backup_path: str, program_manager=None, media_library=None) -> bool:
-        """
-        Restore from backup file.
-        Returns True if successful.
-        """
         try:
             backup_file = Path(backup_path)
             if not backup_file.exists():
@@ -117,7 +98,6 @@ class BackupRestore:
             with open(backup_file, 'r', encoding='utf-8') as f:
                 backup_data = json.load(f)
             
-            # Restore programs (if program_manager provided)
             if "programs" in backup_data and program_manager:
                 if hasattr(program_manager, 'programs_dir'):
                     programs_dir = program_manager.programs_dir
@@ -130,7 +110,6 @@ class BackupRestore:
                                 with open(program_file, 'w', encoding='utf-8') as f:
                                     json.dump(program_info["data"], f, indent=2, ensure_ascii=False)
                             elif "data" in program_info:
-                                # Restore program object directly
                                 from core.program_manager import Program
                                 program = Program()
                                 program.from_dict(program_info["data"])
@@ -138,18 +117,14 @@ class BackupRestore:
                         except Exception as e:
                             logger.warning(f"Error restoring program: {e}")
             
-            # Restore media library
             if "media_library" in backup_data and media_library:
-                # Note: This restores metadata, actual media files should be preserved
                 logger.info("Media library metadata restored (files should be in original locations)")
             
-            # Restore settings
             if "settings" in backup_data:
                 from config.settings import settings as app_settings
                 app_settings.settings.update(backup_data["settings"])
                 app_settings.save_settings()
             
-            # Restore schedules
             if "schedules" in backup_data:
                 from utils.app_data import ensure_app_data_dir, get_app_data_dir
                 ensure_app_data_dir()
@@ -166,7 +141,6 @@ class BackupRestore:
             return False
     
     def export_user_data(self, output_path: str) -> bool:
-        """Export user data (programs, settings, schedules)"""
         try:
             from core.program_manager import ProgramManager
             from config.settings import settings
@@ -179,7 +153,6 @@ class BackupRestore:
             return False
     
     def import_user_data(self, input_path: str) -> bool:
-        """Import user data"""
         try:
             from core.program_manager import ProgramManager
             

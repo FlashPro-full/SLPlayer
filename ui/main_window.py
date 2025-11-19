@@ -1,12 +1,9 @@
-"""
-Main application window
-"""
 from PyQt5.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QSplitter, QDialog,
     QMessageBox, QInputDialog, QFileDialog
 )
 from PyQt5.QtCore import Qt, pyqtSignal, QTimer
-from PyQt5.QtGui import QKeySequence
+from PyQt5.QtGui import QKeySequence, QPainter, QColor
 from typing import Optional, Dict, List
 from datetime import datetime
 import uuid
@@ -21,9 +18,6 @@ from services.program_service import ProgramService
 from services.file_service import FileService
 from services.controller_service import ControllerService
 from ui.menu_bar import MenuBar
-from ui.program_list_panel import ProgramListPanel
-from ui.media_player_panel import MediaPlayerPanel
-from ui.properties_panel import PropertiesPanel
 from ui.toolbar import (
     ProgramToolbar, ContentTypesToolbar, PlaybackToolbar, ControlToolbar
 )
@@ -37,80 +31,66 @@ from utils.logger import get_logger
 logger = get_logger(__name__)
 
 
+class ChessboardBackgroundWidget(QWidget):
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.tile_size = 12
+    
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing, False)
+        
+        widget_width = self.width()
+        widget_height = self.height()
+        
+        color1 = QColor(240, 240, 240)
+        color2 = QColor(255, 255, 255)
+        
+        for row in range(0, widget_height, self.tile_size):
+            for col in range(0, widget_width, self.tile_size):
+                if ((row // self.tile_size) + (col // self.tile_size)) % 2 == 0:
+                    painter.fillRect(col, row, self.tile_size, self.tile_size, color1)
+                else:
+                    painter.fillRect(col, row, self.tile_size, self.tile_size, color2)
+
+
 class MainWindow(QMainWindow):
-    """Main application window"""
     
     def __init__(self):
         super().__init__()
         self.setWindowTitle("SLPlayer")
         
-        # Core managers
         self.program_manager = ProgramManager()
         self.file_manager = FileManager(self.program_manager)
         self.sync_manager = SyncManager()
         
-        # Service layer
         self.program_service = ProgramService(self.program_manager)
         self.file_service = FileService(self.program_manager, self.file_manager)
         self.controller_service = ControllerService()
         
-        # UI state
         self.clipboard_program: Optional[Dict] = None
         self._latest_file_loaded = False
-        self._screen_dialog_opened = False  # Flag to prevent duplicate dialog opens
-        self.current_controller: Optional[BaseController] = None  # Current connected controller
+        self._screen_dialog_opened = False
+        self.current_controller: Optional[BaseController] = None
         
         self.init_ui()
         self.connect_signals()
         self._connect_event_bus()
         
-        # Load latest files
         self._latest_file_loaded = self.file_service.load_latest_files()
         
-        # Consolidate startup operations into a single delayed call
         QTimer.singleShot(100, self._perform_startup_tasks)
     
     def init_ui(self):
-        """Initialize UI components"""
         self.setWindowFlags(self.windowFlags() & ~Qt.FramelessWindowHint)
         
         self.menu_bar = MenuBar(self)
         self.setMenuBar(self.menu_bar)
         self.menu_bar.setVisible(True)
         
-        central_widget = QWidget()
+        central_widget = ChessboardBackgroundWidget(self)
         self.setCentralWidget(central_widget)
-        central_layout = QVBoxLayout(central_widget)
-        central_layout.setContentsMargins(0, 0, 0, 0)
-        central_layout.setSpacing(0)
-        
-        main_splitter = QSplitter(Qt.Vertical)
-        central_layout.addWidget(main_splitter)
-        
-        content_splitter = QSplitter(Qt.Horizontal)
-        main_splitter.addWidget(content_splitter)
-        
-        self.program_list_panel = ProgramListPanel(self)
-        self.program_list_panel.set_program_manager(self.program_manager)
-        self.program_list_panel.setMinimumWidth(250)
-        self.program_list_panel.setMaximumWidth(400)
-        content_splitter.addWidget(self.program_list_panel)
-        
-        self.media_player_panel = MediaPlayerPanel(self)
-        content_splitter.addWidget(self.media_player_panel)
-        
-        content_splitter.setStretchFactor(0, 0)
-        content_splitter.setStretchFactor(1, 1)
-        content_splitter.setSizes([250, 800])
-        
-        self.properties_panel = PropertiesPanel(self)
-        # Connect property changes to refresh media player
-        self.properties_panel.property_changed.connect(self._on_property_changed)
-        main_splitter.addWidget(self.properties_panel)
-        
-        main_splitter.setStretchFactor(0, 1)
-        main_splitter.setStretchFactor(1, 0)
-        main_splitter.setSizes([600, 200])
         
         self.program_toolbar = ProgramToolbar(self)
         self.addToolBar(Qt.TopToolBarArea, self.program_toolbar)
@@ -128,17 +108,13 @@ class MainWindow(QMainWindow):
         self.auto_save_manager = AutoSaveManager(self.program_manager, self.file_manager)
         self.auto_save_manager.start()
         
-        # Status bar
         self.status_bar = StatusBarWidget(self)
         self.setStatusBar(self.status_bar)
         self.status_bar.set_connection_status(ConnectionStatus.DISCONNECTED)
         
-        # Cache UI component references for performance (avoid hasattr checks)
-        # These are set in init_ui, so safe to cache
         self._ui_components_initialized = True
     
     def connect_signals(self):
-        """Connect signals and slots"""
         self.menu_bar.exit_requested.connect(self.close)
         self.menu_bar.screen_settings_requested.connect(self.on_display_settings)
         self.menu_bar.language_changed.connect(self.on_language_changed)
@@ -146,7 +122,6 @@ class MainWindow(QMainWindow):
         self.menu_bar.open_program_requested.connect(self.on_open_program)
         self.menu_bar.new_program_requested.connect(self.on_new_program_from_menu)
         
-        # Controller menu signals
         self.menu_bar.device_info_requested.connect(self.on_device_info)
         self.menu_bar.upload_requested.connect(self.on_upload)
         self.menu_bar.download_requested.connect(self.on_download)
@@ -159,88 +134,70 @@ class MainWindow(QMainWindow):
         self.menu_bar.diagnostics_requested.connect(self.on_diagnostics)
         self.menu_bar.import_requested.connect(self.on_import)
         self.menu_bar.export_requested.connect(self.on_export)
+        self.menu_bar.import_xml_requested.connect(self.on_import_xml)
+        self.menu_bar.export_xml_requested.connect(self.on_export_xml)
         
-        # Connect program list panel signals
-        self._connect_program_list_signals()
+        self._connect_toolbar_signals()
     
     def _connect_event_bus(self):
-        """Connect to event bus for decoupled communication"""
-        # Program events
         event_bus.program_created.connect(self._on_program_created)
         event_bus.program_updated.connect(self._on_program_updated)
         event_bus.program_selected.connect(self._on_program_selected_event)
         event_bus.program_saved.connect(self._on_program_saved)
         
-        # UI refresh events - connect to actual refresh handler
         event_bus.ui_program_list_refresh.connect(self._on_program_list_refresh_needed)
         
-        # File events
         event_bus.file_loaded.connect(self._on_file_loaded)
         event_bus.file_error.connect(self._on_file_error)
         
-        # Controller events
         event_bus.controller_connected.connect(self._on_controller_connected)
         event_bus.controller_disconnected.connect(self._on_controller_disconnected)
         event_bus.controller_error.connect(self._on_controller_error)
     
     def _on_program_created(self, program: Program):
-        """Handle program created event"""
-        if self._ui_components_initialized:
-            self.program_list_panel.refresh_programs()
+        pass
     
     def _on_program_updated(self, program: Program):
-        """Handle program updated event"""
         if program == self.program_manager.current_program:
-            # Don't refresh list on every update to avoid performance issues
             self._update_ui_for_program(program, refresh_list=False)
     
     def _on_program_selected_event(self, program_id: str):
-        """Handle program selected event from event bus"""
         program = self.program_manager.get_program_by_id(program_id)
         if program:
             self._update_ui_for_program(program)
     
     def _on_program_saved(self, program: Program, file_path: str):
-        """Handle program saved event"""
         logger.debug(f"Program saved: {program.name} to {file_path}")
     
     def _on_file_loaded(self, file_path: str):
-        """Handle file loaded event"""
-        if self._ui_components_initialized:
-            self.program_list_panel.refresh_programs()
+        pass
     
     def _on_file_error(self, file_path: str, error: str):
-        """Handle file error event"""
         QMessageBox.warning(self, "File Error", f"Error with file {file_path}:\n{error}")
     
     def _on_controller_connected(self, controller: BaseController):
-        """Handle controller connected event"""
         self.current_controller = controller
         if self._ui_components_initialized:
             device_info = controller.get_device_info() if controller else None
             device_name = device_info.get("name", "") if device_info else ""
             self.status_bar.set_connection_status(controller.get_connection_status(), device_name)
             
-            # Start periodic status updates
             if not hasattr(self, '_status_update_timer'):
                 from PyQt5.QtCore import QTimer
                 self._status_update_timer = QTimer()
                 self._status_update_timer.timeout.connect(self._update_connection_status)
-                self._status_update_timer.start(5000)  # Update every 5 seconds
+                self._status_update_timer.start(5000)
     
     def _on_controller_disconnected(self):
-        """Handle controller disconnected event"""
         self.current_controller = None
         if self._ui_components_initialized:
             from controllers.base_controller import ConnectionStatus
             self.status_bar.set_connection_status(ConnectionStatus.DISCONNECTED)
             
-            # Stop status update timer
             if hasattr(self, '_status_update_timer'):
                 self._status_update_timer.stop()
     
     def _update_connection_status(self):
-        """Update connection status in real-time"""
         if self._ui_components_initialized and self.current_controller:
             status = self.current_controller.get_connection_status()
             device_info = self.current_controller.get_device_info() if self.current_controller else None
@@ -248,21 +205,15 @@ class MainWindow(QMainWindow):
             self.status_bar.set_connection_status(status, device_name)
     
     def _auto_check_connection_status(self):
-        """Automatically check and update connection status"""
         if not self._ui_components_initialized:
             return
         
-        # If no controller connected, try to discover and connect
         if not self.current_controller:
-            # Perform "Get network" operation if no device detected
-            # This will update the display list with IP and status
             if not hasattr(self, '_last_network_check') or \
                (datetime.now() - self._last_network_check).total_seconds() > 30:
-                # Only check every 30 seconds to avoid excessive network traffic
                 self._last_network_check = datetime.now()
                 self._perform_network_check()
         
-        # Update status bar
         if self.current_controller:
             self._update_connection_status()
         else:
@@ -270,7 +221,6 @@ class MainWindow(QMainWindow):
             self.status_bar.set_connection_status(ConnectionStatus.DISCONNECTED)
     
     def _perform_network_check(self):
-        """Perform network check to discover controllers"""
         try:
             from core.controller_discovery import ControllerDiscovery
             discovery = ControllerDiscovery(self)
@@ -278,7 +228,6 @@ class MainWindow(QMainWindow):
             def on_discovery_finished():
                 controllers = discovery.get_discovered_controllers()
                 if controllers and not self.current_controller:
-                    # Auto-connect to first available controller
                     ctrl = controllers[0]
                     self.connect_to_controller(ctrl.ip, ctrl.port, ctrl.controller_type)
             
@@ -288,93 +237,51 @@ class MainWindow(QMainWindow):
             logger.debug(f"Network check error (non-critical): {e}")
     
     def _on_controller_error(self, error: str):
-        """Handle controller error event"""
         QMessageBox.warning(self, "Controller Error", error)
     
     def _on_program_list_refresh_needed(self):
-        """Handle program list refresh request with throttling"""
         if self._ui_components_initialized:
-            # Use throttled function call to avoid excessive updates
             self._throttled_refresh()
     
     def _do_program_list_refresh(self):
-        """Actually perform the program list refresh"""
-        if self._ui_components_initialized:
-            self.program_list_panel.refresh_programs()
+        pass
     
     def _throttled_refresh(self):
-        """Throttled refresh using QTimer"""
         if not hasattr(self, '_refresh_timer'):
             self._refresh_timer = QTimer()
             self._refresh_timer.setSingleShot(True)
             self._refresh_timer.timeout.connect(self._do_program_list_refresh)
         
-        # Stop existing timer and restart with delay
         self._refresh_timer.stop()
-        self._refresh_timer.start(100)  # 100ms throttle
+        self._refresh_timer.start(100)
     
     def _connect_program_list_signals(self):
-        """Connect program list panel signals"""
-        if not self._ui_components_initialized:
-            return
-        
-        self.program_list_panel.program_selected.connect(self.on_program_selected)
-        self.program_list_panel.screen_selected.connect(self.on_screen_selected)
-        self.program_list_panel.new_program_requested.connect(self.on_new_program)
-        self.program_list_panel.delete_program_requested.connect(self.on_delete_program)
-        self.program_list_panel.program_renamed.connect(self.on_program_renamed)
-        self.program_list_panel.program_duplicated.connect(self.on_program_duplicated)
-        self.program_list_panel.program_moved.connect(self.on_program_moved)
-        self.program_list_panel.program_activated.connect(self.on_program_activated)
-        self.program_list_panel.program_checked.connect(self.on_program_checked)
-        
-        self.program_list_panel.screen_renamed.connect(self.on_screen_renamed)
-        self.program_list_panel.screen_deleted.connect(self.on_screen_deleted)
-        self.program_list_panel.new_screen_requested.connect(self.on_new_screen)
-        self.program_list_panel.add_program_requested.connect(self.on_add_program)
-        self.program_list_panel.screen_insert_requested.connect(self.on_screen_insert)
-        self.program_list_panel.screen_download_requested.connect(self.on_screen_download)
-        self.program_list_panel.screen_close_requested.connect(self.on_screen_close)
-        self.program_list_panel.screen_paste_requested.connect(self.on_screen_paste)
-        
-        self.program_list_panel.program_copy_requested.connect(self.on_program_copy)
-        self.program_list_panel.program_paste_requested.connect(self.on_program_paste)
-        self.program_list_panel.program_add_content_requested.connect(self.on_program_add_content)
-        
-        # Content signals
-        self.program_list_panel.content_selected.connect(self.on_content_selected)
-        self.program_list_panel.content_renamed.connect(self.on_content_renamed)
-        self.program_list_panel.content_deleted.connect(self.on_content_deleted)
-        self.program_list_panel.content_add_requested.connect(self.on_content_add_requested)
-        
+        pass
+    
+    def _connect_toolbar_signals(self):
         self.visible_content_toolbar.content_type_selected.connect(self.on_content_type_selected)
         self.playback_control_toolbar.action_triggered.connect(self.on_playback_action)
         self.control_toolbar.action_triggered.connect(self.on_control_action)
     
     def on_language_changed(self, language: str):
-        """Handle language change"""
         set_language(language)
         if self._ui_components_initialized:
             self.menu_bar.refresh_texts()
     
     def on_content_type_selected(self, content_type: str):
-        """Handle content type selection from toolbar"""
         try:
             if self.program_manager and self.program_manager.current_program:
                 from datetime import datetime
                 program = self.program_manager.current_program
                 
-                # Get screen dimensions
                 screen_props = program.properties.get("screen", {})
                 screen_width = screen_props.get("width")
                 screen_height = screen_props.get("height")
                 
-                # Fallback to program dimensions if screen properties not set
                 if not screen_width or not screen_height or screen_width <= 0 or screen_height <= 0:
                     screen_width = program.width
                     screen_height = program.height
                 
-                # Final fallback to default dimensions if still invalid
                 if not screen_width or not screen_height or screen_width <= 0 or screen_height <= 0:
                     from config.constants import DEFAULT_CANVAS_WIDTH, DEFAULT_CANVAS_HEIGHT
                     screen_width = DEFAULT_CANVAS_WIDTH
@@ -392,52 +299,27 @@ class MainWindow(QMainWindow):
                 }
                 self.program_manager.current_program.elements.append(element)
                 self.program_manager.current_program.modified = datetime.now().isoformat()
-                if self._ui_components_initialized:
-                    self.properties_panel.set_element(element, self.program_manager.current_program)
                 if self.auto_save_manager:
                     self.auto_save_manager.save_current_program()
         except Exception as e:
             logger.error(f"Error adding content: {e}", exc_info=True)
     
     def on_playback_action(self, action_id: str):
-        """Handle playback toolbar actions"""
         logger.debug(f"Playback action: {action_id}")
     
     def on_control_action(self, action_id: str):
-        """Handle control toolbar actions"""
         logger.debug(f"Control action: {action_id}")
     
     def _update_ui_for_program(self, program: Program, refresh_list: bool = True):
-        """
-        Update UI components for a program.
-        
-        Args:
-            program: Program to update UI for
-            refresh_list: Whether to refresh the program list panel (default: True)
-        """
-        # Use cached references (set in init_ui) for better performance
         if self._ui_components_initialized:
-            self.media_player_panel.set_program(program)
-            self.properties_panel.set_program(program)
-            if refresh_list:
-                self.program_list_panel.refresh_programs()
             if program:
                 self.status_bar.set_program_name(program.name)
     
     def _save_and_refresh(self, program: Program, file_path: Optional[str] = None):
-        """
-        Save program to .soo file and refresh UI.
-        Uses FileService for business logic and event bus for UI updates.
-        """
         return self.file_service.save_file(program, file_path)
     
     def on_program_selected(self, program_id: str):
-        """Handle program selection from program list panel"""
         try:
-            # Clear selected element when program is selected
-            if hasattr(self, 'media_player_panel'):
-                self.media_player_panel.set_current_element(None)
-            
             if not self.program_manager:
                 return
             program = self.program_manager.get_program_by_id(program_id)
@@ -448,24 +330,20 @@ class MainWindow(QMainWindow):
             logger.error(f"Error selecting program: {e}")
     
     def on_screen_selected(self, screen_name: str):
-        """Handle screen selection from program list panel"""
         try:
             if not self.program_manager:
                 return
             screen_programs = ScreenManager.get_programs_for_screen(
                 self.program_manager.programs, screen_name
             )
-            if self._ui_components_initialized and self.properties_panel:
-                self.properties_panel.set_screen(screen_name, screen_programs, self.program_manager)
+            pass
         except Exception as e:
             logger.error(f"Error selecting screen '{screen_name}': {e}", exc_info=True)
     
     def on_new_program_from_menu(self):
-        """Handle new program request from menu - opens screen settings dialog"""
         self._create_new_screen_with_dialog()
     
     def on_new_program(self):
-        """Handle new program request from program list panel"""
         try:
             if not self.program_manager:
                 return
@@ -482,26 +360,21 @@ class MainWindow(QMainWindow):
             )
             program = self.program_manager.create_program(program_name)
             
-            # Set screen properties for the new program
             if "screen" not in program.properties:
                 program.properties["screen"] = {}
             
             program.properties["screen"]["screen_name"] = screen_name
             
-            # Copy screen dimensions from existing programs on the same screen
-            # This ensures each screen maintains its own width/height independently
             screen_programs = ScreenManager.get_programs_for_screen(
                 self.program_manager.programs, screen_name
             )
             
-            # Find width/height from existing programs on this screen
             for existing_program in screen_programs:
                 if existing_program.id != program.id:
                     existing_screen = existing_program.properties.get("screen", {})
-                    if "width" in existing_screen and "height" in existing_screen:
+                    if isinstance(existing_screen, dict) and "width" in existing_screen and "height" in existing_screen:
                         program.properties["screen"]["width"] = existing_screen["width"]
                         program.properties["screen"]["height"] = existing_screen["height"]
-                        # Also copy other screen properties
                         if "rotate" in existing_screen:
                             program.properties["screen"]["rotate"] = existing_screen["rotate"]
                         if "brand" in existing_screen:
@@ -516,20 +389,18 @@ class MainWindow(QMainWindow):
             
             self.program_manager.current_program = program
             self._save_and_refresh(program)
-            self._update_ui_for_program(program)  # This will refresh program list panel
+            self._update_ui_for_program(program)
             if hasattr(self, 'auto_save_manager'):
                 self.auto_save_manager.save_current_program()
         except Exception as e:
             logger.error(f"Error creating new program: {e}")
     
     def _create_new_screen_with_dialog(self):
-        """Create a new screen by opening screen settings dialog"""
         try:
             from ui.screen_settings_dialog import ScreenSettingsDialog
             from pathlib import Path
             import time
             
-            # Mark dialog as opened to prevent duplicates
             self._screen_dialog_opened = True
             
             dialog = ScreenSettingsDialog(self)
@@ -541,7 +412,6 @@ class MainWindow(QMainWindow):
                     model = dialog.selected_model()
                     ctrl_id = dialog.selected_controller_id()
                     
-                    # Determine screen name
                     existing_screen_names = set()
                     for p in self.program_manager.programs:
                         p_screen_name = ScreenManager.get_screen_name_from_program(p)
@@ -557,7 +427,6 @@ class MainWindow(QMainWindow):
                             screen_name = f"Screen_{int(time.time())}"
                             break
                     
-                    # Automatically create "Program1" as a child of the new screen
                     program1_name = "Program1"
                     existing_program_names = [p.name for p in self.program_manager.programs]
                     counter = 1
@@ -565,7 +434,6 @@ class MainWindow(QMainWindow):
                         counter += 1
                         program1_name = f"Program{counter}"
                     
-                    # Create Program1 with screen dimensions
                     program1 = self.program_manager.create_program(program1_name, w, h)
                     if "screen" not in program1.properties:
                         program1.properties["screen"] = {}
@@ -579,38 +447,27 @@ class MainWindow(QMainWindow):
                     if ctrl_id:
                         program1.properties["screen"]["controller_id"] = ctrl_id
                     
-                    # Set program1 as current program
                     self.program_manager.current_program = program1
                     self._save_and_refresh(program1)
                     
                     logger.info(f"Created new screen: {screen_name}, program: {program1.name}, width: {w}, height: {h}, rotate: {rotate}, programs count: {len(self.program_manager.programs)}")
                     
-                    # Update UI - this will refresh program list panel and media player
                     self._update_ui_for_program(program1)
                     if self.auto_save_manager:
                         self.auto_save_manager.save_current_program()
-                    
-                    # Update media player panel to show the rectangle with screen dimensions
-                    if self._ui_components_initialized:
-                        self.media_player_panel.set_program(program1)
         except Exception as e:
             logger.error(f"Error creating new screen: {e}", exc_info=True)
     
     def on_delete_program(self, program_id: str):
-        """Handle delete program request"""
         try:
             if not self.program_manager:
                 return
             program = self.program_manager.get_program_by_id(program_id)
             if program:
                 self.program_manager.delete_program(program)
-                if self._ui_components_initialized:
-                    self.program_list_panel.refresh_programs()
                 
-                # Clean up orphaned autosave files after deletion
                 self._cleanup_orphaned_files()
                 
-                # Check if no screens remain and open dialog
                 QTimer.singleShot(100, self._check_and_open_screen_dialog_if_needed)
         except Exception as e:
             from utils.logger import get_logger
@@ -618,7 +475,6 @@ class MainWindow(QMainWindow):
             logger.error(f"Error deleting program: {e}")
     
     def on_program_renamed(self, program_id: str, new_name: str):
-        """Handle program rename"""
         from datetime import datetime
         try:
             if not self.program_manager:
@@ -629,7 +485,6 @@ class MainWindow(QMainWindow):
                 program.name = new_name
                 program.modified = datetime.now().isoformat()
                 self._save_and_refresh(program)
-                # Update UI - this will refresh program list panel
                 self._update_ui_for_program(program)
                 if hasattr(self, 'auto_save_manager'):
                     self.auto_save_manager.save_current_program()
@@ -639,7 +494,6 @@ class MainWindow(QMainWindow):
             logger.error(f"Error renaming program: {e}")
     
     def on_program_duplicated(self, program_id: str):
-        """Handle program duplication"""
         import uuid
         from datetime import datetime
         from core.program_manager import Program
@@ -659,12 +513,6 @@ class MainWindow(QMainWindow):
                     if "screen" in program.properties:
                         new_program.properties["screen"] = program.properties["screen"].copy()
                     self._save_and_refresh(new_program)
-                    if hasattr(self, 'media_player_panel'):
-                        self.media_player_panel.set_program(new_program)
-                    if hasattr(self, 'properties_panel'):
-                        self.properties_panel.set_program(new_program)
-                    if hasattr(self, 'program_list_panel'):
-                        self.program_list_panel.refresh_programs()
                     if hasattr(self, 'auto_save_manager'):
                         self.auto_save_manager.save_current_program()
         except Exception as e:
@@ -673,7 +521,6 @@ class MainWindow(QMainWindow):
             logger.error(f"Error duplicating program: {e}")
     
     def on_program_moved(self, program_id: str, direction: int):
-        """Handle program move (up/down)"""
         try:
             if self.program_manager:
                 programs = self.program_manager.programs
@@ -682,8 +529,6 @@ class MainWindow(QMainWindow):
                     new_index = current_index + direction
                     if 0 <= new_index < len(programs):
                         programs[current_index], programs[new_index] = programs[new_index], programs[current_index]
-                        if hasattr(self, 'program_list_panel'):
-                            self.program_list_panel.refresh_programs()
                         if hasattr(self, 'auto_save_manager'):
                             self.auto_save_manager.save_current_program()
         except Exception as e:
@@ -692,7 +537,6 @@ class MainWindow(QMainWindow):
             logger.error(f"Error moving program: {e}")
     
     def on_program_activated(self, program_id: str, enabled: bool):
-        """Handle program activation/deactivation"""
         from datetime import datetime
         try:
             if self.program_manager:
@@ -702,8 +546,6 @@ class MainWindow(QMainWindow):
                         program.properties["activation"] = {}
                     program.properties["activation"]["enabled"] = enabled
                     program.modified = datetime.now().isoformat()
-                    if hasattr(self, 'program_list_panel'):
-                        self.program_list_panel.refresh_programs()
                     if hasattr(self, 'auto_save_manager'):
                         self.auto_save_manager.save_current_program()
         except Exception as e:
@@ -712,7 +554,6 @@ class MainWindow(QMainWindow):
             logger.error(f"Error activating/deactivating program: {e}")
     
     def on_program_checked(self, program_id: str, checked: bool):
-        """Handle program checkbox toggle"""
         try:
             if self.program_manager:
                 program = self.program_manager.get_program_by_id(program_id)
@@ -728,7 +569,6 @@ class MainWindow(QMainWindow):
     
     
     def on_display_settings(self):
-        """Handle display settings menu action"""
         try:
             from ui.screen_settings_dialog import ScreenSettingsDialog
             dlg = ScreenSettingsDialog(self)
@@ -740,7 +580,6 @@ class MainWindow(QMainWindow):
                     if "screen" not in program.properties:
                         program.properties["screen"] = {}
                     
-                    # Save screen dimensions (controller screen, not PC canvas)
                     program.properties["screen"]["width"] = w
                     program.properties["screen"]["height"] = h
                     program.properties["screen"]["rotate"] = rotate
@@ -759,7 +598,6 @@ class MainWindow(QMainWindow):
                     if screen_name:
                         program.properties["screen"]["screen_name"] = screen_name
                     
-                    # Update all programs on the same screen with the new dimensions
                     screen_programs = ScreenManager.get_programs_for_screen(
                         self.program_manager.programs, screen_name
                     )
@@ -778,18 +616,13 @@ class MainWindow(QMainWindow):
             logger.error(f"Error in display settings: {e}")
     
     def load_soo_file(self, file_path: str, clear_existing: bool = False) -> bool:
-        """Load a .soo file (delegates to FileManager)"""
         result = self.file_manager.load_soo_file(file_path, clear_existing)
         if result:
-            # Refresh program list panel to show loaded programs
-            if hasattr(self, 'program_list_panel'):
-                self.program_list_panel.refresh_programs()
             if self.program_manager and self.program_manager.current_program:
                 self._update_ui_for_program(self.program_manager.current_program)
         return result
     
     def on_open_program(self, file_path: str = ""):
-        """Handle open program request from menu"""
         try:
             if not file_path:
                 file_path, _ = QFileDialog.getOpenFileName(
@@ -811,7 +644,6 @@ class MainWindow(QMainWindow):
     
     
     def on_save_program(self, file_path: str = ""):
-        """Handle save program request from menu"""
         try:
             if not self.program_manager or not self.program_manager.current_program:
                 QMessageBox.warning(self, "Save", "No program to save.")
@@ -849,12 +681,9 @@ class MainWindow(QMainWindow):
                     logger.error(f"Failed to save program to: {file_path}")
                     QMessageBox.warning(self, "Error", f"Failed to save program to: {file_path}")
         except Exception as e:
-            from utils.logger import get_logger
-            logger = get_logger(__name__)
-            logger.error(f"Error saving program: {e}")
+            logger.error(f"Error saving program: {e}", exc_info=True)
     
     def on_screen_renamed(self, screen_name: str, new_name: str):
-        """Handle screen rename from context menu"""
         try:
             if not new_name:
                 new_name, ok = QInputDialog.getText(self, "Rename Screen", "Enter new screen name:", text=screen_name)
@@ -878,7 +707,6 @@ class MainWindow(QMainWindow):
             logger.error(f"Error renaming screen: {e}")
     
     def on_screen_deleted(self, screen_name: str):
-        """Handle screen delete from context menu"""
         try:
             reply = QMessageBox.question(
                 self, 
@@ -898,13 +726,8 @@ class MainWindow(QMainWindow):
                     for program in programs_to_delete:
                         self.program_manager.delete_program(program)
                     
-                    if hasattr(self, 'program_list_panel'):
-                        self.program_list_panel.refresh_programs()
-                    
-                    # Clean up orphaned autosave files after deletion
                     self._cleanup_orphaned_files()
                     
-                    # Check if no screens remain and open dialog
                     QTimer.singleShot(100, self._check_and_open_screen_dialog_if_needed)
         except Exception as e:
             from utils.logger import get_logger
@@ -912,28 +735,22 @@ class MainWindow(QMainWindow):
             logger.error(f"Error deleting screen: {e}")
     
     def on_new_screen(self):
-        """Handle new screen from context menu - opens screen settings dialog"""
         self._create_new_screen_with_dialog()
     
     def on_add_program(self, screen_name: str):
-        """Handle add program request for a screen"""
         try:
             if not self.program_manager:
                 return
             
-            # Get existing programs for this screen
             screen_programs = ScreenManager.get_programs_for_screen(
                 self.program_manager.programs, screen_name
             )
             
-            # Find the latest program number in this screen
             latest_num = 0
             for p in screen_programs:
-                # Extract number from program name (e.g., "Program1" -> 1, "Program3" -> 3)
                 name = p.name
                 if name.startswith("Program"):
                     try:
-                        # Try to extract number after "Program"
                         num_str = name.replace("Program", "").strip()
                         if num_str and num_str.isdigit():
                             num = int(num_str)
@@ -941,11 +758,9 @@ class MainWindow(QMainWindow):
                     except ValueError:
                         pass
             
-            # Name new program as "Program {latest num + 1}"
             new_program_num = latest_num + 1
             program_name = f"Program{new_program_num}"
             
-            # Ensure the name is unique (in case of conflicts)
             existing_program_names = [p.name for p in self.program_manager.programs]
             counter = new_program_num
             while program_name in existing_program_names:
@@ -959,16 +774,12 @@ class MainWindow(QMainWindow):
             
             program.properties["screen"]["screen_name"] = screen_name
             
-            # Copy screen dimensions from existing programs on the same screen
-            # This ensures each screen maintains its own width/height independently
-            # Note: screen_programs already contains programs for this screen (excluding the new one)
             for existing_program in screen_programs:
                 if existing_program.id != program.id:
                     existing_screen = existing_program.properties.get("screen", {})
-                    if "width" in existing_screen and "height" in existing_screen:
+                    if isinstance(existing_screen, dict) and "width" in existing_screen and "height" in existing_screen:
                         program.properties["screen"]["width"] = existing_screen["width"]
                         program.properties["screen"]["height"] = existing_screen["height"]
-                        # Also copy other screen properties
                         if "rotate" in existing_screen:
                             program.properties["screen"]["rotate"] = existing_screen["rotate"]
                         if "brand" in existing_screen:
@@ -990,7 +801,6 @@ class MainWindow(QMainWindow):
             logger.error(f"Error adding program: {e}")
     
     def on_screen_insert(self, screen_name: str):
-        """Handle screen insert request from context menu"""
         try:
             if self.program_manager and self.clipboard_program:
                 program = Program()
@@ -1002,15 +812,12 @@ class MainWindow(QMainWindow):
                 
                 if "screen" not in program.properties:
                     program.properties["screen"] = {}
-                program.properties["screen"]["screen_name"] = screen_name
+                if isinstance(program.properties["screen"], dict):
+                    program.properties["screen"]["screen_name"] = screen_name
                 
                 self.program_manager.programs.append(program)
                 self.program_manager.current_program = program
                 self._save_and_refresh(program)
-                if hasattr(self, 'media_player_panel'):
-                    self.media_player_panel.set_program(program)
-                if hasattr(self, 'properties_panel'):
-                    self.properties_panel.set_program(program)
                 if hasattr(self, 'auto_save_manager'):
                     self.auto_save_manager.save_current_program()
         except Exception as e:
@@ -1019,7 +826,6 @@ class MainWindow(QMainWindow):
             logger.error(f"Error inserting program: {e}")
     
     def on_screen_download(self, screen_name: str):
-        """Handle screen download request from context menu"""
         try:
             if self.program_manager:
                 screen_programs = ScreenManager.get_programs_for_screen(
@@ -1037,7 +843,6 @@ class MainWindow(QMainWindow):
             logger.error(f"Error downloading screen: {e}")
     
     def on_screen_close(self, screen_name: str):
-        """Handle screen close request from context menu"""
         try:
             reply = QMessageBox.question(
                 self, 
@@ -1058,16 +863,12 @@ class MainWindow(QMainWindow):
                             self.file_manager.save_soo_file_for_screen(program)
                             if hasattr(self, 'auto_save_manager'):
                                 self.auto_save_manager.save_current_program()
-                    
-                    if hasattr(self, 'program_list_panel'):
-                        self.program_list_panel.refresh_programs()
         except Exception as e:
             from utils.logger import get_logger
             logger = get_logger(__name__)
             logger.error(f"Error closing screen: {e}")
     
     def on_screen_paste(self, screen_name: str):
-        """Handle screen paste request from context menu"""
         try:
             if self.program_manager and self.clipboard_program:
                 import uuid
@@ -1080,14 +881,11 @@ class MainWindow(QMainWindow):
                 
                 if "screen" not in program.properties:
                     program.properties["screen"] = {}
+                if isinstance(program.properties["screen"], dict):
                     program.properties["screen"]["screen_name"] = screen_name
                 
                 self.program_manager.programs.append(program)
                 self.program_manager.current_program = program
-                if hasattr(self, 'media_player_panel'):
-                    self.media_player_panel.set_program(program)
-                if hasattr(self, 'properties_panel'):
-                    self.properties_panel.set_program(program)
                 self._save_and_refresh(program)
                 if hasattr(self, 'auto_save_manager'):
                     self.auto_save_manager.save_current_program()
@@ -1097,7 +895,6 @@ class MainWindow(QMainWindow):
             logger.error(f"Error pasting program: {e}")
     
     def on_program_copy(self, program_id: str):
-        """Handle program copy request"""
         try:
             if not self.program_manager:
                 return
@@ -1113,7 +910,6 @@ class MainWindow(QMainWindow):
             logger.error(f"Error copying program: {e}")
     
     def on_program_paste(self, program_id: str):
-        """Handle program paste request"""
         try:
             if self.program_manager and self.clipboard_program:
                 target_program = self.program_manager.get_program_by_id(program_id)
@@ -1125,8 +921,6 @@ class MainWindow(QMainWindow):
                         target_program.elements.append(new_element)
                     target_program.modified = datetime.now().isoformat()
                     self._save_and_refresh(target_program)
-                    if hasattr(self, 'properties_panel'):
-                        self.properties_panel.set_program(target_program)
                     if hasattr(self, 'auto_save_manager'):
                         self.auto_save_manager.save_current_program()
         except Exception as e:
@@ -1135,7 +929,6 @@ class MainWindow(QMainWindow):
             logger.error(f"Error pasting elements: {e}")
     
     def on_program_add_content(self, program_id: str, content_type: str):
-        """Handle program add content request from context menu"""
         try:
             if self.program_manager:
                 program = self.program_manager.get_program_by_id(program_id)
@@ -1148,12 +941,7 @@ class MainWindow(QMainWindow):
             logger.error(f"Error adding content to program: {e}")
     
     def on_content_selected(self, program_id: str, element_id: str):
-        """Handle content selection from program list panel"""
         try:
-            # Update media player panel with selected element
-            if hasattr(self, 'media_player_panel'):
-                self.media_player_panel.set_current_element(element_id)
-            
             if not self.program_manager:
                 return
             
@@ -1161,22 +949,16 @@ class MainWindow(QMainWindow):
             if not program:
                 return
             
-            # Find the element
             element = next((e for e in program.elements if e.get("id") == element_id), None)
-            if element and hasattr(self, 'properties_panel'):
-                self.properties_panel.set_element(element, program)
         except Exception as e:
             from utils.logger import get_logger
             logger = get_logger(__name__)
             logger.error(f"Error selecting content: {e}")
     
     def _on_property_changed(self, property_name: str, value):
-        """Handle property changes - refresh media player"""
-        if hasattr(self, 'media_player_panel'):
-            self.media_player_panel.refresh_media()
+        pass
     
     def on_content_renamed(self, program_id: str, element_id: str, new_name: str):
-        """Handle content rename"""
         try:
             if not self.program_manager:
                 return
@@ -1185,22 +967,18 @@ class MainWindow(QMainWindow):
             if not program:
                 return
             
-            # Find and update the element
             element = next((e for e in program.elements if e.get("id") == element_id), None)
             if element:
                 element["name"] = new_name
                 program.modified = datetime.now().isoformat()
                 if hasattr(self, 'auto_save_manager'):
                     self.auto_save_manager.save_current_program()
-                if hasattr(self, 'program_list_panel'):
-                    self.program_list_panel.refresh_programs()
         except Exception as e:
             from utils.logger import get_logger
             logger = get_logger(__name__)
             logger.error(f"Error renaming content: {e}")
     
     def on_content_deleted(self, program_id: str, element_id: str):
-        """Handle content delete"""
         try:
             if not self.program_manager:
                 return
@@ -1209,23 +987,17 @@ class MainWindow(QMainWindow):
             if not program:
                 return
             
-            # Remove the element
             program.elements = [e for e in program.elements if e.get("id") != element_id]
             program.modified = datetime.now().isoformat()
             
             if hasattr(self, 'auto_save_manager'):
                 self.auto_save_manager.save_current_program()
-            if hasattr(self, 'program_list_panel'):
-                self.program_list_panel.refresh_programs()
-            if hasattr(self, 'properties_panel'):
-                self.properties_panel.set_program(program)
         except Exception as e:
             from utils.logger import get_logger
             logger = get_logger(__name__)
             logger.error(f"Error deleting content: {e}")
     
     def on_content_add_requested(self, program_id: str, content_type: str):
-        """Handle content add request from program list panel"""
         try:
             if not self.program_manager:
                 return
@@ -1234,8 +1006,6 @@ class MainWindow(QMainWindow):
             if not program:
                 return
             
-            # Create new element
-            # Map content types to display names
             name_map = {
                 "image": "Photo",
                 "picture": "Photo",
@@ -1246,17 +1016,14 @@ class MainWindow(QMainWindow):
             }
             element_name = name_map.get(content_type, content_type.replace("_", " ").title())
             
-            # Get screen dimensions for initial element size
             screen_props = program.properties.get("screen", {})
             screen_width = screen_props.get("width")
             screen_height = screen_props.get("height")
             
-            # Fallback to program dimensions if screen properties not set
             if not screen_width or not screen_height or screen_width <= 0 or screen_height <= 0:
                 screen_width = program.width
                 screen_height = program.height
             
-            # Final fallback to default dimensions if still invalid
             if not screen_width or not screen_height or screen_width <= 0 or screen_height <= 0:
                 from config.constants import DEFAULT_CANVAS_WIDTH, DEFAULT_CANVAS_HEIGHT
                 screen_width = DEFAULT_CANVAS_WIDTH
@@ -1279,18 +1046,12 @@ class MainWindow(QMainWindow):
             
             if hasattr(self, 'auto_save_manager'):
                 self.auto_save_manager.save_current_program()
-            if hasattr(self, 'program_list_panel'):
-                self.program_list_panel.refresh_programs()
-            if hasattr(self, 'properties_panel'):
-                self.properties_panel.set_element(element, program)
         except Exception as e:
             from utils.logger import get_logger
             logger = get_logger(__name__)
             logger.error(f"Error adding content: {e}")
 
     def open_screen_settings_on_startup(self):
-        """Show the Screen Parameters Setting dialog by default when window initializes."""
-        # Prevent duplicate dialog opens
         if self._screen_dialog_opened:
             logger.info("Screen settings dialog already opened, skipping")
             return
@@ -1306,7 +1067,6 @@ class MainWindow(QMainWindow):
             logger.info(f"Skipping screen settings dialog - {len(self.program_manager.programs)} programs already exist")
             return
         try:
-            # Mark dialog as opened to prevent duplicates
             self._screen_dialog_opened = True
             from ui.screen_settings_dialog import ScreenSettingsDialog
             dlg = ScreenSettingsDialog(self)
@@ -1334,7 +1094,6 @@ class MainWindow(QMainWindow):
                     if "screen" not in program.properties:
                         program.properties["screen"] = {}
                     
-                    # Save screen dimensions (controller screen, not PC canvas)
                     program.properties["screen"]["width"] = w
                     program.properties["screen"]["height"] = h
                     program.properties["screen"]["rotate"] = rotate
@@ -1348,10 +1107,6 @@ class MainWindow(QMainWindow):
                     if screen_name:
                         program.properties["screen"]["screen_name"] = screen_name
                     
-                    if hasattr(self, 'media_player_panel'):
-                        self.media_player_panel.set_program(program)
-                    if hasattr(self, 'properties_panel'):
-                        self.properties_panel.set_program(program)
                 self._save_and_refresh(program)
                 if hasattr(self, 'auto_save_manager'):
                     self.auto_save_manager.save_current_program()
@@ -1361,7 +1116,6 @@ class MainWindow(QMainWindow):
             logger.error(f"Error opening screen settings: {e}")
     
     def closeEvent(self, event):
-        """Handle window close event - autosave all screens"""
         try:
             from utils.logger import get_logger
             logger = get_logger(__name__)
@@ -1390,9 +1144,7 @@ class MainWindow(QMainWindow):
             logger.error(f"Error in closeEvent: {e}")
             event.accept()
     
-    # Controller management methods
     def auto_discover_controllers(self):
-        """Auto-discover controllers on startup"""
         try:
             from core.controller_discovery import ControllerDiscovery
             discovery = ControllerDiscovery(self)
@@ -1402,17 +1154,14 @@ class MainWindow(QMainWindow):
             logger.error(f"Error in auto-discovery: {e}")
     
     def on_discovery_finished(self, discovery):
-        """Handle discovery finished"""
         controllers = discovery.get_discovered_controllers()
         if controllers:
             logger.info(f"Auto-discovered {len(controllers)} controller(s)")
-            # Auto-connect to first controller if available
             if len(controllers) == 1:
                 ctrl = controllers[0]
                 self.connect_to_controller(ctrl.ip, ctrl.port, ctrl.controller_type)
     
     def on_discover_controllers(self):
-        """Handle discover controllers menu action"""
         try:
             from ui.dashboard_dialog import DashboardDialog
             dialog = DashboardDialog(self)
@@ -1423,21 +1172,16 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Error", f"Error discovering controllers: {e}")
     
     def on_controller_selected_from_dashboard(self, ip: str, port: int, controller_type: str):
-        """Handle controller selection from dashboard"""
         self.connect_to_controller(ip, port, controller_type)
     
     def on_dashboard(self):
-        """Handle dashboard menu action"""
         self.on_discover_controllers()
     
     def connect_to_controller(self, ip: str, port: int, controller_type: str):
-        """Connect to a controller"""
         try:
-            # Disconnect existing controller
             if self.current_controller:
                 self.current_controller.disconnect()
             
-            # Create new controller
             if controller_type == "novastar":
                 self.current_controller = NovaStarController(ip, port)
             elif controller_type == "huidu":
@@ -1446,7 +1190,6 @@ class MainWindow(QMainWindow):
                 QMessageBox.warning(self, "Error", f"Unknown controller type: {controller_type}")
                 return
             
-            # Connect
             self.status_bar.set_connection_status(ConnectionStatus.CONNECTING)
             if self.current_controller.connect():
                 device_info = self.current_controller.get_device_info()
@@ -1454,18 +1197,14 @@ class MainWindow(QMainWindow):
                 self.status_bar.set_connection_status(ConnectionStatus.CONNECTED, device_name)
                 logger.info(f"Connected to {controller_type} controller at {ip}:{port}")
                 
-                # Update current program with controller info AND screen resolution
                 if self.program_manager.current_program:
                     if "screen" not in self.program_manager.current_program.properties:
                         self.program_manager.current_program.properties["screen"] = {}
                     
-                    # Set controller ID and type
                     self.program_manager.current_program.properties["screen"]["controller_id"] = self.current_controller.get_controller_id()
                     self.program_manager.current_program.properties["screen"]["controller_type"] = controller_type
                     
-                    # CRITICAL: Read actual controller screen resolution from device_info
                     if device_info:
-                        # Try to get resolution from various possible fields
                         resolution = (
                             device_info.get("display_resolution") or
                             device_info.get("resolution") or
@@ -1474,7 +1213,6 @@ class MainWindow(QMainWindow):
                         )
                         
                         if resolution:
-                            # Parse resolution string like "1920x1080" or dict with width/height
                             if isinstance(resolution, str) and "x" in resolution.lower():
                                 try:
                                     parts = resolution.lower().replace(" ", "").split("x")
@@ -1487,34 +1225,43 @@ class MainWindow(QMainWindow):
                                 except (ValueError, IndexError) as e:
                                     logger.warning(f"Could not parse resolution string '{resolution}': {e}")
                             elif isinstance(resolution, dict):
-                                ctrl_width = resolution.get("width") or resolution.get("w")
-                                ctrl_height = resolution.get("height") or resolution.get("h")
-                                if ctrl_width and ctrl_height:
-                                    self.program_manager.current_program.properties["screen"]["width"] = int(ctrl_width)
-                                    self.program_manager.current_program.properties["screen"]["height"] = int(ctrl_height)
-                                    logger.info(f"Set controller screen resolution from device_info dict: {ctrl_width}x{ctrl_height}")
+                                ctrl_width_val = resolution.get("width") or resolution.get("w")
+                                ctrl_height_val = resolution.get("height") or resolution.get("h")
+                                if ctrl_width_val is not None and ctrl_height_val is not None:
+                                    try:
+                                        ctrl_width = int(ctrl_width_val)
+                                        ctrl_height = int(ctrl_height_val)
+                                        self.program_manager.current_program.properties["screen"]["width"] = ctrl_width
+                                        self.program_manager.current_program.properties["screen"]["height"] = ctrl_height
+                                        logger.info(f"Set controller screen resolution from device_info dict: {ctrl_width}x{ctrl_height}")
+                                    except (ValueError, TypeError):
+                                        logger.warning(f"Invalid resolution values: {ctrl_width_val}x{ctrl_height_val}")
                         
-                        # Also try direct width/height fields
-                        if "width" not in self.program_manager.current_program.properties["screen"]:
-                            ctrl_width = device_info.get("width") or device_info.get("screen_width")
-                            ctrl_height = device_info.get("height") or device_info.get("screen_height")
-                            if ctrl_width and ctrl_height:
-                                self.program_manager.current_program.properties["screen"]["width"] = int(ctrl_width)
-                                self.program_manager.current_program.properties["screen"]["height"] = int(ctrl_height)
-                                logger.info(f"Set controller screen resolution from direct fields: {ctrl_width}x{ctrl_height}")
+                        if isinstance(self.program_manager.current_program.properties.get("screen"), dict):
+                            if "width" not in self.program_manager.current_program.properties["screen"]:
+                                ctrl_width_val = device_info.get("width") or device_info.get("screen_width")
+                                ctrl_height_val = device_info.get("height") or device_info.get("screen_height")
+                                if ctrl_width_val is not None and ctrl_height_val is not None:
+                                    try:
+                                        ctrl_width = int(ctrl_width_val)
+                                        ctrl_height = int(ctrl_height_val)
+                                        self.program_manager.current_program.properties["screen"]["width"] = ctrl_width
+                                        self.program_manager.current_program.properties["screen"]["height"] = ctrl_height
+                                        logger.info(f"Set controller screen resolution from direct fields: {ctrl_width}x{ctrl_height}")
+                                    except (ValueError, TypeError):
+                                        logger.warning(f"Invalid resolution values: {ctrl_width_val}x{ctrl_height_val}")
                         
-                        # Update brand and model if available
-                        if "brand" not in self.program_manager.current_program.properties["screen"]:
-                            brand = device_info.get("brand") or device_info.get("manufacturer")
-                            if brand:
-                                self.program_manager.current_program.properties["screen"]["brand"] = brand
-                        
-                        if "model" not in self.program_manager.current_program.properties["screen"]:
-                            model = device_info.get("model") or device_info.get("model_number") or device_info.get("device_model")
-                            if model:
-                                self.program_manager.current_program.properties["screen"]["model"] = model
+                        if isinstance(self.program_manager.current_program.properties.get("screen"), dict):
+                            if "brand" not in self.program_manager.current_program.properties["screen"]:
+                                brand = device_info.get("brand") or device_info.get("manufacturer")
+                                if brand:
+                                    self.program_manager.current_program.properties["screen"]["brand"] = brand
+                            
+                            if "model" not in self.program_manager.current_program.properties["screen"]:
+                                model = device_info.get("model") or device_info.get("model_number") or device_info.get("device_model")
+                                if model:
+                                    self.program_manager.current_program.properties["screen"]["model"] = model
                     
-                    # Save the updated screen properties
                     self._save_and_refresh(self.program_manager.current_program)
             else:
                 self.status_bar.set_connection_status(ConnectionStatus.ERROR)
@@ -1525,7 +1272,6 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Error", f"Error connecting to controller: {e}")
     
     def on_connect_controller(self):
-        """Handle connect controller menu action"""
         ip, ok = QInputDialog.getText(self, "Connect Controller", "Enter IP address:")
         if ok and ip:
             port, ok2 = QInputDialog.getInt(self, "Connect Controller", "Enter port:", 5000, 1, 65535)
@@ -1538,7 +1284,6 @@ class MainWindow(QMainWindow):
                     self.connect_to_controller(ip, port, controller_type)
     
     def on_disconnect_controller(self):
-        """Handle disconnect controller menu action"""
         if self.current_controller:
             self.current_controller.disconnect()
             self.current_controller = None
@@ -1546,7 +1291,6 @@ class MainWindow(QMainWindow):
             logger.info("Disconnected from controller")
     
     def on_device_info(self):
-        """Handle device info menu action"""
         if not self.current_controller:
             QMessageBox.warning(self, "No Controller", "No controller connected. Please connect to a controller first.")
             return
@@ -1565,7 +1309,6 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Error", f"Error getting device info: {e}")
     
     def on_upload(self):
-        """Handle upload menu action"""
         if not self.current_controller:
             QMessageBox.warning(self, "No Controller", "No controller connected. Please connect to a controller first.")
             return
@@ -1593,7 +1336,6 @@ class MainWindow(QMainWindow):
             QTimer.singleShot(2000, self.status_bar.clear_progress)
     
     def on_download(self):
-        """Handle download menu action"""
         if not self.current_controller:
             QMessageBox.warning(self, "No Controller", "No controller connected. Please connect to a controller first.")
             return
@@ -1608,34 +1350,27 @@ class MainWindow(QMainWindow):
             if reply == QMessageBox.Yes:
                 self.status_bar.set_progress("Downloading from controller...")
                 
-                # Use sync manager to import
                 imported_data = self.sync_manager.import_from_controller(self.current_controller)
                 
                 if imported_data:
-                    # CRITICAL: Get controller screen resolution from imported data
                     screen_resolution = imported_data.get("screen_resolution", {})
                     ctrl_width = screen_resolution.get("width")
                     ctrl_height = screen_resolution.get("height")
                     
-                    # Load programs into program manager
                     for program_id, program_info in imported_data.get("programs", {}).items():
                         program_data = program_info.get("data", {})
                         if program_data:
                             program = Program()
                             program.from_dict(program_data)
                             
-                            # CRITICAL: Set controller screen resolution in screen_properties
-                            # This is the actual LED display resolution, NOT PC canvas size
                             if "screen" not in program.properties:
                                 program.properties["screen"] = {}
                             
-                            # Set screen resolution from imported data
                             if ctrl_width and ctrl_height:
                                 program.properties["screen"]["width"] = ctrl_width
                                 program.properties["screen"]["height"] = ctrl_height
                                 logger.info(f"Set screen resolution for program {program.name}: {ctrl_width}x{ctrl_height}")
                             
-                            # Set controller info if available
                             device_info = self.current_controller.get_device_info()
                             if device_info:
                                 if "brand" not in program.properties["screen"]:
@@ -1651,12 +1386,10 @@ class MainWindow(QMainWindow):
                                     if controller_type:
                                         program.properties["screen"]["controller_type"] = controller_type
                             
-                            # Check if program already exists
                             existing = self.program_manager.get_program_by_id(program.id)
                             if not existing:
                                 self.program_manager.programs.append(program)
                     
-                    self.program_list_panel.refresh_programs()
                     self.status_bar.set_progress("Download complete")
                     QMessageBox.information(self, "Success", f"Downloaded {len(imported_data.get('programs', {}))} program(s) from controller.")
                     QTimer.singleShot(2000, self.status_bar.clear_progress)
@@ -1671,69 +1404,54 @@ class MainWindow(QMainWindow):
             QTimer.singleShot(2000, self.status_bar.clear_progress)
     
     def _perform_startup_tasks(self):
-        """Perform startup tasks in sequence"""
         try:
-            # Check if no screens exist and open dialog
             self._check_and_open_screen_dialog_if_needed()
             
-            # Clean up orphaned autosave files
             QTimer.singleShot(100, self._cleanup_orphaned_files)
             
-            # Auto-discover controllers on startup
             QTimer.singleShot(900, self.auto_discover_controllers)
             
-            # Auto-update connection status periodically
             if not hasattr(self, '_auto_status_timer'):
                 self._auto_status_timer = QTimer()
                 self._auto_status_timer.timeout.connect(self._auto_check_connection_status)
-                self._auto_status_timer.start(3000)  # Check every 3 seconds
+                self._auto_status_timer.start(3000)
         except Exception as e:
             logger.error(f"Error in startup tasks: {e}", exc_info=True)
     
     def _check_and_open_screen_dialog_if_needed(self):
-        """Check if no screens exist and open screen settings dialog if needed"""
         try:
             if not self.program_manager:
                 return
             
-            # Skip if dialog was already opened (prevents duplicate opens)
             if self._screen_dialog_opened:
                 logger.info("Skipping screen dialog check - dialog already opened")
                 return
             
-            # Skip if dialog was already opened from main.py startup
-            # Check if files were loaded - if not, main.py already handled opening the dialog
             if hasattr(self, '_latest_file_loaded') and not self._latest_file_loaded:
                 logger.info("Skipping screen dialog check - already handled by startup")
                 return
             
-            # Get all unique screen names from programs
             screen_names = ScreenManager.get_all_screen_names(self.program_manager.programs)
             
-            # If no screens exist, open the screen settings dialog
             if not screen_names:
                 logger.info("No screens found, opening screen settings dialog")
-                self._screen_dialog_opened = True  # Mark as opened before showing
+                self._screen_dialog_opened = True
                 self._create_new_screen_with_dialog()
         except Exception as e:
             logger.error(f"Error checking for screens: {e}", exc_info=True)
     
     def _cleanup_orphaned_files(self):
-        """Clean up orphaned autosave files that don't correspond to any current screen"""
         try:
             if not self.program_manager:
                 return
             
-            # Get all unique screen names currently displayed in program list
             current_screen_names = ScreenManager.get_all_screen_names(self.program_manager.programs)
             
-            # Clean up orphaned files
             self.file_manager.cleanup_orphaned_files(current_screen_names)
         except Exception as e:
             logger.error(f"Error cleaning up orphaned files: {e}", exc_info=True)
     
     def on_time_power_brightness(self):
-        """Handle time/power/brightness menu action"""
         try:
             from ui.time_power_brightness_dialog import TimePowerBrightnessDialog
             dialog = TimePowerBrightnessDialog(self, self.current_controller)
@@ -1743,7 +1461,6 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Error", f"Error opening dialog: {str(e)}")
     
     def on_network_config(self):
-        """Handle network configuration menu action"""
         try:
             from ui.network_config_dialog import NetworkConfigDialog
             dialog = NetworkConfigDialog(self, self.current_controller)
@@ -1753,7 +1470,6 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Error", f"Error opening dialog: {str(e)}")
     
     def on_diagnostics(self):
-        """Handle diagnostics menu action"""
         try:
             from ui.diagnostics_dialog import DiagnosticsDialog
             dialog = DiagnosticsDialog(self, self.current_controller)
@@ -1763,7 +1479,6 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Error", f"Error opening dialog: {str(e)}")
     
     def on_import(self):
-        """Handle import from controller menu action"""
         try:
             if not self.current_controller:
                 QMessageBox.warning(self, "No Controller", "No controller connected. Please connect to a controller first.")
@@ -1777,13 +1492,12 @@ class MainWindow(QMainWindow):
             )
             
             if reply == QMessageBox.Yes:
-                self.on_download()  # Use existing download functionality
+                self.on_download()
         except Exception as e:
             logger.error(f"Error importing from controller: {e}", exc_info=True)
             QMessageBox.critical(self, "Error", f"Error importing: {str(e)}")
     
     def on_export(self):
-        """Handle export/publish menu action"""
         try:
             if not self.current_controller:
                 QMessageBox.warning(self, "No Controller", "No controller connected. Please connect to a controller first.")
@@ -1800,7 +1514,67 @@ class MainWindow(QMainWindow):
             )
             
             if reply == QMessageBox.Yes:
-                self.on_upload()  # Use existing upload functionality
+                self.on_upload()
         except Exception as e:
             logger.error(f"Error exporting/publishing: {e}", exc_info=True)
             QMessageBox.critical(self, "Error", f"Error exporting: {str(e)}")
+    
+    def on_import_xml(self):
+        try:
+            file_path, _ = QFileDialog.getOpenFileName(
+                self, "Import XML (HDPlayer)", "",
+                "XML Files (*.xml);;All Files (*.*)"
+            )
+            
+            if file_path:
+                program = self.file_manager.import_xml_file(file_path)
+                if program:
+                    QMessageBox.information(
+                        self, "Import Successful",
+                        f"Successfully imported program '{program.name}' from XML file."
+                    )
+                    self._update_ui_for_program(program)
+                else:
+                    QMessageBox.warning(
+                        self, "Import Failed",
+                        "Failed to import XML file. Please check the file format."
+                    )
+        except Exception as e:
+            logger.error(f"Error importing XML: {e}", exc_info=True)
+            QMessageBox.critical(self, "Error", f"Error importing XML: {str(e)}")
+    
+    def on_export_xml(self):
+        try:
+            if not self.program_manager or not self.program_manager.current_program:
+                QMessageBox.warning(
+                    self, "No Program",
+                    "No program selected. Please create or select a program first."
+                )
+                return
+            
+            program = self.program_manager.current_program
+            default_name = f"{program.name}.xml"
+            
+            file_path, _ = QFileDialog.getSaveFileName(
+                self, "Export XML (HDPlayer)", default_name,
+                "XML Files (*.xml);;All Files (*.*)"
+            )
+            
+            if file_path:
+                if not file_path.endswith('.xml'):
+                    file_path += '.xml'
+                
+                success = self.file_manager.export_to_xml(program, file_path)
+                if success:
+                    QMessageBox.information(
+                        self, "Export Successful",
+                        f"Successfully exported program '{program.name}' to XML file:\n{file_path}"
+                    )
+                else:
+                    QMessageBox.warning(
+                        self, "Export Failed",
+                        "Failed to export program to XML file."
+                    )
+        except Exception as e:
+            logger.error(f"Error exporting XML: {e}", exc_info=True)
+            QMessageBox.critical(self, "Error", f"Error exporting XML: {str(e)}")

@@ -32,6 +32,8 @@ class MenuBar(QMenuBar):
     diagnostics_requested = pyqtSignal()
     import_requested = pyqtSignal()
     export_requested = pyqtSignal()
+    import_xml_requested = pyqtSignal()
+    export_xml_requested = pyqtSignal()
     
     language_changed = pyqtSignal(str)
     about_requested = pyqtSignal()
@@ -171,6 +173,19 @@ class MenuBar(QMenuBar):
         export_action.triggered.connect(self.export_requested.emit)
         control_menu.addAction(export_action)
         self.actions["control.export"] = export_action
+        
+        control_menu.addSeparator()
+        
+        # XML Import/Export
+        import_xml_action = QAction("📄 Import XML (HDPlayer)", self)
+        import_xml_action.triggered.connect(self.import_xml_requested.emit)
+        control_menu.addAction(import_xml_action)
+        self.actions["control.import_xml"] = import_xml_action
+        
+        export_xml_action = QAction("📄 Export XML (HDPlayer)", self)
+        export_xml_action.triggered.connect(self.export_xml_requested.emit)
+        control_menu.addAction(export_xml_action)
+        self.actions["control.export_xml"] = export_xml_action
         
         language_menu = self.addMenu(tr("menu.language"))
         self.menus["language"] = language_menu

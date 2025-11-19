@@ -1,7 +1,3 @@
-"""
-SLPlayer - LED Display Controller Program Manager
-Main application entry point
-"""
 import sys
 from pathlib import Path
 from PyQt5.QtWidgets import QApplication, QMessageBox
@@ -16,19 +12,15 @@ logger = get_logger(__name__)
 
 
 def main():
-    """Main application entry point"""
     try:
-        # Check for command-line arguments
         if "--reset-first-launch" in sys.argv or "--reset-first" in sys.argv:
             settings.set("first_launch_complete", False)
             print("✓ First launch flag has been reset!")
             print("The Network Setup Dialog will appear on next application start.")
             return
         
-        # Check for skip license flag
         skip_license = "--skip-license" in sys.argv or "--skip-lic" in sys.argv
         
-        # Check for .soo file path in command-line arguments
         soo_file_path = None
         for arg in sys.argv[1:]:
             if arg.startswith('--'):
@@ -49,17 +41,14 @@ def main():
         app.setApplicationName("SLPlayer")
         app.setOrganizationName("SLPlayer")
         
-        # Set application icon
         base_path = Path(__file__).parent
         IconManager.setup_application_icon(app, base_path)
         
-        # Load settings
         window_width = settings.get("window.width", 1400)
         window_height = settings.get("window.height", 900)
         window_x = settings.get("window.x", 100)
         window_y = settings.get("window.y", 100)
         
-        # Check for first launch - show network setup dialog
         first_launch_complete = settings.get("first_launch_complete", False)
         if not first_launch_complete:
             from ui.network_setup_dialog import NetworkSetupDialog
@@ -68,14 +57,11 @@ def main():
             settings.set("first_launch_complete", True)
             logger.info("First launch network setup completed")
         
-        # License verification at startup
         startup_service = StartupService()
         controller_id, valid_license_found = startup_service.verify_license_at_startup()
         license_must_be_activated = not valid_license_found
         
-        # Show license activation dialog only if needed
         if not skip_license and not valid_license_found:
-            # Only show dialog if no valid license was found
             from ui.login_dialog import LoginDialog
             login_dialog = LoginDialog(controller_id=controller_id)
             
@@ -103,12 +89,10 @@ def main():
         else:
             logger.info("License dialog skipped via command-line argument")
         
-        # Final license verification (only if we didn't already verify)
         if controller_id and not skip_license and not valid_license_found:
             if not startup_service.check_license_after_activation(controller_id):
                 sys.exit(1)
         
-        # Create and show main window
         window = MainWindow()
         window.resize(window_width, window_height)
         window.move(window_x, window_y)
@@ -133,7 +117,6 @@ def main():
         else:
             logger.info("Files loaded successfully, skipping screen settings dialog")
         
-        # Set taskbar icon using Windows API
         IconManager.setup_taskbar_icon(window, base_path)
         
         sys.exit(app.exec())
@@ -142,7 +125,6 @@ def main():
         sys.exit(0)
     except Exception as e:
         logger.critical(f"Fatal error starting application: {e}", exc_info=True)
-        # Show error dialog if possible
         try:
             app = QApplication(sys.argv)
             QMessageBox.critical(

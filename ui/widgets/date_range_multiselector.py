@@ -20,6 +20,7 @@ class DateRangeMultiSelector(QWidget):
         super().__init__(parent)
         self.date_ranges: List[Dict[str, str]] = []
         self.table_expanded = False
+        self._updating_programmatically = False  # Flag to prevent feedback loops
         self.init_ui()
     
     def init_ui(self):
@@ -212,14 +213,24 @@ class DateRangeMultiSelector(QWidget):
     
     def _toggle_table(self):
         """Toggle table visibility"""
-        self.table_expanded = not self.table_expanded
-        self.table_widget.setVisible(self.table_expanded)
+        # Prevent rapid toggles
+        if hasattr(self, '_toggle_in_progress') and self._toggle_in_progress:
+            return
         
-        # Update dropdown arrow
-        if self.table_expanded:
-            self.dropdown_arrow.setText("▲")
-        else:
-            self.dropdown_arrow.setText("▼")
+        self._toggle_in_progress = True
+        try:
+            self.table_expanded = not self.table_expanded
+            self.table_widget.setVisible(self.table_expanded)
+            
+            # Update dropdown arrow
+            if self.table_expanded:
+                self.dropdown_arrow.setText("▲")
+            else:
+                self.dropdown_arrow.setText("▼")
+        finally:
+            # Use QTimer to reset flag after a short delay
+            from PyQt5.QtCore import QTimer
+            QTimer.singleShot(100, lambda: setattr(self, '_toggle_in_progress', False))
     
     def _create_date_tag(self, start_date_str, end_date_str):
         """Create a blue-bordered tag showing date range"""
@@ -303,7 +314,12 @@ class DateRangeMultiSelector(QWidget):
         checkbox_layout.setContentsMargins(0, 0, 0, 0)
         checkbox_layout.setAlignment(Qt.AlignCenter)
         checkbox = QCheckBox()
+        # Block signals during programmatic updates
+        if self._updating_programmatically:
+            checkbox.blockSignals(True)
         checkbox.setChecked(selected)
+        if self._updating_programmatically:
+            checkbox.blockSignals(False)
         checkbox.stateChanged.connect(lambda state, r=row: self._on_checkbox_changed(r, state))
         checkbox_layout.addWidget(checkbox)
         self.date_table.setCellWidget(row, 0, checkbox_widget)
@@ -311,7 +327,12 @@ class DateRangeMultiSelector(QWidget):
         # Start date widget (column 1)
         start_date_edit = QDateEdit()
         start_date_edit.setCalendarPopup(True)
+        # Block signals during programmatic updates
+        if self._updating_programmatically:
+            start_date_edit.blockSignals(True)
         start_date_edit.setDate(start_date)
+        if self._updating_programmatically:
+            start_date_edit.blockSignals(False)
         start_date_edit.dateChanged.connect(lambda date, r=row: self._on_date_range_changed(r))
         start_date_edit.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         start_date_edit.setStyleSheet("""
@@ -331,7 +352,12 @@ class DateRangeMultiSelector(QWidget):
         # End date widget (column 2)
         end_date_edit = QDateEdit()
         end_date_edit.setCalendarPopup(True)
+        # Block signals during programmatic updates
+        if self._updating_programmatically:
+            end_date_edit.blockSignals(True)
         end_date_edit.setDate(end_date)
+        if self._updating_programmatically:
+            end_date_edit.blockSignals(False)
         end_date_edit.dateChanged.connect(lambda date, r=row: self._on_date_range_changed(r))
         end_date_edit.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         end_date_edit.setStyleSheet("""
@@ -417,6 +443,10 @@ class DateRangeMultiSelector(QWidget):
     
     def _emit_date_ranges_changed(self):
         """Emit signal with current selected date ranges"""
+        # Don't emit during programmatic updates to prevent feedback loops
+        if self._updating_programmatically:
+            return
+        
         selected_ranges = []
         for row in range(self.date_table.rowCount()):
             checkbox_widget = self.date_table.cellWidget(row, 0)
@@ -436,17 +466,26 @@ class DateRangeMultiSelector(QWidget):
     
     def set_date_ranges(self, date_ranges: List[Dict[str, str]], selected_indices: Optional[List[int]] = None):
         """Set date ranges in the table"""
-        self.date_table.setRowCount(0)
-        selected_indices = selected_indices or []
-        
-        for idx, date_range in enumerate(date_ranges):
-            start_date_str = date_range.get("start", "")
-            end_date_str = date_range.get("end", "")
-            is_selected = idx in selected_indices
-            self._add_date_range_row(start_date_str, end_date_str, is_selected)
-        
-        self._update_tags()
-        self._emit_date_ranges_changed()
+        self._updating_programmatically = True
+        try:
+            # Block signals on date edits to prevent intermediate updates
+            self.date_table.blockSignals(True)
+            self.date_table.setRowCount(0)
+            selected_indices = selected_indices or []
+            
+            for idx, date_range in enumerate(date_ranges):
+                start_date_str = date_range.get("start", "")
+                end_date_str = date_range.get("end", "")
+                is_selected = idx in selected_indices
+                self._add_date_range_row(start_date_str, end_date_str, is_selected)
+            
+            self.date_table.blockSignals(False)
+            self._update_tags()
+        finally:
+            self._updating_programmatically = False
+            # Emit signal after update is complete (only if not empty)
+            if date_ranges:
+                self._emit_date_ranges_changed()
     
     def get_selected_date_ranges(self) -> List[Dict[str, str]]:
         """Get currently selected date ranges"""

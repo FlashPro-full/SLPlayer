@@ -20,6 +20,7 @@ class TimeRangeMultiSelector(QWidget):
         super().__init__(parent)
         self.time_ranges: List[Dict[str, str]] = []
         self.table_expanded = False
+        self._updating_programmatically = False  # Flag to prevent feedback loops
         self.init_ui()
     
     def init_ui(self):
@@ -212,14 +213,25 @@ class TimeRangeMultiSelector(QWidget):
     
     def _toggle_table(self):
         """Toggle table visibility"""
-        self.table_expanded = not self.table_expanded
-        self.table_widget.setVisible(self.table_expanded)
+        # Prevent rapid toggles
+        if hasattr(self, '_toggle_in_progress') and self._toggle_in_progress:
+            return
+        
+        self._toggle_in_progress = True
+        try:
+            self.table_expanded = not self.table_expanded
+            self.table_widget.setVisible(self.table_expanded)
         
         # Update dropdown arrow
-        if self.table_expanded:
-            self.dropdown_arrow.setText("▲")
-        else:
+            if self.table_expanded:
+                self.dropdown_arrow.setText("▲")
+            else:
+                self.dropdown_arrow.setText("▼")
             self.dropdown_arrow.setText("▼")
+        finally:
+            # Use QTimer to reset flag after a short delay
+            from PyQt5.QtCore import QTimer
+            QTimer.singleShot(100, lambda: setattr(self, '_toggle_in_progress', False))
     
     def _create_time_tag(self, start_time_str, end_time_str):
         """Create a blue-bordered tag showing time range"""
@@ -246,6 +258,7 @@ class TimeRangeMultiSelector(QWidget):
     
     def _update_tags(self):
         """Update summary tags based on current time ranges"""
+        
         # Clear existing tags
         while self.tags_layout.count():
             child = self.tags_layout.takeAt(0)
@@ -302,7 +315,12 @@ class TimeRangeMultiSelector(QWidget):
         checkbox_layout.setContentsMargins(0, 0, 0, 0)
         checkbox_layout.setAlignment(Qt.AlignCenter)
         checkbox = QCheckBox()
+        # Block signals during programmatic updates
+        if self._updating_programmatically:
+            checkbox.blockSignals(True)
         checkbox.setChecked(selected)
+        if self._updating_programmatically:
+            checkbox.blockSignals(False)
         checkbox.stateChanged.connect(lambda state, r=row: self._on_checkbox_changed(r, state))
         checkbox_layout.addWidget(checkbox)
         self.time_table.setCellWidget(row, 0, checkbox_widget)
@@ -310,7 +328,12 @@ class TimeRangeMultiSelector(QWidget):
         # Start time widget (column 1)
         start_time_edit = QTimeEdit()
         start_time_edit.setDisplayFormat("HH:mm:ss")
+        # Block signals during programmatic updates
+        if self._updating_programmatically:
+            start_time_edit.blockSignals(True)
         start_time_edit.setTime(start_time)
+        if self._updating_programmatically:
+            start_time_edit.blockSignals(False)
         start_time_edit.timeChanged.connect(lambda checked, r=row: self._on_time_range_changed(r))
         start_time_edit.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         start_time_edit.setStyleSheet("""
@@ -330,7 +353,12 @@ class TimeRangeMultiSelector(QWidget):
         # End time widget (column 2)
         end_time_edit = QTimeEdit()
         end_time_edit.setDisplayFormat("HH:mm:ss")
+        # Block signals during programmatic updates
+        if self._updating_programmatically:
+            end_time_edit.blockSignals(True)
         end_time_edit.setTime(end_time)
+        if self._updating_programmatically:
+            end_time_edit.blockSignals(False)
         end_time_edit.timeChanged.connect(lambda checked, r=row: self._on_time_range_changed(r))
         end_time_edit.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         end_time_edit.setStyleSheet("""
@@ -417,6 +445,10 @@ class TimeRangeMultiSelector(QWidget):
     
     def _emit_time_ranges_changed(self):
         """Emit signal with current selected time ranges"""
+        # Don't emit during programmatic updates to prevent feedback loops
+        if self._updating_programmatically:
+            return
+        
         selected_ranges = []
         for row in range(self.time_table.rowCount()):
             checkbox_widget = self.time_table.cellWidget(row, 0)
@@ -436,17 +468,26 @@ class TimeRangeMultiSelector(QWidget):
     
     def set_time_ranges(self, time_ranges: List[Dict[str, str]], selected_indices: Optional[List[int]] = None):
         """Set time ranges in the table"""
-        self.time_table.setRowCount(0)
-        selected_indices = selected_indices or []
+        self._updating_programmatically = True
+        try:
+            # Block signals on time edits to prevent intermediate updates
+            self.time_table.blockSignals(True)
+            self.time_table.setRowCount(0)
+            selected_indices = selected_indices or []
         
-        for idx, time_range in enumerate(time_ranges):
-            start_time_str = time_range.get("start", "00:00:00")
-            end_time_str = time_range.get("end", "23:59:59")
-            is_selected = idx in selected_indices
-            self._add_time_range_row(start_time_str, end_time_str, is_selected)
-        
-        self._update_tags()
-        self._emit_time_ranges_changed()
+            for idx, time_range in enumerate(time_ranges):
+                start_time_str = time_range.get("start", "00:00:00")
+                end_time_str = time_range.get("end", "23:59:59")
+                is_selected = idx in selected_indices
+                self._add_time_range_row(start_time_str, end_time_str, is_selected)
+            
+                self.time_table.blockSignals(False)
+                self._update_tags()
+        finally:
+            self._updating_programmatically = False
+            # Emit signal after update is complete (only if not empty)
+            if time_ranges:
+                self._emit_time_ranges_changed()
     
     def get_selected_time_ranges(self) -> List[Dict[str, str]]:
         """Get currently selected time ranges"""

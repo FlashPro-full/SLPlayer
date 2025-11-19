@@ -10,7 +10,13 @@ from ui.properties import (
     VideoPropertiesComponent,
     ImagePropertiesComponent,
     TextPropertiesComponent,
-    ScreenPropertiesComponent
+    ScreenPropertiesComponent,
+    SingleLineTextPropertiesComponent,
+    AnimationPropertiesComponent,
+    ClockPropertiesComponent,
+    TimingPropertiesComponent,
+    WeatherPropertiesComponent,
+    SensorPropertiesComponent
 )
 
 
@@ -95,6 +101,12 @@ class PropertiesPanel(QWidget):
         self.image_properties_widget = ImagePropertiesComponent(self.content_widget)
         self.text_properties_widget = TextPropertiesComponent(self.content_widget)
         self.screen_properties_widget = ScreenPropertiesComponent(self.content_widget)
+        self.single_line_text_properties_widget = SingleLineTextPropertiesComponent(self.content_widget)
+        self.animation_properties_widget = AnimationPropertiesComponent(self.content_widget)
+        self.clock_properties_widget = ClockPropertiesComponent(self.content_widget)
+        self.timing_properties_widget = TimingPropertiesComponent(self.content_widget)
+        self.weather_properties_widget = WeatherPropertiesComponent(self.content_widget)
+        self.sensor_properties_widget = SensorPropertiesComponent(self.content_widget)
         self.empty_widget = QWidget(self.content_widget)
         
         # Connect component signals to panel signal
@@ -103,6 +115,12 @@ class PropertiesPanel(QWidget):
         self.image_properties_widget.property_changed.connect(self.property_changed.emit)
         self.text_properties_widget.property_changed.connect(self.property_changed.emit)
         self.screen_properties_widget.property_changed.connect(self.property_changed.emit)
+        self.single_line_text_properties_widget.property_changed.connect(self.property_changed.emit)
+        self.animation_properties_widget.property_changed.connect(self.property_changed.emit)
+        self.clock_properties_widget.property_changed.connect(self.property_changed.emit)
+        self.timing_properties_widget.property_changed.connect(self.property_changed.emit)
+        self.weather_properties_widget.property_changed.connect(self.property_changed.emit)
+        self.sensor_properties_widget.property_changed.connect(self.property_changed.emit)
         
         # Add all components to content layout
         self.content_layout.addWidget(self.program_properties_widget)
@@ -110,6 +128,12 @@ class PropertiesPanel(QWidget):
         self.content_layout.addWidget(self.image_properties_widget)
         self.content_layout.addWidget(self.text_properties_widget)
         self.content_layout.addWidget(self.screen_properties_widget)
+        self.content_layout.addWidget(self.single_line_text_properties_widget)
+        self.content_layout.addWidget(self.animation_properties_widget)
+        self.content_layout.addWidget(self.clock_properties_widget)
+        self.content_layout.addWidget(self.timing_properties_widget)
+        self.content_layout.addWidget(self.weather_properties_widget)
+        self.content_layout.addWidget(self.sensor_properties_widget)
         self.content_layout.addWidget(self.empty_widget)
         self.content_layout.addStretch()  # Add stretch at the end
         
@@ -121,58 +145,79 @@ class PropertiesPanel(QWidget):
         
         self.show_empty()
     
-    def show_program_properties(self):
-        """Show program properties"""
-        self.program_properties_widget.setVisible(True)
+    def _hide_all(self):
+        """Hide all property widgets"""
+        self.program_properties_widget.setVisible(False)
         self.video_properties_widget.setVisible(False)
         self.image_properties_widget.setVisible(False)
         self.text_properties_widget.setVisible(False)
         self.screen_properties_widget.setVisible(False)
+        self.single_line_text_properties_widget.setVisible(False)
+        self.animation_properties_widget.setVisible(False)
+        self.clock_properties_widget.setVisible(False)
+        self.timing_properties_widget.setVisible(False)
+        self.weather_properties_widget.setVisible(False)
+        self.sensor_properties_widget.setVisible(False)
         self.empty_widget.setVisible(False)
+    
+    def show_program_properties(self):
+        """Show program properties"""
+        self._hide_all()
+        self.program_properties_widget.setVisible(True)
     
     def show_video_properties(self):
         """Show video properties"""
-        self.program_properties_widget.setVisible(False)
+        self._hide_all()
         self.video_properties_widget.setVisible(True)
-        self.image_properties_widget.setVisible(False)
-        self.text_properties_widget.setVisible(False)
-        self.screen_properties_widget.setVisible(False)
-        self.empty_widget.setVisible(False)
     
     def show_image_properties(self):
         """Show image/photo properties"""
-        self.program_properties_widget.setVisible(False)
-        self.video_properties_widget.setVisible(False)
+        self._hide_all()
         self.image_properties_widget.setVisible(True)
-        self.text_properties_widget.setVisible(False)
-        self.screen_properties_widget.setVisible(False)
-        self.empty_widget.setVisible(False)
     
     def show_text_properties(self):
         """Show text properties"""
-        self.program_properties_widget.setVisible(False)
-        self.video_properties_widget.setVisible(False)
-        self.image_properties_widget.setVisible(False)
+        self._hide_all()
         self.text_properties_widget.setVisible(True)
-        self.screen_properties_widget.setVisible(False)
-        self.empty_widget.setVisible(False)
     
     def show_screen_properties(self):
         """Show screen properties"""
-        self.program_properties_widget.setVisible(False)
-        self.video_properties_widget.setVisible(False)
-        self.image_properties_widget.setVisible(False)
-        self.text_properties_widget.setVisible(False)
+        self._hide_all()
         self.screen_properties_widget.setVisible(True)
-        self.empty_widget.setVisible(False)
+    
+    def show_single_line_text_properties(self):
+        """Show single line text properties"""
+        self._hide_all()
+        self.single_line_text_properties_widget.setVisible(True)
+    
+    def show_animation_properties(self):
+        """Show animation properties"""
+        self._hide_all()
+        self.animation_properties_widget.setVisible(True)
+    
+    def show_clock_properties(self):
+        """Show clock properties"""
+        self._hide_all()
+        self.clock_properties_widget.setVisible(True)
+    
+    def show_timing_properties(self):
+        """Show timing properties"""
+        self._hide_all()
+        self.timing_properties_widget.setVisible(True)
+    
+    def show_weather_properties(self):
+        """Show weather properties"""
+        self._hide_all()
+        self.weather_properties_widget.setVisible(True)
+    
+    def show_sensor_properties(self):
+        """Show sensor properties"""
+        self._hide_all()
+        self.sensor_properties_widget.setVisible(True)
     
     def show_empty(self):
         """Show empty state"""
-        self.program_properties_widget.setVisible(False)
-        self.video_properties_widget.setVisible(False)
-        self.image_properties_widget.setVisible(False)
-        self.text_properties_widget.setVisible(False)
-        self.screen_properties_widget.setVisible(False)
+        self._hide_all()
         self.empty_widget.setVisible(True)
     
     def set_program(self, program: Optional[Program]):
@@ -200,6 +245,24 @@ class PropertiesPanel(QWidget):
             elif element_type == "text":
                 self.show_text_properties()
                 self.text_properties_widget.set_program_data(program, element)
+            elif element_type == "single_line_text":
+                self.show_single_line_text_properties()
+                self.single_line_text_properties_widget.set_program_data(program, element)
+            elif element_type == "animation":
+                self.show_animation_properties()
+                self.animation_properties_widget.set_program_data(program, element)
+            elif element_type == "clock":
+                self.show_clock_properties()
+                self.clock_properties_widget.set_program_data(program, element)
+            elif element_type == "timing":
+                self.show_timing_properties()
+                self.timing_properties_widget.set_program_data(program, element)
+            elif element_type == "weather":
+                self.show_weather_properties()
+                self.weather_properties_widget.set_program_data(program, element)
+            elif element_type == "sensor":
+                self.show_sensor_properties()
+                self.sensor_properties_widget.set_program_data(program, element)
             elif program:
                 self.show_program_properties()
                 self.program_properties_widget.set_program_data(program)
