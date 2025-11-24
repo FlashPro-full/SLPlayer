@@ -41,16 +41,14 @@ class SingleLineTextPropertiesComponent(BasePropertiesComponent):
                 border: 1px solid #CCCCCC;
                 border-radius: 3px;
                 padding: 4px 6px;
-                background-color: #000000;
-                color: #FFFFFF;
+                background-color: #FFFFFF;
                 font-size: 12px;
                 selection-background-color: #4A90E2;
                 selection-color: #FFFFFF;
             }
             QLineEdit:focus {
                 border: 1px solid #4A90E2;
-                background-color: #000000;
-                color: #FFFFFF;
+                background-color: #FFFFFF;
             }
             QLineEdit:hover {
                 border: 1px solid #999999;
@@ -694,7 +692,7 @@ class SingleLineTextPropertiesComponent(BasePropertiesComponent):
             self.line_editor_toolbar.font_color = QColor(format_data["font_color"])
             self.line_editor_toolbar._update_font_color_button()
         else:
-            style_parts.append("color: black;")
+            style_parts.append("color: #FFFFFF;")
         
         if format_data.get("text_bg_color"):
             style_parts.append(f"background-color: {format_data['text_bg_color']};")
@@ -715,11 +713,10 @@ class SingleLineTextPropertiesComponent(BasePropertiesComponent):
         elif vertical_align == Qt.AlignBottom:
             style_parts.append("padding-top: auto; padding-bottom: 0px;")
         
-        if style_parts:
-            # Preserve black background and white text for Text Content group
-            style_parts.append("background-color: #000000;")
-            style_parts.append("color: #FFFFFF;")
-            self.singleline_text_content_edit.setStyleSheet("".join(style_parts))
+        # Always preserve black background and white text for Text Content group
+        style_parts.append("background-color: #000000;")
+        style_parts.append("color: #FFFFFF;")
+        self.singleline_text_content_edit.setStyleSheet("".join(style_parts))
     
     def _on_format_changed(self, format_data: dict):
         if not self.current_element or not self.current_program:

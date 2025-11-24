@@ -36,20 +36,7 @@ class TimingPropertiesComponent(BasePropertiesComponent):
                 padding: 0 4px;
                 color: #333333;
             }
-            QLineEdit {
-                border: 1px solid #CCCCCC;
-                border-radius: 3px;
-                padding: 4px 6px;
-                background-color: #000000;
-                color: #FFFFFF;
-                font-size: 12px;
-            }
-            QLineEdit:focus {
-                border: 1px solid #4A90E2;
-                background-color: #000000;
-                color: #FFFFFF;
-            }
-            QSpinBox, QComboBox {
+            QLineEdit, QSpinBox, QComboBox {
                 border: 1px solid #CCCCCC;
                 border-radius: 3px;
                 padding: 4px 6px;

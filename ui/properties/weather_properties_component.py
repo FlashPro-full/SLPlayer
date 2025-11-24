@@ -63,14 +63,8 @@ class WeatherPropertiesComponent(BasePropertiesComponent):
                 border: 1px solid #CCCCCC;
                 border-radius: 3px;
                 padding: 4px 6px;
-                background-color: #000000;
-                color: #FFFFFF;
+                background-color: #FFFFFF;
                 font-size: 12px;
-            }
-            QLineEdit:focus {
-                border: 1px solid #4A90E2;
-                background-color: #000000;
-                color: #FFFFFF;
             }
             QComboBox {
                 border: 1px solid #CCCCCC;
