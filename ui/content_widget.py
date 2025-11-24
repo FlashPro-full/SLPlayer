@@ -2156,10 +2156,13 @@ class ContentWidget(QtWidgets.QWidget):
         anim_state = self._text_flow_animations[element_id]
         
         # Get animation properties
-        gradient_colors = animation_style.get("gradient_colors", ["#FF0000", "#FF7F00", "#FFFF00", "#00FF00", "#0000FF", "#4B0082", "#9400D3"])
+        style_index = animation_style.get("style_index", 0)
         writing_direction = animation_style.get("writing_direction", "Horizontal Line Writing")
         character_movement = animation_style.get("character_movement", True)
         speed = animation_style.get("speed", 10)
+        
+        # Import color utils for gradient
+        from ui.utils.color_utils import get_gradient_color_at_position
         
         # Calculate elapsed time and character position
         elapsed_ms = anim_state["start_time"].msecsTo(QtCore.QDateTime.currentDateTime())
@@ -2203,15 +2206,13 @@ class ContentWidget(QtWidgets.QWidget):
         displayed_text = text_content[:chars_to_show] if character_movement else text_content
         
         for i, char in enumerate(displayed_text):
-            # Calculate gradient color index (cycling through 7 colors)
-            color_index = i % len(gradient_colors)
-            color = QtGui.QColor(gradient_colors[color_index])
-            
-            # Apply gradient flow effect (shift colors based on time)
-            if len(gradient_colors) == 7:
-                time_offset = int(elapsed_sec * 2) % 7
-                color_index = (i + time_offset) % 7
-                color = QtGui.QColor(gradient_colors[color_index])
+            # Calculate gradient color position (0.0 to 1.0) based on character position
+            pos = i / max(len(displayed_text) - 1, 1) if len(displayed_text) > 1 else 0.0
+            # Apply time-based offset for flowing gradient effect
+            time_offset = (elapsed_sec * 0.5) % 1.0
+            pos = (pos + time_offset) % 1.0
+            # Get gradient color using style index and position
+            color = get_gradient_color_at_position(pos, style_index)
             
             painter.setPen(QtGui.QPen(color))
             

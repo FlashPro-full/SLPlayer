@@ -1,198 +1,331 @@
 import json
+import time
 from typing import Optional, Dict, List
+from pathlib import Path
 from controllers.base_controller import BaseController, ControllerType, ConnectionStatus
-from controllers.network_manager import NetworkManager
+from controllers.novastar_sdk import ViplexCoreSDK
+from utils.logger import get_logger
+from utils.app_data import get_app_data_dir
 
+logger = get_logger(__name__)
 
 class NovaStarController(BaseController):
-    
     DEFAULT_PORT = 5200
     
     def __init__(self, ip_address: str, port: int = DEFAULT_PORT):
         super().__init__(ControllerType.NOVASTAR, ip_address, port)
-        self.network_manager = NetworkManager(timeout=5)
-        self.socket = None
+        self.sdk = ViplexCoreSDK()
+        self._initialized = False
+        self._device_sn: Optional[str] = None
+        self._session_token: Optional[str] = None
+    
+    def _ensure_initialized(self) -> bool:
+        if self._initialized:
+            return True
+        try:
+            sdk_root = get_app_data_dir() / "viplexcore"
+            sdk_root.mkdir(parents=True, exist_ok=True)
+            credentials = {
+                "company": "SLPlayer",
+                "phone": "",
+                "email": ""
+            }
+            result = self.sdk.init(str(sdk_root), credentials)
+            if result == 0:
+                self._initialized = True
+                logger.info("ViplexCore SDK initialized")
+                return True
+            else:
+                logger.error(f"Failed to initialize ViplexCore SDK: error {result}")
+                return False
+        except Exception as e:
+            logger.error(f"Error initializing SDK: {e}", exc_info=True)
+            return False
     
     def connect(self) -> bool:
         if self.status == ConnectionStatus.CONNECTED:
             return True
-        
+        if not self._ensure_initialized():
+            return False
         self.set_status(ConnectionStatus.CONNECTING)
-        
-        self.socket = self.network_manager.connect(self.ip_address, self.port)
-        if self.socket:
-            info = self.get_device_info()
-            if info:
-                self.set_status(ConnectionStatus.CONNECTED)
-                return True
-            else:
-                self.network_manager.close_socket(self.socket)
-                self.socket = None
-                self.set_status(ConnectionStatus.ERROR)
-                return False
-        else:
+        try:
+            self.sdk.search_appoint_ip_async(self.ip_address, "search")
+            time.sleep(2)
+            login_params = {
+                "sn": self.ip_address,
+                "username": "admin",
+                "password": "123456",
+                "rememberPwd": 1,
+                "loginType": 0
+            }
+            self.sdk.login_async(login_params, "login")
+            result = self.sdk.get_callback_result("login", timeout=5.0)
+            if result and result.get("code") == 0:
+                self._device_sn = str(self.ip_address)
+                info = self.get_device_info()
+                if info:
+                    self.set_status(ConnectionStatus.CONNECTED)
+                    logger.info(f"Connected to NovaStar controller at {self.ip_address}")
+                    return True
+            self.set_status(ConnectionStatus.ERROR)
+            return False
+        except Exception as e:
+            logger.error(f"Error connecting to NovaStar controller: {e}", exc_info=True)
             self.set_status(ConnectionStatus.ERROR)
             return False
     
     def disconnect(self):
-        if self.socket:
-            self.network_manager.close_socket(self.socket)
-            self.socket = None
+        self._device_sn = None
+        self._session_token = None
         self.set_status(ConnectionStatus.DISCONNECTED)
         self.device_info = None
+        logger.info(f"Disconnected from NovaStar controller at {self.ip_address}")
     
     def get_device_info(self) -> Optional[Dict]:
-        if not self.socket:
-            return None
-        
+        if not self._device_sn:
+            controller_id = f"NS-{self.ip_address.replace('.', '-')}"
+            self.device_info = {
+                "name": "NovaStar Controller",
+                "model": "Unknown",
+                "version": "3.6.3",
+                "ip": self.ip_address,
+                "controller_id": controller_id,
+                "controllerId": controller_id,
+                "serial_number": controller_id
+            }
+            return self.device_info
         try:
-            request = self._build_info_request()
-            if not self.network_manager.send_data(self.socket, request):
-                return None
-            
-            response = self.network_manager.receive_data(self.socket, 1024)
-            if response:
-                info = self._parse_info_response(response)
-                if info:
-                    self.device_info = info
-                return info
+            info_params = {"sn": self._device_sn}
+            self.sdk.get_terminal_info_async(info_params, "get_terminal_info")
+            result = self.sdk.get_callback_result("get_terminal_info", timeout=3.0)
+            if result and result.get("code") == 0:
+                data = json.loads(result.get("data", "{}"))
+                controller_id = f"NS-{self.ip_address.replace('.', '-')}"
+                self.device_info = {
+                    "name": "NovaStar Controller",
+                    "model": data.get("model", "Unknown"),
+                    "version": "3.6.3",
+                    "ip": self.ip_address,
+                    "controller_id": controller_id,
+                    "controllerId": controller_id,
+                    "serial_number": self._device_sn
+                }
+                return self.device_info
         except Exception as e:
-            print(f"Error getting device info: {e}")
-        
+            logger.warning(f"Could not get detailed device info: {e}")
+        controller_id = f"NS-{self.ip_address.replace('.', '-')}"
+        self.device_info = {
+            "name": "NovaStar Controller",
+            "model": "Unknown",
+            "version": "3.6.3",
+            "ip": self.ip_address,
+            "controller_id": controller_id
+        }
+        return self.device_info
+    
+    def upload_program(self, program_data: Dict, file_path: Optional[str] = None) -> bool:
+        if self.status != ConnectionStatus.CONNECTED:
+            if not self.connect():
+                return False
+        try:
+            self.set_progress(0, "Creating program...")
+            create_params = {
+                "name": program_data.get("name", "Program"),
+                "width": program_data.get("width", 500),
+                "height": program_data.get("height", 500),
+                "tplID": 1,
+                "winInfo": {
+                    "height": 1.0,
+                    "width": 1.0,
+                    "left": 0.0,
+                    "top": 0.0,
+                    "zindex": 0,
+                    "index": 0
+                }
+            }
+            self.sdk.create_program_async(create_params, "create")
+            result = self.sdk.get_callback_result("create", timeout=5.0)
+            if not result or result.get("code") != 0:
+                logger.error(f"Failed to create program: {result}")
+                return False
+            self.set_progress(20, "Setting page content...")
+            widgets = self._convert_elements_to_widgets(program_data.get("elements", []))
+            page_params = {
+                "programID": 1,
+                "pageID": 1,
+                "pageInfo": {
+                    "name": program_data.get("name", "Program"),
+                    "widgetContainers": [{
+                        "id": 1,
+                        "name": "container1",
+                        "layout": {"x": "0.0", "y": "0.0", "width": "1.0", "height": "1.0"},
+                        "contents": {
+                            "widgets": widgets
+                        },
+                        "enable": True
+                    }]
+                }
+            }
+            self.sdk.set_page_program_async(page_params, "set_page")
+            result = self.sdk.get_callback_result("set_page", timeout=5.0)
+            if not result or result.get("code") != 0:
+                logger.error(f"Failed to set page: {result}")
+                return False
+            self.set_progress(60, "Generating program...")
+            output_dir = Path(file_path).parent if file_path else get_app_data_dir() / "programs"
+            output_dir.mkdir(parents=True, exist_ok=True)
+            make_params = {
+                "programID": 1,
+                "outPutPath": str(output_dir)
+            }
+            self.sdk.make_program_async(make_params, "make")
+            result = self.sdk.get_callback_result("make", timeout=10.0)
+            if not result or result.get("code") != 0:
+                logger.error(f"Failed to make program: {result}")
+                return False
+            self.set_progress(80, "Transferring to device...")
+            program_name = program_data.get("name", "program1")
+            transfer_params = {
+                "sn": self._device_sn,
+                "programName": program_name,
+                "deviceIdentifier": "Demo",
+                "sendProgramFilePaths": {
+                    "programPath": str(output_dir / "program1"),
+                    "mediasPath": {}
+                },
+                "startPlayAfterTransferred": True,
+                "insertPlay": True
+            }
+            self.sdk.start_transfer_program_async(transfer_params, "transfer")
+            result = self.sdk.get_callback_result("transfer", timeout=30.0)
+            if result and result.get("code") == 0:
+                self.set_progress(100, "Upload complete")
+                logger.info(f"Program '{program_data.get('name')}' uploaded successfully")
+                return True
+            else:
+                logger.error(f"Transfer failed: {result}")
+                return False
+        except Exception as e:
+            logger.error(f"Error uploading program: {e}", exc_info=True)
+            return False
+    
+    def _convert_elements_to_widgets(self, elements: List[Dict]) -> List[Dict]:
+        widgets: List[Dict] = []
+        for element in elements:
+            element_type = element.get("type")
+            properties = element.get("properties", {})
+            widget = {
+                "id": len(widgets) + 1,
+                "enable": True,
+                "layout": {
+                    "x": f"{element.get('x', 0)}",
+                    "y": f"{element.get('y', 0)}",
+                    "width": f"{element.get('width', 200)}",
+                    "height": f"{element.get('height', 100)}"
+                },
+                "backgroundColor": "#00000000",
+                "zOrder": 0
+            }
+            if element_type == "text" or element_type == "singleline_text":
+                widget.update({
+                    "type": "ARCH_TEXT",
+                    "name": "text",
+                    "dataSource": "",
+                    "metadata": {
+                        "content": {
+                            "paragraphs": [{
+                                "lines": [{
+                                    "segs": [{
+                                        "content": properties.get("text", "")
+                                    }]
+                                }],
+                                "textAttributes": [{
+                                    "textColor": properties.get("color", "#000000"),
+                                    "attributes": {
+                                        "font": {
+                                            "family": [properties.get("font_family", "Arial")],
+                                            "size": properties.get("font_size", 24),
+                                            "style": "NORMAL"
+                                        }
+                                    }
+                                }]
+                            }]
+                        }
+                    },
+                    "duration": properties.get("duration", 5000)
+                })
+            elif element_type == "photo":
+                file_path = properties.get("file_path", "")
+                widget.update({
+                    "type": "PICTURE",
+                    "name": Path(file_path).name if file_path else "image",
+                    "dataSource": file_path,
+                    "duration": properties.get("duration", 5000)
+                })
+            elif element_type == "video":
+                file_path = properties.get("file_path", "")
+                widget.update({
+                    "type": "VIDEO",
+                    "name": Path(file_path).name if file_path else "video",
+                    "dataSource": file_path,
+                    "duration": properties.get("duration", 5000)
+                })
+            elif element_type == "clock":
+                widget.update({
+                    "type": "CLOCK",
+                    "name": "clock",
+                    "duration": 5000
+                })
+            elif element_type == "html":
+                file_path = properties.get("file_path", "")
+                widget.update({
+                    "type": "HTML",
+                    "name": "html",
+                    "dataSource": file_path,
+                    "duration": properties.get("duration", 5000)
+                })
+            elif element_type == "hdmi":
+                widget.update({
+                    "type": "HDMI",
+                    "name": "hdmi",
+                    "duration": 5000
+                })
+            widgets.append(widget)
+        return widgets
+    
+    def download_program(self, program_id: Optional[str] = None) -> Optional[Dict]:
+        if not self._device_sn:
+            return None
+        try:
+            info_params = {"sn": self._device_sn}
+            self.sdk.get_program_info_async(info_params, "download")
+            result = self.sdk.get_callback_result("download", timeout=5.0)
+            if result and result.get("code") == 0:
+                data = json.loads(result.get("data", "{}"))
+                return self._convert_from_viplexcore_format(data)
+        except Exception as e:
+            logger.error(f"Error downloading program: {e}", exc_info=True)
         return None
     
-    def upload_program(self, program_data: Dict, file_path: str = None) -> bool:
-        if not self.socket or self.status != ConnectionStatus.CONNECTED:
-            return False
-        
-        try:
-            self.set_progress(0, "Preparing program data...")
-            
-            program_bytes = self._convert_program_to_bytes(program_data)
-            
-            self.set_progress(20, "Uploading program...")
-            
-            upload_cmd = self._build_upload_command(program_bytes)
-            if not self.network_manager.send_data(self.socket, upload_cmd):
-                return False
-            
-            self.set_progress(50, "Sending program data...")
-            
-            chunk_size = 4096
-            total_size = len(program_bytes)
-            sent = 0
-            
-            for i in range(0, total_size, chunk_size):
-                chunk = program_bytes[i:i+chunk_size]
-                if not self.network_manager.send_data(self.socket, chunk):
-                    return False
-                sent += len(chunk)
-                progress = 50 + int((sent / total_size) * 40)
-                self.set_progress(progress, f"Uploading... {sent}/{total_size} bytes")
-            
-            self.set_progress(90, "Finalizing...")
-            
-            response = self.network_manager.receive_data(self.socket, 1024, timeout=10)
-            if response and self._parse_upload_response(response):
-                self.set_progress(100, "Upload complete")
-                return True
-            
-            return False
-        except Exception as e:
-            print(f"Error uploading program: {e}")
-            return False
-    
-    def download_program(self, program_id: str = None) -> Optional[Dict]:
-        if not self.socket or self.status != ConnectionStatus.CONNECTED:
-            return None
-        
-        try:
-            self.set_progress(0, "Requesting program...")
-            
-            request = self._build_download_request(program_id)
-            if not self.network_manager.send_data(self.socket, request):
-                return None
-            
-            self.set_progress(20, "Receiving program data...")
-            
-            data = b''
-            while True:
-                chunk = self.network_manager.receive_data(self.socket, 4096, timeout=5)
-                if not chunk:
-                    break
-                data += chunk
-                self.set_progress(20 + int((len(data) / 100000) * 60), "Downloading...")
-            
-            if data:
-                program = self._parse_program_data(data)
-                self.set_progress(100, "Download complete")
-                return program
-            
-            return None
-        except Exception as e:
-            print(f"Error downloading program: {e}")
-            return None
+    def _convert_from_viplexcore_format(self, data: Dict) -> Dict:
+        return {
+            "name": data.get("name", "Program"),
+            "width": data.get("width", 500),
+            "height": data.get("height", 500),
+            "elements": []
+        }
     
     def get_program_list(self) -> List[Dict]:
-        if not self.socket or self.status != ConnectionStatus.CONNECTED:
-            return []
-        
-        try:
-            request = self._build_list_request()
-            if not self.network_manager.send_data(self.socket, request):
-                return []
-            
-            response = self.network_manager.receive_data(self.socket, 4096)
-            if response:
-                return self._parse_list_response(response)
-        except Exception as e:
-            print(f"Error getting program list: {e}")
-        
         return []
     
     def test_connection(self) -> bool:
-        return self.network_manager.ping(self.ip_address, self.port, timeout=2)
-    
-    def _build_info_request(self) -> bytes:
-        return b'\x01\x00\x00\x00'
-    
-    def _parse_info_response(self, data: bytes) -> Optional[Dict]:
-        controller_id = f"NS-{self.ip_address.replace('.', '-')}"
-        return {
-            "name": "NovaStar Controller",
-            "model": "Unknown",
-            "version": "1.0",
-            "ip": self.ip_address,
-            "controller_id": controller_id,
-            "controllerId": controller_id,
-            "serial_number": controller_id
-        }
-    
-    def _build_upload_command(self, program_data: bytes) -> bytes:
-        header = b'\x02\x00\x00\x00'
-        size = NetworkManager.pack_uint32(len(program_data))
-        return header + size
-    
-    def _build_download_request(self, program_id: str = None) -> bytes:
-        return b'\x03\x00\x00\x00'
-    
-    def _build_list_request(self) -> bytes:
-        return b'\x04\x00\x00\x00'
-    
-    def _parse_list_response(self, data: bytes) -> List[Dict]:
-        return []
-    
-    def _parse_upload_response(self, data: bytes) -> bool:
-        return len(data) > 0
-    
-    def _convert_program_to_bytes(self, program_data: Dict) -> bytes:
-        json_str = json.dumps(program_data, ensure_ascii=False)
-        return json_str.encode('utf-8')
-    
-    def _parse_program_data(self, data: bytes) -> Optional[Dict]:
         try:
-            json_str = data.decode('utf-8')
-            return json.loads(json_str)
-        except (UnicodeDecodeError, json.JSONDecodeError, AttributeError):
-            return None
+            if not self._ensure_initialized():
+                return False
+            self.sdk.search_appoint_ip_async(self.ip_address, "test")
+            time.sleep(1)
+            return True
+        except Exception as e:
+            logger.error(f"Error testing connection: {e}")
+            return False
 

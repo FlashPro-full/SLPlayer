@@ -1,12 +1,82 @@
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QComboBox,
                              QPushButton, QGroupBox, QLineEdit, QCheckBox, QTextEdit,
-                             QSpinBox, QColorDialog, QFormLayout)
-from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QColor, QTextCursor, QTextCharFormat, QFont, QBrush
+                             QSpinBox, QColorDialog, QFormLayout, QGridLayout, QScrollArea,
+                             QFrame, QDoubleSpinBox)
+from PyQt5.QtCore import Qt, pyqtSignal
+from PyQt5.QtGui import QColor, QTextCursor, QTextCharFormat, QFont, QBrush, QPainter, QPixmap
 from typing import Optional, Dict
 from datetime import datetime
 from ui.properties.base_properties_component import BasePropertiesComponent
 from ui.widgets.text_editor_toolbar import TextEditorToolbar
+from ui.utils.color_utils import get_gradient_color_at_position
+
+
+class AnimationStyleThumbnail(QFrame):
+    """Thumbnail widget for animation style preview"""
+    selected = pyqtSignal(int)
+    
+    def __init__(self, index: int, parent=None):
+        super().__init__(parent)
+        self.index = index
+        self.is_selected = False
+        self.setFixedSize(80, 80)
+        self.setStyleSheet("""
+            QFrame {
+                background-color: #000000;
+                border: 2px solid #CCCCCC;
+                border-radius: 4px;
+            }
+        """)
+    
+    def set_selected(self, selected: bool):
+        self.is_selected = selected
+        if selected:
+            self.setStyleSheet("""
+                QFrame {
+                    background-color: #000000;
+                    border: 3px solid #00FF00;
+                    border-radius: 4px;
+                }
+            """)
+        else:
+            self.setStyleSheet("""
+                QFrame {
+                    background-color: #000000;
+                    border: 2px solid #CCCCCC;
+                    border-radius: 4px;
+                }
+            """)
+        self.update()
+    
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self.selected.emit(self.index)
+        super().mousePressEvent(event)
+    
+    def paintEvent(self, event):
+        super().paintEvent(event)
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        
+        # Draw preview of animation style with "ABC" text using gradient colors
+        rect = self.rect().adjusted(4, 4, -4, -4)
+        
+        # Use gradient color function based on InputLayout.fx
+        font = QFont("Arial", 12, QFont.Bold)
+        painter.setFont(font)
+        
+        # Draw "ABC" with gradient colors based on style index
+        text = "ABC"
+        char_width = rect.width() / len(text)
+        for i, char in enumerate(text):
+            # Calculate position in gradient (0.0 to 1.0)
+            pos = i / max(len(text) - 1, 1)
+            # Get gradient color for this style and position
+            color = get_gradient_color_at_position(pos, self.index)
+            painter.setPen(color)
+            x = rect.x() + i * char_width
+            painter.drawText(int(x), rect.y(), int(char_width), rect.height(), 
+                           Qt.AlignCenter, char)
 
 
 class AnimationPropertiesComponent(BasePropertiesComponent):
@@ -54,9 +124,13 @@ class AnimationPropertiesComponent(BasePropertiesComponent):
                 background-color: #000000;
                 color: #FFFFFF;
                 font-size: 12px;
+                selection-background-color: #4A90E2;
+                selection-color: #FFFFFF;
             }
             QTextEdit:focus {
                 border: 1px solid #4A90E2;
+                background-color: #000000;
+                color: #FFFFFF;
             }
             QPushButton {
                 border: 1px solid #CCCCCC;
@@ -68,13 +142,6 @@ class AnimationPropertiesComponent(BasePropertiesComponent):
             QPushButton:hover {
                 background-color: #E8F4F8;
                 border: 1px solid #4A90E2;
-            }
-            QTextEdit {
-                border: 1px solid #CCCCCC;
-                border-radius: 3px;
-                padding: 6px;
-                background-color: #FFFFFF;
-                font-size: 12px;
             }
         """)
         
@@ -154,64 +221,72 @@ class AnimationPropertiesComponent(BasePropertiesComponent):
         
         # Animation style group
         animation_style_group = QGroupBox("Animation style")
-        animation_style_group.setMinimumWidth(300)
+        animation_style_group.setMinimumWidth(600)
         animation_style_layout = QVBoxLayout(animation_style_group)
         animation_style_layout.setContentsMargins(10, 16, 10, 10)
         animation_style_layout.setSpacing(8)
         
-        form_layout = QFormLayout()
-        form_layout.setSpacing(8)
+        # Header section with numeric inputs
+        header_layout = QHBoxLayout()
+        header_layout.setSpacing(8)
         
-        # 7 colors gradient flow
-        gradient_colors_layout = QVBoxLayout()
-        gradient_colors_layout.setSpacing(4)
-        gradient_label = QLabel("Gradient Colors (7 colors):")
-        gradient_colors_layout.addWidget(gradient_label)
+        # Hold time input (6.00)
+        self.animation_holdtime_spin = QDoubleSpinBox()
+        self.animation_holdtime_spin.setRange(0.0, 100.0)
+        self.animation_holdtime_spin.setValue(6.0)
+        self.animation_holdtime_spin.setDecimals(2)
+        self.animation_holdtime_spin.setSingleStep(0.1)
+        self.animation_holdtime_spin.setSuffix(" sec")
+        self.animation_holdtime_spin.valueChanged.connect(self._on_animation_holdtime_changed)
+        header_layout.addWidget(self.animation_holdtime_spin)
         
-        self.gradient_color_buttons = []
-        for i in range(7):
-            color_row = QHBoxLayout()
-            color_row.setSpacing(4)
-            color_label = QLabel(f"Color {i+1}:")
-            color_btn = QPushButton("Choose Color")
-            color_btn.setMinimumWidth(120)
-            color_btn.clicked.connect(lambda checked, idx=i: self._on_gradient_color_clicked(idx))
-            self.gradient_color_buttons.append(color_btn)
-            color_row.addWidget(color_label)
-            color_row.addWidget(color_btn, stretch=1)
-            gradient_colors_layout.addLayout(color_row)
+        # Animation speed combo (5)
+        self.animation_speed_combo = QComboBox()
+        self.animation_speed_combo.addItem("1 fast")
+        self.animation_speed_combo.addItems([f"{i}" for i in range(2, 9)])
+        self.animation_speed_combo.addItem("9 slow")
+        self.animation_speed_combo.setCurrentText("5")
+        self.animation_speed_combo.setMinimumWidth(80)
+        self.animation_speed_combo.currentTextChanged.connect(self._on_animation_speed_changed)
+        header_layout.addWidget(self.animation_speed_combo)
         
-        form_layout.addRow("", gradient_colors_layout)
+        animation_style_layout.addLayout(header_layout)
         
-        # Writing direction
-        writing_direction_layout = QHBoxLayout()
-        self.writing_direction_combo = QComboBox()
-        self.writing_direction_combo.addItems(["Horizontal Line Writing", "Vertical Line Writing"])
-        self.writing_direction_combo.currentTextChanged.connect(self._on_writing_direction_changed)
-        writing_direction_layout.addWidget(self.writing_direction_combo, stretch=1)
-        form_layout.addRow("Writing Direction:", writing_direction_layout)
+        # Thumbnail grid with scroll area
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setMinimumHeight(400)
+        scroll_area.setStyleSheet("""
+            QScrollArea {
+                border: 1px solid #CCCCCC;
+                border-radius: 3px;
+                background-color: #FFFFFF;
+            }
+        """)
         
-        # Character movement
-        character_movement_layout = QHBoxLayout()
-        self.character_movement_check = QCheckBox("Move one character at one step")
-        self.character_movement_check.setChecked(True)
-        self.character_movement_check.toggled.connect(self._on_character_movement_changed)
-        character_movement_layout.addWidget(self.character_movement_check)
-        character_movement_layout.addStretch()
-        form_layout.addRow("", character_movement_layout)
+        grid_widget = QWidget()
+        self.thumbnail_grid_layout = QGridLayout(grid_widget)
+        self.thumbnail_grid_layout.setContentsMargins(10, 10, 10, 10)
+        self.thumbnail_grid_layout.setSpacing(8)
         
-        # Speed
-        speed_layout = QHBoxLayout()
-        self.animation_speed_spin = QSpinBox()
-        self.animation_speed_spin.setRange(1, 100)
-        self.animation_speed_spin.setValue(10)
-        self.animation_speed_spin.setSuffix(" chars/sec")
-        self.animation_speed_spin.valueChanged.connect(self._on_animation_speed_changed)
-        speed_layout.addWidget(self.animation_speed_spin, stretch=1)
-        form_layout.addRow("Speed:", speed_layout)
+        # Create 26 thumbnail previews (7 rows x 4 columns, last row has 2)
+        self.animation_thumbnails = []
+        self.selected_thumbnail_index = 0
         
-        animation_style_layout.addLayout(form_layout)
-        animation_style_layout.addStretch()
+        for i in range(26):
+            row = i // 4
+            col = i % 4
+            thumbnail = AnimationStyleThumbnail(i, self)
+            thumbnail.selected.connect(self._on_thumbnail_selected)
+            self.animation_thumbnails.append(thumbnail)
+            self.thumbnail_grid_layout.addWidget(thumbnail, row, col)
+        
+        # Set first thumbnail as selected
+        if self.animation_thumbnails:
+            self.animation_thumbnails[0].set_selected(True)
+        
+        scroll_area.setWidget(grid_widget)
+        animation_style_layout.addWidget(scroll_area)
         
         main_layout.addWidget(animation_style_group)
         main_layout.addStretch()
@@ -222,62 +297,66 @@ class AnimationPropertiesComponent(BasePropertiesComponent):
         self.animation_dims_width.textChanged.connect(self._on_dims_changed)
         self.animation_dims_height.textChanged.connect(self._on_dims_changed)
     
-    def _on_gradient_color_clicked(self, index: int):
-        color = QColorDialog.getColor()
-        if color.isValid():
-            if "properties" not in self.current_element:
-                self.current_element["properties"] = {}
-            if "animation_style" not in self.current_element["properties"]:
-                self.current_element["properties"]["animation_style"] = {}
-            if "gradient_colors" not in self.current_element["properties"]["animation_style"]:
-                self.current_element["properties"]["animation_style"]["gradient_colors"] = ["#FF0000", "#FF7F00", "#FFFF00", "#00FF00", "#0000FF", "#4B0082", "#9400D3"]
-            
-            gradient_colors = self.current_element["properties"]["animation_style"]["gradient_colors"]
-            while len(gradient_colors) < 7:
-                gradient_colors.append("#000000")
-            gradient_colors[index] = color.name()
-            
-            self.current_program.modified = datetime.now().isoformat()
-            self.property_changed.emit("animation_gradient_color", (index, color.name()))
-            self._trigger_autosave()
-            
-            self.gradient_color_buttons[index].setStyleSheet(f"background-color: {color.name()};")
-    
-    def _on_writing_direction_changed(self, direction: str):
+    def _on_animation_holdtime_changed(self, value: float):
         if not self.current_element or not self.current_program:
             return
         if "properties" not in self.current_element:
             self.current_element["properties"] = {}
         if "animation_style" not in self.current_element["properties"]:
             self.current_element["properties"]["animation_style"] = {}
-        self.current_element["properties"]["animation_style"]["writing_direction"] = direction
+        self.current_element["properties"]["animation_style"]["hold_time"] = value
         self.current_program.modified = datetime.now().isoformat()
-        self.property_changed.emit("animation_writing_direction", direction)
+        self.property_changed.emit("animation_hold_time", value)
         self._trigger_autosave()
     
-    def _on_character_movement_changed(self, enabled: bool):
+    def _on_animation_speed_changed(self, speed_text: str):
         if not self.current_element or not self.current_program:
             return
         if "properties" not in self.current_element:
             self.current_element["properties"] = {}
         if "animation_style" not in self.current_element["properties"]:
             self.current_element["properties"]["animation_style"] = {}
-        self.current_element["properties"]["animation_style"]["character_movement"] = enabled
-        self.current_program.modified = datetime.now().isoformat()
-        self.property_changed.emit("animation_character_movement", enabled)
-        self._trigger_autosave()
-    
-    def _on_animation_speed_changed(self, speed: int):
-        if not self.current_element or not self.current_program:
-            return
-        if "properties" not in self.current_element:
-            self.current_element["properties"] = {}
-        if "animation_style" not in self.current_element["properties"]:
-            self.current_element["properties"]["animation_style"] = {}
+        
+        # Parse speed value from combo text
+        speed = 5  # default
+        if speed_text == "1 fast":
+            speed = 1
+        elif speed_text == "9 slow":
+            speed = 9
+        else:
+            try:
+                speed = int(speed_text)
+            except ValueError:
+                speed = 5
+        
         self.current_element["properties"]["animation_style"]["speed"] = speed
         self.current_program.modified = datetime.now().isoformat()
         self.property_changed.emit("animation_speed", speed)
         self._trigger_autosave()
+    
+    def _on_thumbnail_selected(self, index: int):
+        if not self.current_element or not self.current_program:
+            return
+        
+        # Deselect previous thumbnail
+        if 0 <= self.selected_thumbnail_index < len(self.animation_thumbnails):
+            self.animation_thumbnails[self.selected_thumbnail_index].set_selected(False)
+        
+        # Select new thumbnail
+        self.selected_thumbnail_index = index
+        if 0 <= index < len(self.animation_thumbnails):
+            self.animation_thumbnails[index].set_selected(True)
+            
+            # Update element properties
+            if "properties" not in self.current_element:
+                self.current_element["properties"] = {}
+            if "animation_style" not in self.current_element["properties"]:
+                self.current_element["properties"]["animation_style"] = {}
+            self.current_element["properties"]["animation_style"]["style_index"] = index
+            self.current_program.modified = datetime.now().isoformat()
+            self.property_changed.emit("animation_style_index", index)
+            self._trigger_autosave()
+    
     
     def _on_text_content_changed(self):
         if not self.current_element or not self.current_program:
@@ -406,28 +485,31 @@ class AnimationPropertiesComponent(BasePropertiesComponent):
         
         # Load animation style
         animation_style = element_props.get("animation_style", {})
-        gradient_colors = animation_style.get("gradient_colors", ["#FF0000", "#FF7F00", "#FFFF00", "#00FF00", "#0000FF", "#4B0082", "#9400D3"])
-        for i, color_btn in enumerate(self.gradient_color_buttons):
-            if i < len(gradient_colors):
-                color = gradient_colors[i]
-                color_btn.setStyleSheet(f"background-color: {color};")
+        style_index = animation_style.get("style_index", 0)
+        if hasattr(self, 'animation_thumbnails') and 0 <= style_index < len(self.animation_thumbnails):
+            # Update selection without triggering property change (already loading)
+            if 0 <= self.selected_thumbnail_index < len(self.animation_thumbnails):
+                self.animation_thumbnails[self.selected_thumbnail_index].set_selected(False)
+            self.selected_thumbnail_index = style_index
+            self.animation_thumbnails[style_index].set_selected(True)
         
-        writing_direction = animation_style.get("writing_direction", "Horizontal Line Writing")
-        writing_direction_index = self.writing_direction_combo.findText(writing_direction)
-        if writing_direction_index >= 0:
-            self.writing_direction_combo.setCurrentIndex(writing_direction_index)
-        else:
-            self.writing_direction_combo.setCurrentIndex(0)
+        hold_time = animation_style.get("hold_time", 6.0)
+        if hasattr(self, 'animation_holdtime_spin'):
+            self.animation_holdtime_spin.blockSignals(True)
+            self.animation_holdtime_spin.setValue(hold_time)
+            self.animation_holdtime_spin.blockSignals(False)
         
-        character_movement = animation_style.get("character_movement", True)
-        self.character_movement_check.blockSignals(True)
-        self.character_movement_check.setChecked(character_movement)
-        self.character_movement_check.blockSignals(False)
-        
-        speed = animation_style.get("speed", 10)
-        self.animation_speed_spin.blockSignals(True)
-        self.animation_speed_spin.setValue(speed)
-        self.animation_speed_spin.blockSignals(False)
+        speed = animation_style.get("speed", 5)
+        if hasattr(self, 'animation_speed_combo'):
+            self.animation_speed_combo.blockSignals(True)
+            # Convert speed value to combo text
+            if speed == 1:
+                self.animation_speed_combo.setCurrentText("1 fast")
+            elif speed == 9:
+                self.animation_speed_combo.setCurrentText("9 slow")
+            else:
+                self.animation_speed_combo.setCurrentText(str(speed))
+            self.animation_speed_combo.blockSignals(False)
     
     def _apply_format_to_text_edit(self, text_format: Dict):
         """Apply format to text edit similar to text_properties_component"""
@@ -442,8 +524,9 @@ class AnimationPropertiesComponent(BasePropertiesComponent):
         
         if text_format.get("font_family"):
             font.setFamily(text_format.get("font_family"))
-        if text_format.get("font_size"):
-            font.setPointSize(text_format.get("font_size"))
+        font_size_val = text_format.get("font_size")
+        if font_size_val is not None:
+            font.setPointSize(int(font_size_val))
         if text_format.get("bold"):
             font.setBold(True)
         if text_format.get("italic"):
@@ -454,6 +537,9 @@ class AnimationPropertiesComponent(BasePropertiesComponent):
         
         if text_format.get("font_color"):
             char_format.setForeground(QColor(text_format.get("font_color")))
+        else:
+            # Default to white text color
+            char_format.setForeground(QColor("#FFFFFF"))
         
         text_bg_color_str = text_format.get("text_bg_color")
         if text_bg_color_str:

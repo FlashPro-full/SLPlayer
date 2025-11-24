@@ -1,198 +1,200 @@
-import json
 from typing import Optional, Dict, List
+from pathlib import Path
 from controllers.base_controller import BaseController, ControllerType, ConnectionStatus
-from controllers.network_manager import NetworkManager
+from controllers.huidu_sdk import HuiduSDK
+from utils.logger import get_logger
 
+logger = get_logger(__name__)
 
 class HuiduController(BaseController):
-    
     DEFAULT_PORT = 5000
     
     def __init__(self, ip_address: str, port: int = DEFAULT_PORT):
         super().__init__(ControllerType.HUIDU, ip_address, port)
-        self.network_manager = NetworkManager(timeout=5)
-        self.socket = None
+        self.sdk = HuiduSDK()
+        self._screen_created = False
+        self._current_program_id = None
+        self._current_area_id = None
     
     def connect(self) -> bool:
         if self.status == ConnectionStatus.CONNECTED:
             return True
-        
         self.set_status(ConnectionStatus.CONNECTING)
-        
-        self.socket = self.network_manager.connect(self.ip_address, self.port)
-        if self.socket:
+        try:
+            if not self.sdk.is_card_online(self.ip_address):
+                logger.warning(f"Huidu controller at {self.ip_address} is not online")
+                self.set_status(ConnectionStatus.ERROR)
+                return False
             info = self.get_device_info()
             if info:
                 self.set_status(ConnectionStatus.CONNECTED)
+                logger.info(f"Connected to Huidu controller at {self.ip_address}")
                 return True
             else:
-                self.network_manager.close_socket(self.socket)
-                self.socket = None
                 self.set_status(ConnectionStatus.ERROR)
                 return False
-        else:
+        except Exception as e:
+            logger.error(f"Error connecting to Huidu controller: {e}", exc_info=True)
             self.set_status(ConnectionStatus.ERROR)
             return False
     
     def disconnect(self):
-        if self.socket:
-            self.network_manager.close_socket(self.socket)
-            self.socket = None
+        self._screen_created = False
+        self._current_program_id = None
+        self._current_area_id = None
         self.set_status(ConnectionStatus.DISCONNECTED)
         self.device_info = None
+        logger.info(f"Disconnected from Huidu controller at {self.ip_address}")
     
     def get_device_info(self) -> Optional[Dict]:
-        if not self.socket:
-            return None
-        
         try:
-            request = self._build_info_request()
-            if not self.network_manager.send_data(self.socket, request):
-                return None
-            
-            response = self.network_manager.receive_data(self.socket, 1024)
-            if response:
-                info = self._parse_info_response(response)
-                if info:
-                    self.device_info = info
-                return info
+            params = self.sdk.get_screen_params(self.ip_address)
+            if params:
+                controller_id = f"HD-{self.ip_address.replace('.', '-')}"
+                self.device_info = {
+                    "name": "Huidu Controller",
+                    "model": "Gen6",
+                    "version": "2.0.2",
+                    "ip": self.ip_address,
+                    "controller_id": controller_id,
+                    "controllerId": controller_id,
+                    "serial_number": controller_id,
+                    "width": params.get("width", 64),
+                    "height": params.get("height", 32),
+                    "color": params.get("color", 1),
+                    "gray": params.get("gray", 1),
+                    "card_type": params.get("card_type", 0)
+                }
+                return self.device_info
         except Exception as e:
-            print(f"Error getting device info: {e}")
-        
-        return None
+            logger.error(f"Error getting device info: {e}", exc_info=True)
+        controller_id = f"HD-{self.ip_address.replace('.', '-')}"
+        self.device_info = {
+            "name": "Huidu Controller",
+            "model": "Gen6",
+            "version": "2.0.2",
+            "ip": self.ip_address,
+            "controller_id": controller_id
+        }
+        return self.device_info
     
     def upload_program(self, program_data: Dict, file_path: str = None) -> bool:
-        if not self.socket or self.status != ConnectionStatus.CONNECTED:
-            return False
-        
-        try:
-            self.set_progress(0, "Preparing program data...")
-            
-            program_bytes = self._convert_program_to_bytes(program_data)
-            
-            self.set_progress(20, "Uploading program...")
-            
-            upload_cmd = self._build_upload_command(program_bytes)
-            if not self.network_manager.send_data(self.socket, upload_cmd):
+        if self.status != ConnectionStatus.CONNECTED:
+            if not self.connect():
                 return False
-            
-            self.set_progress(50, "Sending program data...")
-            
-            chunk_size = 4096
-            total_size = len(program_bytes)
-            sent = 0
-            
-            for i in range(0, total_size, chunk_size):
-                chunk = program_bytes[i:i+chunk_size]
-                if not self.network_manager.send_data(self.socket, chunk):
-                    return False
-                sent += len(chunk)
-                progress = 50 + int((sent / total_size) * 40)
-                self.set_progress(progress, f"Uploading... {sent}/{total_size} bytes")
-            
-            self.set_progress(90, "Finalizing...")
-            
-            response = self.network_manager.receive_data(self.socket, 1024, timeout=10)
-            if response and self._parse_upload_response(response):
-                self.set_progress(100, "Upload complete")
-                return True
-            
-            return False
+        try:
+            self.set_progress(0, "Preparing program...")
+            width = program_data.get("width", 64)
+            height = program_data.get("height", 32)
+            if not self.sdk.create_screen(width, height):
+                error = self.sdk.get_last_error()
+                logger.error(f"Failed to create screen: error {error}")
+                return False
+            self._screen_created = True
+            self.set_progress(10, "Screen created")
+            program_id = self.sdk.add_program()
+            if not program_id:
+                error = self.sdk.get_last_error()
+                logger.error(f"Failed to add program: error {error}")
+                return False
+            self._current_program_id = program_id
+            self.set_progress(20, "Program added")
+            elements = program_data.get("elements", [])
+            total_elements = len(elements)
+            for idx, element in enumerate(elements):
+                self.set_progress(20 + int((idx / total_elements) * 60), f"Processing element {idx + 1}/{total_elements}")
+                if not self._add_element_to_sdk(element, program_id, width, height):
+                    logger.warning(f"Failed to add element: {element.get('type', 'unknown')}")
+            self.set_progress(90, "Sending to device...")
+            if not self.sdk.send_screen(self.ip_address):
+                error = self.sdk.get_last_error()
+                logger.error(f"Failed to send screen: error {error}")
+                return False
+            self.set_progress(100, "Upload complete")
+            logger.info(f"Program '{program_data.get('name', 'Unknown')}' uploaded successfully")
+            return True
         except Exception as e:
-            print(f"Error uploading program: {e}")
+            logger.error(f"Error uploading program: {e}", exc_info=True)
             return False
+    
+    def _add_element_to_sdk(self, element: Dict, program_id: int, screen_width: int, screen_height: int) -> bool:
+        element_type = element.get("type")
+        properties = element.get("properties", {})
+        x = element.get("x", 0)
+        y = element.get("y", 0)
+        width = element.get("width", 200)
+        height = element.get("height", 100)
+        area_id = self.sdk.add_area(program_id, x, y, width, height)
+        if not area_id:
+            return False
+        if element_type == "text" or element_type == "singleline_text":
+            text = properties.get("text", "")
+            font_family = properties.get("font_family", "Arial")
+            font_size = properties.get("font_size", 24)
+            color_hex = properties.get("color", "#000000")
+            color_rgb = self._hex_to_rgb(color_hex)
+            item_id = self.sdk.add_text_item(
+                area_id, text, font_family, font_size,
+                color_rgb, 0, 4, 0, 25, 201, 3
+            )
+            return item_id is not None
+        elif element_type == "photo":
+            file_path = properties.get("file_path", "")
+            if file_path and Path(file_path).exists():
+                item_id = self.sdk.add_image_item(area_id, file_path, 0, 30, 201, 3)
+                return item_id is not None
+        elif element_type == "clock":
+            show_date = properties.get("show_date", True)
+            font_family = properties.get("font_family", "Arial")
+            font_size = properties.get("font_size", 48)
+            color_hex = properties.get("color", "#000000")
+            color_rgb = self._hex_to_rgb(color_hex)
+            item_id = self.sdk.add_time_item(
+                area_id, show_date, True, font_family, font_size, color_rgb
+            )
+            return item_id is not None
+        elif element_type == "sensor":
+            font_family = properties.get("font_family", "Arial")
+            font_size = properties.get("font_size", 24)
+            color_hex = properties.get("color", "#FFFFFF")
+            color_rgb = self._hex_to_rgb(color_hex)
+            sensor_type = properties.get("sensor_type", 0)
+            item_id = self.sdk.add_sensor_item(
+                area_id, sensor_type, color_rgb, font_family, font_size
+            )
+            return item_id is not None
+        elif element_type == "timing":
+            font_family = properties.get("font_family", "Arial")
+            font_size = properties.get("font_size", 24)
+            color_hex = properties.get("color", "#FFFFFF")
+            color_rgb = self._hex_to_rgb(color_hex)
+            count_type = properties.get("count_type", 0)
+            count_value = properties.get("count_value", 0)
+            item_id = self.sdk.add_count_item(
+                area_id, count_type, count_value, color_rgb, font_family, font_size
+            )
+            return item_id is not None
+        logger.warning(f"Element type {element_type} not fully supported by Huidu SDK")
+        return False
+    
+    def _hex_to_rgb(self, hex_color: str) -> tuple:
+        hex_color = hex_color.lstrip('#')
+        if len(hex_color) == 6:
+            return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
+        return (0, 0, 0)
     
     def download_program(self, program_id: str = None) -> Optional[Dict]:
-        if not self.socket or self.status != ConnectionStatus.CONNECTED:
-            return None
-        
-        try:
-            self.set_progress(0, "Requesting program...")
-            
-            request = self._build_download_request(program_id)
-            if not self.network_manager.send_data(self.socket, request):
-                return None
-            
-            self.set_progress(20, "Receiving program data...")
-            
-            data = b''
-            while True:
-                chunk = self.network_manager.receive_data(self.socket, 4096, timeout=5)
-                if not chunk:
-                    break
-                data += chunk
-                self.set_progress(20 + int((len(data) / 100000) * 60), "Downloading...")
-            
-            if data:
-                program = self._parse_program_data(data)
-                self.set_progress(100, "Download complete")
-                return program
-            
-            return None
-        except Exception as e:
-            print(f"Error downloading program: {e}")
-            return None
+        logger.warning("Program download not directly supported by Huidu SDK")
+        return None
     
     def get_program_list(self) -> List[Dict]:
-        if not self.socket or self.status != ConnectionStatus.CONNECTED:
-            return []
-        
-        try:
-            request = self._build_list_request()
-            if not self.network_manager.send_data(self.socket, request):
-                return []
-            
-            response = self.network_manager.receive_data(self.socket, 4096)
-            if response:
-                return self._parse_list_response(response)
-        except Exception as e:
-            print(f"Error getting program list: {e}")
-        
+        logger.warning("Program list not directly supported by Huidu SDK")
         return []
     
     def test_connection(self) -> bool:
-        return self.network_manager.ping(self.ip_address, self.port, timeout=2)
-    
-    def _build_info_request(self) -> bytes:
-        return b'\x01\x00\x00\x00'
-    
-    def _parse_info_response(self, data: bytes) -> Optional[Dict]:
-        controller_id = f"HD-{self.ip_address.replace('.', '-')}"
-        return {
-            "name": "Huidu Controller",
-            "model": "Unknown",
-            "version": "1.0",
-            "ip": self.ip_address,
-            "controller_id": controller_id,
-            "controllerId": controller_id,
-            "serial_number": controller_id
-        }
-    
-    def _build_upload_command(self, program_data: bytes) -> bytes:
-        header = b'\x02\x00\x00\x00'
-        size = NetworkManager.pack_uint32(len(program_data))
-        return header + size
-    
-    def _build_download_request(self, program_id: str = None) -> bytes:
-        return b'\x03\x00\x00\x00'
-    
-    def _build_list_request(self) -> bytes:
-        return b'\x04\x00\x00\x00'
-    
-    def _parse_list_response(self, data: bytes) -> List[Dict]:
-        return []
-    
-    def _parse_upload_response(self, data: bytes) -> bool:
-        return len(data) > 0
-    
-    def _convert_program_to_bytes(self, program_data: Dict) -> bytes:
-        json_str = json.dumps(program_data, ensure_ascii=False)
-        return json_str.encode('utf-8')
-    
-    def _parse_program_data(self, data: bytes) -> Optional[Dict]:
         try:
-            json_str = data.decode('utf-8')
-            return json.loads(json_str)
-        except (UnicodeDecodeError, json.JSONDecodeError, AttributeError):
-            return None
+            return self.sdk.is_card_online(self.ip_address)
+        except Exception as e:
+            logger.error(f"Error testing connection: {e}")
+            return False
 
