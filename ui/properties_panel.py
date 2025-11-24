@@ -97,7 +97,7 @@ class PropertiesPanel(QWidget):
         self.image_properties_widget = ImagePropertiesComponent(self.content_widget)
         self.text_properties_widget = TextPropertiesComponent(self.content_widget)
         self.screen_properties_widget = ScreenPropertiesComponent(self.content_widget)
-        self.single_line_text_properties_widget = SingleLineTextPropertiesComponent(self.content_widget)
+        self.singleline_text_properties_widget = SingleLineTextPropertiesComponent(self.content_widget)
         self.animation_properties_widget = AnimationPropertiesComponent(self.content_widget)
         self.clock_properties_widget = ClockPropertiesComponent(self.content_widget)
         self.timing_properties_widget = TimingPropertiesComponent(self.content_widget)
@@ -112,7 +112,7 @@ class PropertiesPanel(QWidget):
         self.image_properties_widget.property_changed.connect(self.property_changed.emit)
         self.text_properties_widget.property_changed.connect(self.property_changed.emit)
         self.screen_properties_widget.property_changed.connect(self.property_changed.emit)
-        self.single_line_text_properties_widget.property_changed.connect(self.property_changed.emit)
+        self.singleline_text_properties_widget.property_changed.connect(self.property_changed.emit)
         self.animation_properties_widget.property_changed.connect(self.property_changed.emit)
         self.clock_properties_widget.property_changed.connect(self.property_changed.emit)
         self.timing_properties_widget.property_changed.connect(self.property_changed.emit)
@@ -126,7 +126,7 @@ class PropertiesPanel(QWidget):
         self.content_layout.addWidget(self.image_properties_widget)
         self.content_layout.addWidget(self.text_properties_widget)
         self.content_layout.addWidget(self.screen_properties_widget)
-        self.content_layout.addWidget(self.single_line_text_properties_widget)
+        self.content_layout.addWidget(self.singleline_text_properties_widget)
         self.content_layout.addWidget(self.animation_properties_widget)
         self.content_layout.addWidget(self.clock_properties_widget)
         self.content_layout.addWidget(self.timing_properties_widget)
@@ -149,7 +149,7 @@ class PropertiesPanel(QWidget):
         self.image_properties_widget.setVisible(False)
         self.text_properties_widget.setVisible(False)
         self.screen_properties_widget.setVisible(False)
-        self.single_line_text_properties_widget.setVisible(False)
+        self.singleline_text_properties_widget.setVisible(False)
         self.animation_properties_widget.setVisible(False)
         self.clock_properties_widget.setVisible(False)
         self.timing_properties_widget.setVisible(False)
@@ -178,8 +178,8 @@ class PropertiesPanel(QWidget):
     def show_screen_properties(self):
         self._show_widget(self.screen_properties_widget)
     
-    def show_single_line_text_properties(self):
-        self._show_widget(self.single_line_text_properties_widget)
+    def show_singleline_text_properties(self):
+        self._show_widget(self.singleline_text_properties_widget)
     
     def show_animation_properties(self):
         self._show_widget(self.animation_properties_widget)
@@ -228,9 +228,9 @@ class PropertiesPanel(QWidget):
             elif element_type == "text":
                 self.show_text_properties()
                 self.text_properties_widget.set_program_data(program, element)
-            elif element_type == "single_line_text":
-                self.show_single_line_text_properties()
-                self.single_line_text_properties_widget.set_program_data(program, element)
+            elif element_type == "singleline_text":
+                self.show_singleline_text_properties()
+                self.singleline_text_properties_widget.set_program_data(program, element)
             elif element_type == "animation":
                 self.show_animation_properties()
                 self.animation_properties_widget.set_program_data(program, element)
@@ -263,6 +263,12 @@ class PropertiesPanel(QWidget):
         else:
             self.show_empty()
     
+    def set_program_manager(self, program_manager: ProgramManager):
+        self.program_manager = program_manager
+    
+    def set_screen_manager(self, screen_manager: ScreenManager):
+        self.screen_manager = screen_manager
+    
     def set_screen(self, screen_name: str, programs: List[Program], program_manager: Optional[ProgramManager] = None, 
                    screen_manager: Optional[ScreenManager] = None):
         try:
@@ -270,11 +276,13 @@ class PropertiesPanel(QWidget):
             self.current_screen_programs = programs
             self.current_program = None
             self.current_element = None
-            self.program_manager = program_manager
-            self.screen_manager = screen_manager
+            if program_manager:
+                self.program_manager = program_manager
+            if screen_manager:
+                self.screen_manager = screen_manager
             if screen_name and programs:
                 self.show_screen_properties()
-                self.screen_properties_widget.set_program_manager(program_manager)
+                self.screen_properties_widget.set_program_manager(self.program_manager)
                 self.screen_properties_widget.set_program_data(None, None, screen_name, programs)
             else:
                 self.show_empty()

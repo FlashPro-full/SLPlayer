@@ -106,7 +106,7 @@ class ControllerDiscovery(QObject):
                 # Could send identification packet here
                 sock.close()
                 return "novastar"
-            except:
+            except (OSError, ConnectionError, TimeoutError):
                 pass
         
         # Huidu controllers typically use port 5000 or 8080
@@ -117,7 +117,7 @@ class ControllerDiscovery(QObject):
                 sock.connect((ip, port))
                 sock.close()
                 return "huidu"
-            except:
+            except (OSError, ConnectionError, TimeoutError):
                 pass
         
         return "unknown"

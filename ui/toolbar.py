@@ -167,7 +167,7 @@ class ContentTypesToolbar(BaseToolbar):
             ("🎞 Video", ContentType.VIDEO),
             ("🌄 Photo", ContentType.PHOTO),
             ("🔠 Text", ContentType.TEXT),
-            ("🔤 SingleLineText", ContentType.SINGLE_LINE_TEXT),
+            ("🔤 SingleLineText", ContentType.SINGLELINE_TEXT),
             ("🎇 Animation", ContentType.ANIMATION),
             ("🕓 Clock", ContentType.CLOCK),
             ("⌛️ Timing", ContentType.TIMING),

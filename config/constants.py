@@ -6,7 +6,7 @@ class ContentType(Enum):
     VIDEO = "video"
     PHOTO = "photo"
     TEXT = "text"
-    SINGLE_LINE_TEXT = "single_line_text"
+    SINGLELINE_TEXT = "singleline_text"
     ANIMATION = "animation"
     CLOCK = "clock"
     TIMING = "timing"

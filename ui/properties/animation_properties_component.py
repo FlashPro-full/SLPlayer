@@ -1,9 +1,12 @@
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QComboBox,
-                             QPushButton, QGroupBox, QLineEdit, QCheckBox)
+                             QPushButton, QGroupBox, QLineEdit, QCheckBox, QTextEdit,
+                             QSpinBox, QColorDialog, QFormLayout)
 from PyQt5.QtCore import Qt
+from PyQt5.QtGui import QColor, QTextCursor, QTextCharFormat, QFont, QBrush
 from typing import Optional, Dict
 from datetime import datetime
 from ui.properties.base_properties_component import BasePropertiesComponent
+from ui.widgets.text_editor_toolbar import TextEditorToolbar
 
 
 class AnimationPropertiesComponent(BasePropertiesComponent):
@@ -18,176 +21,305 @@ class AnimationPropertiesComponent(BasePropertiesComponent):
         main_layout.setSpacing(8)
         main_layout.setAlignment(Qt.AlignLeft | Qt.AlignTop)
         
+        self.setStyleSheet("""
+            QGroupBox {
+                font-weight: 600;
+                font-size: 13px;
+                border: 1px solid #D0D0D0;
+                border-radius: 4px;
+                margin-top: 8px;
+                padding-top: 12px;
+                background-color: #FAFAFA;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 8px;
+                padding: 0 4px;
+                color: #333333;
+            }
+            QLineEdit {
+                border: 1px solid #CCCCCC;
+                border-radius: 3px;
+                padding: 4px 6px;
+                background-color: #000000;
+                color: #FFFFFF;
+                font-size: 12px;
+            }
+            QLineEdit:focus {
+                border: 1px solid #4A90E2;
+                background-color: #000000;
+                color: #FFFFFF;
+            }
+            QSpinBox, QComboBox {
+                border: 1px solid #CCCCCC;
+                border-radius: 3px;
+                padding: 4px 6px;
+                background-color: #FFFFFF;
+                font-size: 12px;
+            }
+            QSpinBox:focus, QComboBox:focus {
+                border: 1px solid #4A90E2;
+            }
+            QTextEdit {
+                border: 1px solid #CCCCCC;
+                border-radius: 3px;
+                padding: 6px;
+                background-color: #000000;
+                color: #FFFFFF;
+                font-size: 12px;
+            }
+            QTextEdit:focus {
+                border: 1px solid #4A90E2;
+            }
+            QPushButton {
+                border: 1px solid #CCCCCC;
+                border-radius: 3px;
+                padding: 4px 8px;
+                background-color: #FFFFFF;
+                font-size: 12px;
+            }
+            QPushButton:hover {
+                background-color: #E8F4F8;
+                border: 1px solid #4A90E2;
+            }
+            QTextEdit {
+                border: 1px solid #CCCCCC;
+                border-radius: 3px;
+                padding: 6px;
+                background-color: #FFFFFF;
+                font-size: 12px;
+            }
+        """)
+        
+        # Area attribute group (same as Text)
         area_group = QGroupBox("Area attribute")
+        area_group.setMaximumWidth(200)
         area_layout = QVBoxLayout(area_group)
-        area_layout.setContentsMargins(6, 6, 6, 6)
-        area_layout.setSpacing(4)
+        area_layout.setContentsMargins(10, 16, 10, 10)
+        area_layout.setSpacing(8)
+        area_layout.setAlignment(Qt.AlignTop)
         
-        layout_section = QHBoxLayout()
-        layout_section.setSpacing(4)
-        
-        coords_layout = QHBoxLayout()
-        coords_layout.setSpacing(2)
+        coords_row = QHBoxLayout()
+        coords_row.setSpacing(6)
         coords_label = QLabel("📍")
+        coords_label.setStyleSheet("font-size: 16px;")
         self.animation_coords_x = QLineEdit()
         self.animation_coords_x.setPlaceholderText("0")
-        self.animation_coords_x.setMinimumWidth(60)
+        self.animation_coords_x.setMinimumWidth(70)
         self.animation_coords_x.setText("0")
         coords_comma = QLabel(",")
+        coords_comma.setStyleSheet("color: #666666; font-weight: bold;")
         self.animation_coords_y = QLineEdit()
         self.animation_coords_y.setPlaceholderText("0")
-        self.animation_coords_y.setMinimumWidth(60)
+        self.animation_coords_y.setMinimumWidth(70)
         self.animation_coords_y.setText("0")
-        coords_layout.addWidget(coords_label)
-        coords_layout.addWidget(self.animation_coords_x)
-        coords_layout.addWidget(coords_comma)
-        coords_layout.addWidget(self.animation_coords_y)
-        layout_section.addLayout(coords_layout)
+        coords_row.addWidget(coords_label)
+        coords_row.addWidget(self.animation_coords_x)
+        coords_row.addWidget(coords_comma)
+        coords_row.addWidget(self.animation_coords_y)
+        area_layout.addLayout(coords_row)
         
-        dims_layout = QHBoxLayout()
-        dims_layout.setSpacing(2)
+        dims_row = QHBoxLayout()
+        dims_row.setSpacing(6)
         dims_label = QLabel("📐")
+        dims_label.setStyleSheet("font-size: 16px;")
         self.animation_dims_width = QLineEdit()
         self.animation_dims_width.setPlaceholderText("1920")
-        self.animation_dims_width.setMinimumWidth(60)
+        self.animation_dims_width.setMinimumWidth(70)
         self.animation_dims_width.setText("1920")
         dims_comma = QLabel(",")
+        dims_comma.setStyleSheet("color: #666666; font-weight: bold;")
         self.animation_dims_height = QLineEdit()
         self.animation_dims_height.setPlaceholderText("1080")
-        self.animation_dims_height.setMinimumWidth(60)
+        self.animation_dims_height.setMinimumWidth(70)
         self.animation_dims_height.setText("1080")
-        dims_layout.addWidget(dims_label)
-        dims_layout.addWidget(self.animation_dims_width)
-        dims_layout.addWidget(dims_comma)
-        dims_layout.addWidget(self.animation_dims_height)
-        layout_section.addLayout(dims_layout)
-        
-        layout_section.addStretch()
-        area_layout.addLayout(layout_section)
-        
-        self.animation_coords_x.textChanged.connect(self._on_coords_changed)
-        self.animation_coords_y.textChanged.connect(self._on_coords_changed)
-        self.animation_dims_width.textChanged.connect(self._on_dims_changed)
-        self.animation_dims_height.textChanged.connect(self._on_dims_changed)
+        dims_row.addWidget(dims_label)
+        dims_row.addWidget(self.animation_dims_width)
+        dims_row.addWidget(dims_comma)
+        dims_row.addWidget(self.animation_dims_height)
+        area_layout.addLayout(dims_row)
         
         frame_group_layout = QVBoxLayout()
         frame_group_layout.setSpacing(4)
         
-        frame_checkbox_layout = QHBoxLayout()
-        self.animation_frame_checkbox = QCheckBox("Frame")
-        self.animation_frame_checkbox.toggled.connect(self._on_frame_enabled_changed)
-        frame_checkbox_layout.addWidget(self.animation_frame_checkbox)
-        frame_checkbox_layout.addStretch()
-        frame_group_layout.addLayout(frame_checkbox_layout)
-        
-        border_layout = QHBoxLayout()
-        border_layout.addWidget(QLabel("Border:"))
-        self.animation_frame_border_combo = QComboBox()
-        borders = self.get_available_borders()
-        if borders:
-            self.animation_frame_border_combo.addItems(["---"] + borders)
-        else:
-            self.animation_frame_border_combo.addItems(["---", "000", "001", "002", "003"])
-        self.animation_frame_border_combo.setCurrentText("---")
-        self.animation_frame_border_combo.setEnabled(False)
-        self.animation_frame_border_combo.currentTextChanged.connect(self._on_frame_border_changed)
-        border_layout.addWidget(self.animation_frame_border_combo, stretch=1)
-        frame_group_layout.addLayout(border_layout)
-        
-        effect_layout = QHBoxLayout()
-        effect_layout.addWidget(QLabel("Effect:"))
-        self.animation_frame_effect_combo = QComboBox()
-        self.animation_frame_effect_combo.addItems(["static", "rotate", "twinkle"])
-        self.animation_frame_effect_combo.setCurrentText("static")
-        self.animation_frame_effect_combo.setEnabled(False)
-        self.animation_frame_effect_combo.currentTextChanged.connect(self._on_frame_effect_changed)
-        effect_layout.addWidget(self.animation_frame_effect_combo, stretch=1)
-        frame_group_layout.addLayout(effect_layout)
-        
-        speed_layout = QHBoxLayout()
-        speed_layout.addWidget(QLabel("Speed:"))
-        self.animation_frame_speed_combo = QComboBox()
-        self.animation_frame_speed_combo.addItems(["slow", "in", "fast"])
-        self.animation_frame_speed_combo.setCurrentText("in")
-        self.animation_frame_speed_combo.setEnabled(False)
-        self.animation_frame_speed_combo.currentTextChanged.connect(self._on_frame_speed_changed)
-        speed_layout.addWidget(self.animation_frame_speed_combo, stretch=1)
-        frame_group_layout.addLayout(speed_layout)
-        
         area_layout.addLayout(frame_group_layout)
-        
+        area_layout.addStretch()
         main_layout.addWidget(area_group)
+        
+        # Text editor group
+        text_edit_group = QGroupBox("Text editor")
+        text_edit_group.setMinimumWidth(400)
+        text_edit_layout = QVBoxLayout(text_edit_group)
+        text_edit_layout.setContentsMargins(10, 16, 10, 10)
+        text_edit_layout.setSpacing(4)
+        
+        self.animation_text_content_edit = QTextEdit()
+        self.animation_text_content_edit.setMinimumHeight(150)
+        self.animation_text_content_edit.textChanged.connect(self._on_text_content_changed)
+        
+        self.animation_text_editor_toolbar = TextEditorToolbar(self.animation_text_content_edit, self)
+        self.animation_text_editor_toolbar.format_changed.connect(self._on_format_changed)
+        
+        text_edit_layout.addWidget(self.animation_text_editor_toolbar)
+        text_edit_layout.addWidget(self.animation_text_content_edit, stretch=1)
+        
+        main_layout.addWidget(text_edit_group, stretch=1)
+        
+        # Animation style group
+        animation_style_group = QGroupBox("Animation style")
+        animation_style_group.setMinimumWidth(300)
+        animation_style_layout = QVBoxLayout(animation_style_group)
+        animation_style_layout.setContentsMargins(10, 16, 10, 10)
+        animation_style_layout.setSpacing(8)
+        
+        form_layout = QFormLayout()
+        form_layout.setSpacing(8)
+        
+        # 7 colors gradient flow
+        gradient_colors_layout = QVBoxLayout()
+        gradient_colors_layout.setSpacing(4)
+        gradient_label = QLabel("Gradient Colors (7 colors):")
+        gradient_colors_layout.addWidget(gradient_label)
+        
+        self.gradient_color_buttons = []
+        for i in range(7):
+            color_row = QHBoxLayout()
+            color_row.setSpacing(4)
+            color_label = QLabel(f"Color {i+1}:")
+            color_btn = QPushButton("Choose Color")
+            color_btn.setMinimumWidth(120)
+            color_btn.clicked.connect(lambda checked, idx=i: self._on_gradient_color_clicked(idx))
+            self.gradient_color_buttons.append(color_btn)
+            color_row.addWidget(color_label)
+            color_row.addWidget(color_btn, stretch=1)
+            gradient_colors_layout.addLayout(color_row)
+        
+        form_layout.addRow("", gradient_colors_layout)
+        
+        # Writing direction
+        writing_direction_layout = QHBoxLayout()
+        self.writing_direction_combo = QComboBox()
+        self.writing_direction_combo.addItems(["Horizontal Line Writing", "Vertical Line Writing"])
+        self.writing_direction_combo.currentTextChanged.connect(self._on_writing_direction_changed)
+        writing_direction_layout.addWidget(self.writing_direction_combo, stretch=1)
+        form_layout.addRow("Writing Direction:", writing_direction_layout)
+        
+        # Character movement
+        character_movement_layout = QHBoxLayout()
+        self.character_movement_check = QCheckBox("Move one character at one step")
+        self.character_movement_check.setChecked(True)
+        self.character_movement_check.toggled.connect(self._on_character_movement_changed)
+        character_movement_layout.addWidget(self.character_movement_check)
+        character_movement_layout.addStretch()
+        form_layout.addRow("", character_movement_layout)
+        
+        # Speed
+        speed_layout = QHBoxLayout()
+        self.animation_speed_spin = QSpinBox()
+        self.animation_speed_spin.setRange(1, 100)
+        self.animation_speed_spin.setValue(10)
+        self.animation_speed_spin.setSuffix(" chars/sec")
+        self.animation_speed_spin.valueChanged.connect(self._on_animation_speed_changed)
+        speed_layout.addWidget(self.animation_speed_spin, stretch=1)
+        form_layout.addRow("Speed:", speed_layout)
+        
+        animation_style_layout.addLayout(form_layout)
+        animation_style_layout.addStretch()
+        
+        main_layout.addWidget(animation_style_group)
         main_layout.addStretch()
+        
+        # Connect signals
+        self.animation_coords_x.textChanged.connect(self._on_coords_changed)
+        self.animation_coords_y.textChanged.connect(self._on_coords_changed)
+        self.animation_dims_width.textChanged.connect(self._on_dims_changed)
+        self.animation_dims_height.textChanged.connect(self._on_dims_changed)
     
-    def set_program_data(self, program, element):
-        self.set_element(element, program)
-        self.update_properties()
+    def _on_gradient_color_clicked(self, index: int):
+        color = QColorDialog.getColor()
+        if color.isValid():
+            if "properties" not in self.current_element:
+                self.current_element["properties"] = {}
+            if "animation_style" not in self.current_element["properties"]:
+                self.current_element["properties"]["animation_style"] = {}
+            if "gradient_colors" not in self.current_element["properties"]["animation_style"]:
+                self.current_element["properties"]["animation_style"]["gradient_colors"] = ["#FF0000", "#FF7F00", "#FFFF00", "#00FF00", "#0000FF", "#4B0082", "#9400D3"]
+            
+            gradient_colors = self.current_element["properties"]["animation_style"]["gradient_colors"]
+            while len(gradient_colors) < 7:
+                gradient_colors.append("#000000")
+            gradient_colors[index] = color.name()
+            
+            self.current_program.modified = datetime.now().isoformat()
+            self.property_changed.emit("animation_gradient_color", (index, color.name()))
+            self._trigger_autosave()
+            
+            self.gradient_color_buttons[index].setStyleSheet(f"background-color: {color.name()};")
     
-    def update_properties(self):
+    def _on_writing_direction_changed(self, direction: str):
         if not self.current_element or not self.current_program:
             return
+        if "properties" not in self.current_element:
+            self.current_element["properties"] = {}
+        if "animation_style" not in self.current_element["properties"]:
+            self.current_element["properties"]["animation_style"] = {}
+        self.current_element["properties"]["animation_style"]["writing_direction"] = direction
+        self.current_program.modified = datetime.now().isoformat()
+        self.property_changed.emit("animation_writing_direction", direction)
+        self._trigger_autosave()
+    
+    def _on_character_movement_changed(self, enabled: bool):
+        if not self.current_element or not self.current_program:
+            return
+        if "properties" not in self.current_element:
+            self.current_element["properties"] = {}
+        if "animation_style" not in self.current_element["properties"]:
+            self.current_element["properties"]["animation_style"] = {}
+        self.current_element["properties"]["animation_style"]["character_movement"] = enabled
+        self.current_program.modified = datetime.now().isoformat()
+        self.property_changed.emit("animation_character_movement", enabled)
+        self._trigger_autosave()
+    
+    def _on_animation_speed_changed(self, speed: int):
+        if not self.current_element or not self.current_program:
+            return
+        if "properties" not in self.current_element:
+            self.current_element["properties"] = {}
+        if "animation_style" not in self.current_element["properties"]:
+            self.current_element["properties"]["animation_style"] = {}
+        self.current_element["properties"]["animation_style"]["speed"] = speed
+        self.current_program.modified = datetime.now().isoformat()
+        self.property_changed.emit("animation_speed", speed)
+        self._trigger_autosave()
+    
+    def _on_text_content_changed(self):
+        if not self.current_element or not self.current_program:
+            return
+        if "properties" not in self.current_element:
+            self.current_element["properties"] = {}
+        if "text" not in self.current_element["properties"]:
+            self.current_element["properties"]["text"] = {}
         
-        screen_width, screen_height = self._get_screen_bounds()
-        default_width = screen_width if screen_width else 1920
-        default_height = screen_height if screen_height else 1080
+        text_content = self.animation_text_content_edit.toPlainText()
+        self.current_element["properties"]["text"]["content"] = text_content
+        self.current_program.modified = datetime.now().isoformat()
+        self.property_changed.emit("animation_text_content", text_content)
+        self._trigger_autosave()
+    
+    def _on_format_changed(self, format_data: Dict):
+        if not self.current_element or not self.current_program:
+            return
+        if "properties" not in self.current_element:
+            self.current_element["properties"] = {}
+        if "text" not in self.current_element["properties"]:
+            self.current_element["properties"]["text"] = {}
+        if "format" not in self.current_element["properties"]["text"]:
+            self.current_element["properties"]["text"]["format"] = {}
         
-        element_props = self.current_element.get("properties", {})
-        
-        x = element_props.get("x", 0)
-        y = element_props.get("y", 0)
-        self.animation_coords_x.blockSignals(True)
-        self.animation_coords_y.blockSignals(True)
-        self.animation_coords_x.setText(str(x))
-        self.animation_coords_y.setText(str(y))
-        self.animation_coords_x.blockSignals(False)
-        self.animation_coords_y.blockSignals(False)
-        
-        width = element_props.get("width", self.current_element.get("width", default_width))
-        height = element_props.get("height", self.current_element.get("height", default_height))
-        
-        if not width or width <= 0:
-            width = default_width
-        if not height or height <= 0:
-            height = default_height
-        
-        self.animation_dims_width.blockSignals(True)
-        self.animation_dims_height.blockSignals(True)
-        self.animation_dims_width.setText(str(width))
-        self.animation_dims_height.setText(str(height))
-        self.animation_dims_width.blockSignals(False)
-        self.animation_dims_height.blockSignals(False)
-        
-        frame_props = element_props.get("frame", {})
-        frame_enabled = frame_props.get("enabled", False) if isinstance(frame_props, dict) else False
-        self.animation_frame_checkbox.blockSignals(True)
-        self.animation_frame_checkbox.setChecked(frame_enabled)
-        self.animation_frame_checkbox.setEnabled(True)
-        self.animation_frame_checkbox.blockSignals(False)
-        
-        self.animation_frame_border_combo.setEnabled(frame_enabled)
-        self.animation_frame_effect_combo.setEnabled(frame_enabled)
-        self.animation_frame_speed_combo.setEnabled(frame_enabled)
-        
-        border = frame_props.get("border", "---") if isinstance(frame_props, dict) else "---"
-        border_index = self.animation_frame_border_combo.findText(border)
-        if border_index >= 0:
-            self.animation_frame_border_combo.setCurrentIndex(border_index)
-        else:
-            self.animation_frame_border_combo.setCurrentIndex(0)
-        
-        effect = frame_props.get("effect", "static") if isinstance(frame_props, dict) else "static"
-        effect_index = self.animation_frame_effect_combo.findText(effect)
-        if effect_index >= 0:
-            self.animation_frame_effect_combo.setCurrentIndex(effect_index)
-        else:
-            self.animation_frame_effect_combo.setCurrentIndex(0)
-        
-        speed = frame_props.get("speed", "in") if isinstance(frame_props, dict) else "in"
-        speed_index = self.animation_frame_speed_combo.findText(speed)
-        if speed_index >= 0:
-            self.animation_frame_speed_combo.setCurrentIndex(speed_index)
-        else:
-            self.animation_frame_speed_combo.setCurrentIndex(1)
+        self.current_element["properties"]["text"]["format"].update(format_data)
+        self.current_program.modified = datetime.now().isoformat()
+        self.property_changed.emit("animation_text_format", format_data)
+        self._trigger_autosave()
     
     def _on_coords_changed(self):
         if not self.current_element or not self.current_program:
@@ -236,60 +368,114 @@ class AnimationPropertiesComponent(BasePropertiesComponent):
         except ValueError:
             pass
     
-    def _on_frame_enabled_changed(self, enabled: bool):
+    def set_program_data(self, program, element):
+        self.set_element(element, program)
+        self.update_properties()
+    
+    def update_properties(self):
         if not self.current_element or not self.current_program:
-            self.animation_frame_checkbox.blockSignals(True)
-            self.animation_frame_checkbox.setEnabled(False)
-            self.animation_frame_checkbox.setChecked(False)
-            self.animation_frame_checkbox.blockSignals(False)
             return
         
-        self.animation_frame_checkbox.setEnabled(True)
-        self.animation_frame_border_combo.setEnabled(enabled)
-        self.animation_frame_effect_combo.setEnabled(enabled)
-        self.animation_frame_speed_combo.setEnabled(enabled)
-        if "properties" not in self.current_element:
-            self.current_element["properties"] = {}
-        if "frame" not in self.current_element["properties"]:
-            self.current_element["properties"]["frame"] = {}
-        self.current_element["properties"]["frame"]["enabled"] = enabled
-        self.current_program.modified = datetime.now().isoformat()
-        self.property_changed.emit("animation_frame_enabled", enabled)
-        self._trigger_autosave()
+        screen_width, screen_height = self._get_screen_bounds()
+        default_width = screen_width if screen_width else 1920
+        default_height = screen_height if screen_height else 1080
+        
+        element_props = self.current_element.get("properties", {})
+        
+        x = element_props.get("x", 0)
+        y = element_props.get("y", 0)
+        self.animation_coords_x.blockSignals(True)
+        self.animation_coords_y.blockSignals(True)
+        self.animation_coords_x.setText(str(x))
+        self.animation_coords_y.setText(str(y))
+        self.animation_coords_x.blockSignals(False)
+        self.animation_coords_y.blockSignals(False)
+        
+        width = element_props.get("width", self.current_element.get("width", default_width))
+        height = element_props.get("height", self.current_element.get("height", default_height))
+        
+        if not width or width <= 0:
+            width = default_width
+        if not height or height <= 0:
+            height = default_height
+        
+        self.animation_dims_width.blockSignals(True)
+        self.animation_dims_height.blockSignals(True)
+        self.animation_dims_width.setText(str(width))
+        self.animation_dims_height.setText(str(height))
+        self.animation_dims_width.blockSignals(False)
+        self.animation_dims_height.blockSignals(False)
+        
+        # Load text content and format
+        text_props = element_props.get("text", {})
+        if isinstance(text_props, dict):
+            text_content = text_props.get("content", "")
+            self.animation_text_content_edit.blockSignals(True)
+            self.animation_text_content_edit.setPlainText(text_content)
+            self.animation_text_content_edit.blockSignals(False)
+            
+            text_format = text_props.get("format", {})
+            self._apply_format_to_text_edit(text_format)
+        
+        # Load animation style
+        animation_style = element_props.get("animation_style", {})
+        gradient_colors = animation_style.get("gradient_colors", ["#FF0000", "#FF7F00", "#FFFF00", "#00FF00", "#0000FF", "#4B0082", "#9400D3"])
+        for i, color_btn in enumerate(self.gradient_color_buttons):
+            if i < len(gradient_colors):
+                color = gradient_colors[i]
+                color_btn.setStyleSheet(f"background-color: {color};")
+        
+        writing_direction = animation_style.get("writing_direction", "Horizontal Line Writing")
+        writing_direction_index = self.writing_direction_combo.findText(writing_direction)
+        if writing_direction_index >= 0:
+            self.writing_direction_combo.setCurrentIndex(writing_direction_index)
+        else:
+            self.writing_direction_combo.setCurrentIndex(0)
+        
+        character_movement = animation_style.get("character_movement", True)
+        self.character_movement_check.blockSignals(True)
+        self.character_movement_check.setChecked(character_movement)
+        self.character_movement_check.blockSignals(False)
+        
+        speed = animation_style.get("speed", 10)
+        self.animation_speed_spin.blockSignals(True)
+        self.animation_speed_spin.setValue(speed)
+        self.animation_speed_spin.blockSignals(False)
     
-    def _on_frame_border_changed(self, border: str):
-        if not self.current_element or not self.current_program:
+    def _apply_format_to_text_edit(self, text_format: Dict):
+        """Apply format to text edit similar to text_properties_component"""
+        if not text_format:
             return
-        if "properties" not in self.current_element:
-            self.current_element["properties"] = {}
-        if "frame" not in self.current_element["properties"]:
-            self.current_element["properties"]["frame"] = {}
-        self.current_element["properties"]["frame"]["border"] = border
-        self.current_program.modified = datetime.now().isoformat()
-        self.property_changed.emit("animation_frame_border", border)
-        self._trigger_autosave()
-    
-    def _on_frame_effect_changed(self, effect: str):
-        if not self.current_element or not self.current_program:
-            return
-        if "properties" not in self.current_element:
-            self.current_element["properties"] = {}
-        if "frame" not in self.current_element["properties"]:
-            self.current_element["properties"]["frame"] = {}
-        self.current_element["properties"]["frame"]["effect"] = effect
-        self.current_program.modified = datetime.now().isoformat()
-        self.property_changed.emit("animation_frame_effect", effect)
-        self._trigger_autosave()
-    
-    def _on_frame_speed_changed(self, speed: str):
-        if not self.current_element or not self.current_program:
-            return
-        if "properties" not in self.current_element:
-            self.current_element["properties"] = {}
-        if "frame" not in self.current_element["properties"]:
-            self.current_element["properties"]["frame"] = {}
-        self.current_element["properties"]["frame"]["speed"] = speed
-        self.current_program.modified = datetime.now().isoformat()
-        self.property_changed.emit("animation_frame_speed", speed)
-        self._trigger_autosave()
-
+        
+        cursor = self.animation_text_content_edit.textCursor()
+        cursor.select(QTextCursor.Document)
+        
+        char_format = QTextCharFormat()
+        font = QFont()
+        
+        if text_format.get("font_family"):
+            font.setFamily(text_format.get("font_family"))
+        if text_format.get("font_size"):
+            font.setPointSize(text_format.get("font_size"))
+        if text_format.get("bold"):
+            font.setBold(True)
+        if text_format.get("italic"):
+            font.setItalic(True)
+        if text_format.get("underline"):
+            font.setUnderline(True)
+        char_format.setFont(font)
+        
+        if text_format.get("font_color"):
+            char_format.setForeground(QColor(text_format.get("font_color")))
+        
+        text_bg_color_str = text_format.get("text_bg_color")
+        if text_bg_color_str:
+            text_bg_color = QColor(text_bg_color_str)
+            char_format.setBackground(QBrush(text_bg_color))
+        else:
+            char_format.setBackground(QBrush())
+            char_format.clearBackground()
+        
+        cursor.setCharFormat(char_format)
+        cursor.clearSelection()
+        self.animation_text_content_edit.setTextCursor(cursor)

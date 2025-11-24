@@ -1,7 +1,7 @@
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QTreeWidget, QTreeWidgetItem, 
-                             QToolButton, QHBoxLayout, QCheckBox, QMenu, QInputDialog)
+                             QToolButton, QHBoxLayout, QCheckBox, QMenu, QInputDialog, QShortcut)
 from PyQt5.QtCore import pyqtSignal, Qt, QPoint, QTimer, QEvent
-from PyQt5.QtGui import QMouseEvent, QContextMenuEvent, QKeyEvent
+from PyQt5.QtGui import QMouseEvent, QContextMenuEvent, QKeyEvent, QKeySequence
 from typing import TYPE_CHECKING, Optional, Dict, List
 from datetime import datetime
 
@@ -9,7 +9,7 @@ if TYPE_CHECKING:
     from core.screen_manager import ScreenManager
 
 from core.screen_manager import ScreenManager, Screen
-from core.screen_config import get_controller_display_name, get_screen_name, set_screen_name
+from core.screen_config import get_screen_name, set_screen_name
 from config.i18n import tr
 
 
@@ -48,6 +48,8 @@ class ScreenListPanel(QWidget):
         self._last_selected_screen = None
         self._last_selected_program = None
         self._last_selected_content = None
+        self._clipboard_data = None
+        self._clipboard_type = None
         self.init_ui()
     
     def set_screen_manager(self, screen_manager: ScreenManager):
@@ -93,16 +95,16 @@ class ScreenListPanel(QWidget):
         self.copy_btn = self._create_tool_button("📑", tr("program_list.copy"), self.on_copy_clicked, TOOL_BUTTON_STYLE)
         toolbar_layout.addWidget(self.copy_btn)
         
-        self.paste_btn = self._create_tool_button("📋", tr("program_list.paste"), self.on_paste_clicked, TOOL_BUTTON_STYLE)
+        self.paste_btn = self._create_tool_button("📋", tr("program_list.paste") + " (Ctrl+V)", self.on_paste_clicked, TOOL_BUTTON_STYLE)
         toolbar_layout.addWidget(self.paste_btn)
         
-        self.up_btn = self._create_tool_button("🔼", tr("program_list.move_up"), self.on_move_up, TOOL_BUTTON_STYLE)
+        self.up_btn = self._create_tool_button("🔼", tr("program_list.move_up") + " (Alt+↑)", self.on_move_up, TOOL_BUTTON_STYLE)
         toolbar_layout.addWidget(self.up_btn)
         
-        self.down_btn = self._create_tool_button("🔽", tr("program_list.move_down"), self.on_move_down, TOOL_BUTTON_STYLE)
+        self.down_btn = self._create_tool_button("🔽", tr("program_list.move_down") + " (Alt+↓)", self.on_move_down, TOOL_BUTTON_STYLE)
         toolbar_layout.addWidget(self.down_btn)
         
-        self.close_btn = self._create_tool_button("❌", tr("program_list.delete"), self.on_delete_clicked, TOOL_BUTTON_STYLE)
+        self.close_btn = self._create_tool_button("❌", tr("program_list.delete") + " (Del)", self.on_delete_clicked, TOOL_BUTTON_STYLE)
         toolbar_layout.addWidget(self.close_btn)
         
         layout.addWidget(toolbar_widget)
@@ -147,19 +149,46 @@ class ScreenListPanel(QWidget):
         self.tree.itemChanged.connect(self.on_item_changed)
         self.tree.itemDoubleClicked.connect(self._on_item_double_clicked)
         layout.addWidget(self.tree, stretch=1)
+        
+        self._setup_keyboard_shortcuts()
     
     def keyPressEvent(self, event: QKeyEvent):
-        if event.key() == Qt.Key_C and event.modifiers() == Qt.ControlModifier:
-            self.on_copy_clicked
+        modifiers = event.modifiers()
+        key = event.key()
+        
+        if key == Qt.Key_Delete:
+            self.on_delete_clicked()
             event.accept()
-        elif event.key() == Qt.Key_V and event.modifiers() == Qt.ControlModifier:
+        elif modifiers == Qt.ControlModifier and key == Qt.Key_C:
+            self.on_copy_clicked()
+            event.accept()
+        elif modifiers == Qt.ControlModifier and key == Qt.Key_V:
             self.on_paste_clicked()
             event.accept()
-        elif event.key() == Qt.Key_Delete:
-            self.on_delete_clicked()
+        elif key == Qt.Key_Up and modifiers == Qt.AltModifier:
+            self.on_move_up()
+            event.accept()
+        elif key == Qt.Key_Down and modifiers == Qt.AltModifier:
+            self.on_move_down()
             event.accept()
         else:
             super().keyPressEvent(event)
+    
+    def _setup_keyboard_shortcuts(self):
+        copy_shortcut = QShortcut(QKeySequence.Copy, self.tree)
+        copy_shortcut.activated.connect(self.on_copy_clicked)
+        
+        paste_shortcut = QShortcut(QKeySequence.Paste, self.tree)
+        paste_shortcut.activated.connect(self.on_paste_clicked)
+        
+        delete_shortcut = QShortcut(QKeySequence.Delete, self.tree)
+        delete_shortcut.activated.connect(self.on_delete_clicked)
+        
+        move_up_shortcut = QShortcut(QKeySequence("Alt+Up"), self.tree)
+        move_up_shortcut.activated.connect(self.on_move_up)
+        
+        move_down_shortcut = QShortcut(QKeySequence("Alt+Down"), self.tree)
+        move_down_shortcut.activated.connect(self.on_move_down)
     
     def refresh_screens(self, debounce: bool = True):
         if not self.screen_manager:
@@ -488,7 +517,7 @@ class ScreenListPanel(QWidget):
                 menu.addSeparator()
                 
                 copy_action = menu.addAction(tr("program_list.copy"))
-                copy_action.triggered.connect(lambda: self.program_copy_requested.emit(program_id))
+                copy_action.triggered.connect(lambda: self.content_copy_requested.emit(program_id, element_id))
         
         menu.exec_(self.tree.mapToGlobal(position))
     
@@ -508,22 +537,35 @@ class ScreenListPanel(QWidget):
     
     def add_new_screen(self):
         if not self.screen_manager:
-            return
-        from core.screen_config import get_screen_config, get_controller_display_name
+            return None
+        from core.screen_config import get_screen_config
         config = get_screen_config()
         width = config.get("width", 640) if config else 640
         height = config.get("height", 480) if config else 480
         
-        controller_name = get_controller_display_name()
-        if controller_name:
-            screen_name = controller_name
-        else:
-            screen_name = "New Screen"
+        import re
+        existing_names = {s.name for s in self.screen_manager.screens}
+        max_id = 0
+        pattern = re.compile(r'^Screen(\d+)$')
+        for name in existing_names:
+            match = pattern.match(name)
+            if match:
+                screen_id = int(match.group(1))
+                if screen_id > max_id:
+                    max_id = screen_id
+        
+        screen_name = f"Screen{max_id + 1}"
         
         screen = self.screen_manager.create_screen(screen_name, width, height)
         from core.screen_config import set_screen_name
         set_screen_name(screen.name)
+        
+        self._last_selected_screen = screen.name
+        self._last_selected_program = None
+        self._last_selected_content = None
+        
         self.refresh_screens(debounce=False)
+        return screen.name
     
     def add_program_to_screen(self, screen_name: Optional[str] = None):
         if not self.screen_manager:
@@ -604,47 +646,201 @@ class ScreenListPanel(QWidget):
     
     def on_copy_clicked(self):
         current_item = self.tree.currentItem()
-        if current_item:
-            item_type = current_item.data(0, Qt.UserRole)
-            if item_type == "program":
-                program_id = current_item.data(0, Qt.UserRole + 1)
-                self.program_copy_requested.emit(program_id)
+        if not current_item or not self.screen_manager:
+            return
+        
+        item_type = current_item.data(0, Qt.UserRole)
+        
+        if item_type == "screen":
+            screen_name = current_item.data(0, Qt.UserRole + 1)
+            screen = self.screen_manager.get_screen_by_name(screen_name)
+            if screen:
+                import copy
+                self._clipboard_data = {
+                    "name": screen.name,
+                    "width": screen.width,
+                    "height": screen.height,
+                    "programs": [p.to_dict() for p in screen.programs]
+                }
+                self._clipboard_type = "screen"
+        elif item_type == "program":
+            program_id = current_item.data(0, Qt.UserRole + 1)
+            program = self.screen_manager.get_program_by_id(program_id)
+            if program:
+                import copy
+                self._clipboard_data = program.to_dict()
+                self._clipboard_type = "program"
+        elif item_type == "content":
+            program_id = current_item.data(0, Qt.UserRole + 1)
+            element_id = current_item.data(0, Qt.UserRole + 2)
+            program = self.screen_manager.get_program_by_id(program_id)
+            if program:
+                element = next((e for e in program.elements if e.get("id") == element_id), None)
+                if element:
+                    import copy
+                    self._clipboard_data = copy.deepcopy(element)
+                    self._clipboard_type = "content"
+                    self._clipboard_program_id = program_id
     
     def on_paste_clicked(self):
+        if not self._clipboard_data or not self._clipboard_type or not self.screen_manager:
+            return
+        
         current_item = self.tree.currentItem()
-        if current_item:
-            item_type = current_item.data(0, Qt.UserRole)
-            if item_type == "program":
-                program_id = current_item.data(0, Qt.UserRole + 1)
-                self.program_paste_requested.emit(program_id)
+        if not current_item:
+            return
+        
+        item_type = current_item.data(0, Qt.UserRole)
+        
+        if self._clipboard_type == "screen" and item_type == "screen":
+            target_screen_name = current_item.data(0, Qt.UserRole + 1)
+            target_screen = self.screen_manager.get_screen_by_name(target_screen_name)
+            if target_screen:
+                import uuid
+                from core.program_manager import Program
+                new_screen = self.screen_manager.create_screen(
+                    f"{self._clipboard_data['name']}_Copy",
+                    self._clipboard_data['width'],
+                    self._clipboard_data['height']
+                )
+                for program_data in self._clipboard_data['programs']:
+                    new_program = Program()
+                    new_program.from_dict(program_data)
+                    new_program.id = f"program_{uuid.uuid4().hex[:12]}"
+                    for element in new_program.elements:
+                        element["id"] = f"element_{uuid.uuid4().hex[:12]}"
+                    new_screen.add_program(new_program)
+                self.refresh_screens(debounce=False)
+        elif self._clipboard_type == "program":
+            if item_type == "screen":
+                target_screen_name = current_item.data(0, Qt.UserRole + 1)
+                target_screen = self.screen_manager.get_screen_by_name(target_screen_name)
+                if target_screen:
+                    import uuid
+                    from core.program_manager import Program
+                    new_program = Program()
+                    new_program.from_dict(self._clipboard_data)
+                    new_program.id = f"program_{uuid.uuid4().hex[:12]}"
+                    new_program.name = f"{new_program.name}_Copy"
+                    for element in new_program.elements:
+                        element["id"] = f"element_{uuid.uuid4().hex[:12]}"
+                    target_screen.add_program(new_program)
+                    self.screen_manager.add_program_to_screen(target_screen_name, new_program)
+                    self.refresh_screens(debounce=False)
+            elif item_type == "program":
+                target_program_id = current_item.data(0, Qt.UserRole + 1)
+                target_program = self.screen_manager.get_program_by_id(target_program_id)
+                if target_program:
+                    screen = None
+                    for s in self.screen_manager.screens:
+                        if target_program in s.programs:
+                            screen = s
+                            break
+                    if screen:
+                        import uuid
+                        from core.program_manager import Program
+                        new_program = Program()
+                        new_program.from_dict(self._clipboard_data)
+                        new_program.id = f"program_{uuid.uuid4().hex[:12]}"
+                        new_program.name = f"{new_program.name}_Copy"
+                        for element in new_program.elements:
+                            element["id"] = f"element_{uuid.uuid4().hex[:12]}"
+                        program_index = screen.programs.index(target_program)
+                        screen.programs.insert(program_index + 1, new_program)
+                        self.screen_manager.add_program_to_screen(screen.name, new_program)
+                        self.refresh_screens(debounce=False)
+        elif self._clipboard_type == "content" and item_type == "program":
+            target_program_id = current_item.data(0, Qt.UserRole + 1)
+            target_program = self.screen_manager.get_program_by_id(target_program_id)
+            if target_program:
+                import uuid
+                import copy
+                new_element = copy.deepcopy(self._clipboard_data)
+                new_element["id"] = f"element_{uuid.uuid4().hex[:12]}"
+                new_element["name"] = f"{new_element.get('name', 'Element')}_Copy"
+                target_program.elements.append(new_element)
+                target_program.modified = datetime.now().isoformat()
+                self.refresh_screens(debounce=False)
     
     def on_delete_clicked(self):
         current_item = self.tree.currentItem()
-        if current_item:
-            item_type = current_item.data(0, Qt.UserRole)
-            if item_type == "program":
-                program_id = current_item.data(0, Qt.UserRole + 1)
-                self.delete_program_requested.emit(program_id)
-            elif item_type == "content":
-                program_id = current_item.data(0, Qt.UserRole + 1)
-                element_id = current_item.data(0, Qt.UserRole + 2)
-                self.content_deleted.emit(program_id, element_id)
+        if not current_item or not self.screen_manager:
+            return
+        
+        item_type = current_item.data(0, Qt.UserRole)
+        
+        if item_type == "screen":
+            screen_name = current_item.data(0, Qt.UserRole + 1)
+            self.screen_deleted.emit(screen_name)
+        elif item_type == "program":
+            program_id = current_item.data(0, Qt.UserRole + 1)
+            self.delete_program_requested.emit(program_id)
+        elif item_type == "content":
+            program_id = current_item.data(0, Qt.UserRole + 1)
+            element_id = current_item.data(0, Qt.UserRole + 2)
+            self.delete_content_requested.emit(program_id, element_id)
     
     def on_move_up(self):
         current_item = self.tree.currentItem()
-        if current_item:
-            item_type = current_item.data(0, Qt.UserRole)
-            if item_type == "program":
-                program_id = current_item.data(0, Qt.UserRole + 1)
-                self.program_moved.emit(program_id, -1)
+        if not current_item or not self.screen_manager:
+            return
+        
+        item_type = current_item.data(0, Qt.UserRole)
+        
+        if item_type == "program":
+            program_id = current_item.data(0, Qt.UserRole + 1)
+            program = self.screen_manager.get_program_by_id(program_id)
+            if program:
+                for screen in self.screen_manager.screens:
+                    if program in screen.programs:
+                        index = screen.programs.index(program)
+                        if index > 0:
+                            screen.programs[index], screen.programs[index - 1] = screen.programs[index - 1], screen.programs[index]
+                            self.refresh_screens(debounce=False)
+                        break
+        elif item_type == "content":
+            program_id = current_item.data(0, Qt.UserRole + 1)
+            element_id = current_item.data(0, Qt.UserRole + 2)
+            program = self.screen_manager.get_program_by_id(program_id)
+            if program:
+                element = next((e for e in program.elements if e.get("id") == element_id), None)
+                if element:
+                    index = program.elements.index(element)
+                    if index > 0:
+                        program.elements[index], program.elements[index - 1] = program.elements[index - 1], program.elements[index]
+                        program.modified = datetime.now().isoformat()
+                        self.refresh_screens(debounce=False)
     
     def on_move_down(self):
         current_item = self.tree.currentItem()
-        if current_item:
-            item_type = current_item.data(0, Qt.UserRole)
-            if item_type == "program":
-                program_id = current_item.data(0, Qt.UserRole + 1)
-                self.program_moved.emit(program_id, 1)
+        if not current_item or not self.screen_manager:
+            return
+        
+        item_type = current_item.data(0, Qt.UserRole)
+        
+        if item_type == "program":
+            program_id = current_item.data(0, Qt.UserRole + 1)
+            program = self.screen_manager.get_program_by_id(program_id)
+            if program:
+                for screen in self.screen_manager.screens:
+                    if program in screen.programs:
+                        index = screen.programs.index(program)
+                        if index < len(screen.programs) - 1:
+                            screen.programs[index], screen.programs[index + 1] = screen.programs[index + 1], screen.programs[index]
+                            self.refresh_screens(debounce=False)
+                        break
+        elif item_type == "content":
+            program_id = current_item.data(0, Qt.UserRole + 1)
+            element_id = current_item.data(0, Qt.UserRole + 2)
+            program = self.screen_manager.get_program_by_id(program_id)
+            if program:
+                element = next((e for e in program.elements if e.get("id") == element_id), None)
+                if element:
+                    index = program.elements.index(element)
+                    if index < len(program.elements) - 1:
+                        program.elements[index], program.elements[index + 1] = program.elements[index + 1], program.elements[index]
+                        program.modified = datetime.now().isoformat()
+                        self.refresh_screens(debounce=False)
     
     def on_item_changed(self, item: QTreeWidgetItem, column: int):
         if self._refreshing:

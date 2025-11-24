@@ -21,60 +21,170 @@ class VideoPropertiesComponent(BasePropertiesComponent):
         layout.setSpacing(8)
         layout.setAlignment(Qt.AlignLeft | Qt.AlignTop)
         
-        area_group = QGroupBox("Area Attribute")
+        self.setStyleSheet("""
+            QGroupBox {
+                font-weight: 600;
+                font-size: 13px;
+                border: 1px solid #D0D0D0;
+                border-radius: 4px;
+                margin-top: 8px;
+                padding-top: 12px;
+                background-color: #FAFAFA;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 8px;
+                padding: 0 4px;
+                color: #333333;
+            }
+            QLineEdit {
+                border: 1px solid #CCCCCC;
+                border-radius: 3px;
+                padding: 4px 6px;
+                background-color: #000000;
+                color: #FFFFFF;
+                font-size: 12px;
+                selection-background-color: #4A90E2;
+                selection-color: #FFFFFF;
+            }
+            QLineEdit:focus {
+                border: 1px solid #4A90E2;
+                background-color: #000000;
+                color: #FFFFFF;
+            }
+            QLineEdit:hover {
+                border: 1px solid #999999;
+            }
+            QComboBox {
+                border: 1px solid #CCCCCC;
+                border-radius: 3px;
+                padding: 4px 6px;
+                background-color: #FFFFFF;
+                font-size: 12px;
+                min-width: 80px;
+            }
+            QComboBox:hover {
+                border: 1px solid #999999;
+            }
+            QComboBox:focus {
+                border: 1px solid #4A90E2;
+            }
+            QComboBox::drop-down {
+                border: none;
+                width: 20px;
+            }
+            QComboBox::down-arrow {
+                image: none;
+                border-left: 4px solid transparent;
+                border-right: 4px solid transparent;
+                border-top: 5px solid #666666;
+                width: 0;
+                height: 0;
+            }
+            QComboBox QAbstractItemView {
+                border: 1px solid #CCCCCC;
+                border-radius: 3px;
+                background-color: #FFFFFF;
+                selection-background-color: #4A90E2;
+                selection-color: #FFFFFF;
+                padding: 2px;
+            }
+            QTextEdit {
+                border: 1px solid #CCCCCC;
+                border-radius: 3px;
+                padding: 6px;
+                background-color: #FFFFFF;
+                font-size: 12px;
+                selection-background-color: #4A90E2;
+                selection-color: #FFFFFF;
+            }
+            QTextEdit:focus {
+                border: 1px solid #4A90E2;
+            }
+            QTextEdit:hover {
+                border: 1px solid #999999;
+            }
+            QDoubleSpinBox {
+                border: 1px solid #CCCCCC;
+                border-radius: 3px;
+                padding: 4px 6px;
+                background-color: #FFFFFF;
+                font-size: 12px;
+                selection-background-color: #4A90E2;
+                selection-color: #FFFFFF;
+            }
+            QDoubleSpinBox:focus {
+                border: 1px solid #4A90E2;
+            }
+            QDoubleSpinBox:hover {
+                border: 1px solid #999999;
+            }
+            QDoubleSpinBox::up-button, QDoubleSpinBox::down-button {
+                border: none;
+                background-color: transparent;
+                width: 16px;
+            }
+            QDoubleSpinBox::up-button:hover, QDoubleSpinBox::down-button:hover {
+                background-color: #F0F0F0;
+            }
+            QLabel {
+                color: #333333;
+                font-size: 12px;
+            }
+        """)
+        
+        area_group = QGroupBox("Area attribute")
+        area_group.setMaximumWidth(200)
         area_layout = QVBoxLayout(area_group)
-        area_layout.setContentsMargins(6, 6, 6, 6)
-        area_layout.setSpacing(4)
+        area_layout.setContentsMargins(10, 16, 10, 10)
+        area_layout.setSpacing(8)
+        area_layout.setAlignment(Qt.AlignTop)
         
-        layout_section = QVBoxLayout()
-        layout_section.setSpacing(4)
-        layout_section.setAlignment(Qt.AlignTop)
-        
-        coords_layout = QHBoxLayout()
-        coords_layout.setSpacing(2)
+        coords_row = QHBoxLayout()
+        coords_row.setSpacing(6)
         coords_label = QLabel("📍")
+        coords_label.setStyleSheet("font-size: 16px;")
         self.video_coords_x = QLineEdit()
         self.video_coords_x.setPlaceholderText("0")
-        self.video_coords_x.setMinimumWidth(60)
+        self.video_coords_x.setMinimumWidth(70)
         self.video_coords_x.setText("0")
+        self.video_coords_x.textChanged.connect(self._on_video_coords_changed)
         coords_comma = QLabel(",")
+        coords_comma.setStyleSheet("color: #666666; font-weight: bold;")
         self.video_coords_y = QLineEdit()
         self.video_coords_y.setPlaceholderText("0")
-        self.video_coords_y.setMinimumWidth(60)
+        self.video_coords_y.setMinimumWidth(70)
         self.video_coords_y.setText("0")
-        coords_layout.addWidget(coords_label)
-        coords_layout.addWidget(self.video_coords_x)
-        coords_layout.addWidget(coords_comma)
-        coords_layout.addWidget(self.video_coords_y)
-        coords_layout.addStretch()
-        layout_section.addLayout(coords_layout)
+        self.video_coords_y.textChanged.connect(self._on_video_coords_changed)
+        coords_row.addWidget(coords_label)
+        coords_row.addWidget(self.video_coords_x)
+        coords_row.addWidget(coords_comma)
+        coords_row.addWidget(self.video_coords_y)
+        area_layout.addLayout(coords_row)
         
-        dims_layout = QHBoxLayout()
-        dims_layout.setSpacing(2)
+        dims_row = QHBoxLayout()
+        dims_row.setSpacing(6)
         dims_label = QLabel("📐")
+        dims_label.setStyleSheet("font-size: 16px;")
         self.video_dims_width = QLineEdit()
         self.video_dims_width.setPlaceholderText("1920")
-        self.video_dims_width.setMinimumWidth(60)
+        self.video_dims_width.setMinimumWidth(70)
         self.video_dims_width.setText("1920")
+        self.video_dims_width.textChanged.connect(self._on_video_dims_changed)
         dims_comma = QLabel(",")
+        dims_comma.setStyleSheet("color: #666666; font-weight: bold;")
         self.video_dims_height = QLineEdit()
         self.video_dims_height.setPlaceholderText("1080")
-        self.video_dims_height.setMinimumWidth(60)
+        self.video_dims_height.setMinimumWidth(70)
         self.video_dims_height.setText("1080")
-        dims_layout.addWidget(dims_label)
-        dims_layout.addWidget(self.video_dims_width)
-        dims_layout.addWidget(dims_comma)
-        dims_layout.addWidget(self.video_dims_height)
-        dims_layout.addStretch()
-        layout_section.addLayout(dims_layout)
-        
-        area_layout.addLayout(layout_section)
-        
-        self.video_coords_x.textChanged.connect(self._on_video_coords_changed)
-        self.video_coords_y.textChanged.connect(self._on_video_coords_changed)
-        self.video_dims_width.textChanged.connect(self._on_video_dims_changed)
         self.video_dims_height.textChanged.connect(self._on_video_dims_changed)
+        dims_row.addWidget(dims_label)
+        dims_row.addWidget(self.video_dims_width)
+        dims_row.addWidget(dims_comma)
+        dims_row.addWidget(self.video_dims_height)
+        area_layout.addLayout(dims_row)
         
+        area_layout.addStretch()
         layout.addWidget(area_group)
         
         video_list_group = QGroupBox("Video List")
@@ -115,6 +225,11 @@ class VideoPropertiesComponent(BasePropertiesComponent):
         video_shot_group = QGroupBox("Video Shot")
         video_shot_group.setMinimumWidth(250)
         video_shot_layout = QFormLayout(video_shot_group)
+        
+        self.video_shot_enabled_checkbox = QCheckBox("Enable Video Shot")
+        self.video_shot_enabled_checkbox.setChecked(False)
+        self.video_shot_enabled_checkbox.stateChanged.connect(self._on_video_shot_enabled_changed)
+        video_shot_layout.addRow(self.video_shot_enabled_checkbox)
         
         self.video_shot_width_spin = QSpinBox()
         self.video_shot_width_spin.setMinimum(1)
@@ -234,6 +349,20 @@ class VideoPropertiesComponent(BasePropertiesComponent):
         self.video_list.set_videos(video_list)
         
         video_shot = element_props.get("video_shot", {})
+        video_shot_enabled = video_shot.get("enabled", True) if isinstance(video_shot, dict) else True
+        
+        self.video_shot_enabled_checkbox.blockSignals(True)
+        self.video_shot_enabled_checkbox.setChecked(video_shot_enabled)
+        self.video_shot_enabled_checkbox.setEnabled(True)
+        self.video_shot_enabled_checkbox.blockSignals(False)
+        
+        # Enable/disable video shot controls based on checkbox state
+        self.video_shot_width_spin.setEnabled(video_shot_enabled)
+        self.video_shot_height_spin.setEnabled(video_shot_enabled)
+        self.video_shot_start_time.setEnabled(video_shot_enabled)
+        self.video_shot_end_time.setEnabled(video_shot_enabled)
+        self.video_shot_duration_label.setEnabled(video_shot_enabled)
+        
         video_shot_width = video_shot.get("width", default_width)
         video_shot_height = video_shot.get("height", default_height)
         
@@ -430,7 +559,7 @@ class VideoPropertiesComponent(BasePropertiesComponent):
                 if "video_list" not in self.current_element["properties"]:
                     self.current_element["properties"]["video_list"] = []
                 self.current_element["properties"]["video_list"].append({"path": file_path})
-                self.video_list.add_item(file_path)
+                self.video_list.set_videos(self.current_element["properties"]["video_list"])
                 self.property_changed.emit("video_list", self.current_element["properties"]["video_list"])
                 self._trigger_autosave()
     
@@ -440,42 +569,56 @@ class VideoPropertiesComponent(BasePropertiesComponent):
     def _on_video_item_deleted(self, index: int):
         if self.current_element and self.current_program:
             if "properties" in self.current_element and "video_list" in self.current_element["properties"]:
-                self.current_element["properties"]["video_list"].pop(index)
-                self.video_list.remove_item(index)
+                video_list = self.current_element["properties"]["video_list"]
+                if video_list and 0 <= index < len(video_list):
+                    video_list.pop(index)
+                    if len(video_list) > 0:
+                        new_active = min(index, len(video_list) - 1)
+                    else:
+                        new_active = -1
+                    self.video_list.set_videos(video_list)
+                    if new_active >= 0:
+                        self.video_list.set_active_index(new_active)
                 self.current_program.modified = datetime.now().isoformat()
-                self.property_changed.emit("video_list", self.current_element["properties"]["video_list"])
+                self.property_changed.emit("video_list", video_list)
                 self._trigger_autosave()
     
     def _on_video_delete(self):
-        current_index = self.video_list.get_current_index()
-        if current_index >= 0 and self.current_element and self.current_program:
+        active_index = self.video_list.get_active_index()
+        if active_index >= 0 and self.current_element and self.current_program:
             if "properties" in self.current_element and "video_list" in self.current_element["properties"]:
                 video_list = self.current_element["properties"]["video_list"]
-                if 0 <= current_index < len(video_list):
-                    self.current_element["properties"]["video_list"].pop(current_index)
-                    self.video_list.remove_item(current_index)
+                if 0 <= active_index < len(video_list):
+                    self.current_element["properties"]["video_list"].pop(active_index)
+                    if len(video_list) > 0:
+                        new_active = min(active_index, len(video_list) - 1)
+                    else:
+                        new_active = -1
+                    self.video_list.set_videos(self.current_element["properties"]["video_list"])
+                    if new_active >= 0:
+                        self.video_list.set_active_index(new_active)
                 self.current_program.modified = datetime.now().isoformat()
                 self.property_changed.emit("video_list", self.current_element["properties"]["video_list"])
                 self._trigger_autosave()
     
     def _on_video_up(self):
-        current_index = self.video_list.get_current_index()
-        if current_index > 0 and self.current_element and self.current_program:
+        active_index = self.video_list.get_active_index()
+        if active_index > 0 and self.current_element and self.current_program:
             if "properties" in self.current_element and "video_list" in self.current_element["properties"]:
                 video_list = self.current_element["properties"]["video_list"]
-                new_index = self.video_list.move_item_up(current_index)
-                video_list[current_index], video_list[current_index - 1] = video_list[current_index - 1], video_list[current_index]
+                new_index = self.video_list.move_item_up(active_index)
+                video_list[active_index], video_list[active_index - 1] = video_list[active_index - 1], video_list[active_index]
                 self.current_program.modified = datetime.now().isoformat()
                 self.property_changed.emit("video_list", video_list)
                 self._trigger_autosave()
     
     def _on_video_down(self):
-        current_index = self.video_list.get_current_index()
+        active_index = self.video_list.get_active_index()
         if self.current_element and self.current_program and "properties" in self.current_element and "video_list" in self.current_element["properties"]:
             video_list = self.current_element["properties"]["video_list"]
-            if 0 <= current_index < len(video_list) - 1:
-                new_index = self.video_list.move_item_down(current_index)
-                video_list[current_index], video_list[current_index + 1] = video_list[current_index + 1], video_list[current_index]
+            if 0 <= active_index < len(video_list) - 1:
+                new_index = self.video_list.move_item_down(active_index)
+                video_list[active_index], video_list[active_index + 1] = video_list[active_index + 1], video_list[active_index]
                 self.current_program.modified = datetime.now().isoformat()
                 self.property_changed.emit("video_list", video_list)
                 self._trigger_autosave()
@@ -495,6 +638,34 @@ class VideoPropertiesComponent(BasePropertiesComponent):
         self.current_element["properties"]["video_shot"]["width"] = width
         self.current_element["properties"]["video_shot"]["height"] = height
         self.property_changed.emit("video_shot_size", (width, height))
+    
+    def _on_video_shot_enabled_changed(self, state: int):
+        enabled = state == Qt.CheckState.Checked
+        if not self.current_element or not self.current_program:
+            self.video_shot_enabled_checkbox.blockSignals(True)
+            self.video_shot_enabled_checkbox.setEnabled(False)
+            self.video_shot_enabled_checkbox.setChecked(False)
+            self.video_shot_enabled_checkbox.blockSignals(False)
+            return
+        
+        self.video_shot_enabled_checkbox.setEnabled(True)
+        
+        # Enable/disable video shot controls based on checkbox state
+        self.video_shot_width_spin.setEnabled(enabled)
+        self.video_shot_height_spin.setEnabled(enabled)
+        self.video_shot_start_time.setEnabled(enabled)
+        self.video_shot_end_time.setEnabled(enabled)
+        self.video_shot_duration_label.setEnabled(enabled)
+        
+        if "properties" not in self.current_element:
+            self.current_element["properties"] = {}
+        if "video_shot" not in self.current_element["properties"]:
+            self.current_element["properties"]["video_shot"] = {}
+        
+        self.current_element["properties"]["video_shot"]["enabled"] = enabled
+        self.current_program.modified = datetime.now().isoformat()
+        self.property_changed.emit("video_shot_enabled", enabled)
+        self._trigger_autosave()
     
     def _on_video_shot_time_changed(self):
         if self.current_element:

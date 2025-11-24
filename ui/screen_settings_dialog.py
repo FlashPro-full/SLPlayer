@@ -721,64 +721,64 @@ class ScreenSettingsDialog(QDialog):
             
             if use_controller_setting:
                 controller_data = None
-                try:
-                    idx = self.controller_combo.currentIndex()
-                    controller_data = self.controller_combo.itemData(idx)
-                    if controller_data:
-                        ctrl_id = controller_data.get("controller_id")
-                        device_name = controller_data.get("device_name") or controller_data.get("model") or ctrl_id
-                        logger.info(f"Using controller setting: {device_name} ({ctrl_id})")
-                    else:
-                        logger.warning("Use Controller Setting is checked but no controller selected")
-                        from PyQt5.QtWidgets import QMessageBox
-                        QMessageBox.warning(
-                            self,
-                            "No Controller Selected",
-                            "Please select a connected controller from the list."
-                        )
-                        return
-                except Exception as e:
-                    logger.exception(f"Error getting controller data: {e}")
-                    ctrl_id = None
-                    controller_data = None
+            try:
+                idx = self.controller_combo.currentIndex()
+                controller_data = self.controller_combo.itemData(idx)
+                if controller_data:
+                    ctrl_id = controller_data.get("controller_id")
+                    device_name = controller_data.get("device_name") or controller_data.get("model") or ctrl_id
+                    logger.info(f"Using controller setting: {device_name} ({ctrl_id})")
+                else:
+                    logger.warning("Use Controller Setting is checked but no controller selected")
+                    from PyQt5.QtWidgets import QMessageBox
+                    QMessageBox.warning(
+                        self,
+                        "No Controller Selected",
+                        "Please select a connected controller from the list."
+                    )
+                    return
+            except Exception as e:
+                logger.exception(f"Error getting controller data: {e}")
+                ctrl_id = None
+                controller_data = None
             
-                if ctrl_id:
-                    license_file = license_manager.get_license_file_path(ctrl_id)
-                    logger.info(f"Checking license file for {ctrl_id}: {license_file}")
-                    logger.info(f"License file exists: {license_file.exists()}")
-                    if license_file.exists():
-                        license_data = license_manager.load_license_file(ctrl_id)
-                        if license_data:
-                            logger.info(f"License file exists and is valid for {ctrl_id}, skipping screen parameter save to DB")  
-                            if controller_data:
-                                controller_type = (controller_data.get("controller_type") or "").lower()
-                                model = controller_data.get("model") or controller_data.get("device_name") or ""
-                                if "nova" in controller_type:
-                                    brand = "NovaStar"
-                                elif "huidu" in controller_type or "hd-" in model.lower():
-                                    brand = "Huidu"
-                            if brand and model:
-                                try:
-                                    db_models = db.get_models_by_brand(brand)
-                                    for m in db_models:
-                                        if m.get("model") and m.get("model").lower() in model.lower():
-                                            model_name = m.get("model")
-                                            break
-                                except Exception:
-                                    pass
-                            
-                            if not brand:
-                                brand = self.selected_series()
-                            if not model_name:
-                                model_name = self.selected_model()
-                            
-                            set_screen_config(brand, model_name, width, height, rotate, ctrl_id)
-                            return super().accept()
-                        else:
-                            logger.warning(f"License file exists but is invalid for {ctrl_id}, saving screen parameters to DB")
+            if ctrl_id:
+                license_file = license_manager.get_license_file_path(ctrl_id)
+                logger.info(f"Checking license file for {ctrl_id}: {license_file}")
+                logger.info(f"License file exists: {license_file.exists()}")
+                if license_file.exists():
+                    license_data = license_manager.load_license_file(ctrl_id)
+                    if license_data:
+                        logger.info(f"License file exists and is valid for {ctrl_id}, skipping screen parameter save to DB")
+                        if controller_data:
+                            controller_type = (controller_data.get("controller_type") or "").lower()
+                            model = controller_data.get("model") or controller_data.get("device_name") or ""
+                            if "nova" in controller_type:
+                                brand = "NovaStar"
+                            elif "huidu" in controller_type or "hd-" in model.lower():
+                                brand = "Huidu"
+                        if brand and model:
+                            try:
+                                db_models = db.get_models_by_brand(brand)
+                                for m in db_models:
+                                    if m.get("model") and m.get("model").lower() in model.lower():
+                                        model_name = m.get("model")
+                                        break
+                            except Exception:
+                                pass
+                        
+                        if not brand:
+                            brand = self.selected_series()
+                        if not model_name:
+                            model_name = self.selected_model()
+                        
+                        set_screen_config(brand, model_name, width, height, rotate, ctrl_id)
+                        return super().accept()
                     else:
-                        logger.info(f"License file does not exist for {ctrl_id}, saving screen parameters to DB")
-                
+                        logger.warning(f"License file exists but is invalid for {ctrl_id}, saving screen parameters to DB")
+                else:
+                    logger.info(f"License file does not exist for {ctrl_id}, saving screen parameters to DB")
+            
                     brand = None
                     model_name = None
                     
@@ -813,9 +813,9 @@ class ScreenSettingsDialog(QDialog):
                         })
                         logger.info(f"Saved screen parameters for controller {ctrl_id}")
                         set_screen_config(brand, model_name, width, height, rotate, ctrl_id)
-                else:
-                    logger.warning("Use Controller Setting is checked but no valid controller ID found")
-                    return
+                    else:
+                        logger.warning("Use Controller Setting is checked but no valid controller ID found")
+                        return
             else:
                 brand = self.selected_series()
                 model_name = self.selected_model()

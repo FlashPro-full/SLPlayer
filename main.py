@@ -54,7 +54,6 @@ def main():
             settings.set("first_launch_complete", True)
             logger.info("First launch network setup completed")
         
-        # Initialize controller database with comprehensive research data
         try:
             from core.controller_research_service import ControllerResearchService
             ControllerResearchService.populate_database(force_update=False)
@@ -81,7 +80,7 @@ def main():
             controller_id = login_dialog.controller_id or controller_id
             
             if not login_dialog.is_license_valid() or (controller_id and not startup_service.check_license_after_activation(controller_id)):
-                    sys.exit(1)
+                sys.exit(1)
         elif valid_license_found:
             logger.info(f"Valid license found for controller: {controller_id} - skipping activation dialog")
         else:
@@ -92,15 +91,12 @@ def main():
         window.move(window_x, window_y)
         window.show()
         
-        # Use async loading for better performance
         if soo_file_path:
             logger.info(f"Loading specific .soo file from command-line: {soo_file_path}")
             window.load_soo_file(soo_file_path, clear_existing=True, async_load=True)
-            # Note: File loading happens in background, status checked via signal
         else:
             logger.info("No specific .soo file provided, loading all autosaved files")
-            window.load_latest_soo_files_async()
-            # Note: File loading happens in background, status checked via signal
+            window._load_autosaved_files()
         
         IconManager.setup_taskbar_icon(window, base_path)
         
@@ -117,7 +113,8 @@ def main():
                 "Fatal Error",
                 f"Application failed to start:\n{str(e)}\n\nCheck logs for details."
             )
-        except:
+        except Exception:
+            # Last resort error handling - can't show message box if QApplication failed
             pass
         sys.exit(1)
 

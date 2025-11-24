@@ -10,11 +10,8 @@ logger = get_logger(__name__)
 
 
 class ControllerResearchService:
-    """Service for managing comprehensive controller research data"""
-    
-    # Comprehensive NovaStar Controller Series
+
     NOVASTAR_MODELS = [
-        # Taurus Series
         {
             "brand": "NovaStar",
             "model": "T3",
@@ -59,7 +56,6 @@ class ControllerResearchService:
             "iface": "Ethernet / Wi‑Fi / U‑disk",
             "other": "Taurus TB series - Enhanced version"
         },
-        # MCTRL Series - Video Controllers
         {
             "brand": "NovaStar",
             "model": "MCTRL300",
@@ -117,110 +113,271 @@ class ControllerResearchService:
         },
     ]
     
-    # Comprehensive Huidu Controller Series
     HUIDU_MODELS = [
-        # HD-C Series (Full-color controllers)
         {
             "brand": "Huidu",
-            "model": "HD-C15",
+            "model": "A3",
+            "range": "1280 × 512",
+            "max_w": 4096,
+            "max_h": 2048,
+            "storage": "8 GB",
+            "gray": "256 ~ 65536",
+            "iface": "Wired network / U disk / 3G / 4G / Wi‑Fi",
+            "other": "Two-channel stereo"
+        },
+        {
+            "brand": "Huidu",
+            "model": "A3L",
+            "range": "1280 × 512",
+            "max_w": 8192,
+            "max_h": 3840,
+            "storage": "16 GB",
+            "gray": "256 ~ 65536",
+            "iface": "Wired network / U disk / 3G / 4G / Wi‑Fi",
+            "other": "Two-channel stereo"
+        },
+        {
+            "brand": "Huidu",
+            "model": "A4",
+            "range": "1280 × 512",
+            "max_w": 16384,
+            "max_h": 2048,
+            "storage": "8 GB",
+            "gray": "256 ~ 65536",
+            "iface": "Wired network / U disk / 3G / 4G / Wi‑Fi",
+            "other": "Two-channel stereo"
+        },
+        {
+            "brand": "Huidu",
+            "model": "A4L",
+            "range": "1280 × 512",
+            "max_w": 16384,
+            "max_h": 4096,
+            "storage": "16 GB",
+            "gray": "256 ~ 65536",
+            "iface": "Wired netwokr / U disk / 3G / 4G / Wi‑Fi",
+            "other": "Two-channel stereo"
+        },
+        {
+            "brand": "Huidu",
+            "model": "A5",
+            "range": "1280 × 1024",
+            "max_w": 16384,
+            "max_h": 2048,
+            "storage": "8 GB",
+            "gray": "256 ~ 65536",
+            "iface": "Wired network / U disk / 3G / 4G / Wi‑Fi",
+            "other": "Two-channel stereo"
+        },
+        {
+            "brand": "Huidu",
+            "model": "A5L",
+            "range": "1280 × 1024",
+            "max_w": 16384,
+            "max_h": 4096,
+            "storage": "16 GB",
+            "gray": "256 ~ 65536",
+            "iface": "Wired network / U disk / 4G / 5G / Wi‑Fi",
+            "other": "Two-channel stereo"
+        },
+        {
+            "brand": "Huidu",
+            "model": "A6",
+            "range": "1920 × 1200",
+            "max_w": 16384,
+            "max_h": 4096,
+            "storage": "8 GB",
+            "gray": "256 ~ 65536",
+            "iface": "Wired network / U disk / 3G / 4G / Wi‑Fi",
+            "other": "Two-channel stereo"
+        },
+        {
+            "brand": "Huidu",
+            "model": "A6L",
+            "range": "1920 × 1356",
+            "max_w": 65536,
+            "max_h": 4096,
+            "storage": "16 GB",
+            "gray": "256 ~ 65536",
+            "iface": "Wired network / U disk / 4G / 5G / Wi‑Fi",
+            "other": "Two-channel stereo"
+        },
+        {
+            "brand": "Huidu",
+            "model": "A7",
+            "range": "3840 × 1344",
+            "max_w": 65536,
+            "max_h": 2160,
+            "storage": "32 GB",
+            "gray": "256 ~ 65536",
+            "iface": "Wired network / U disk / 4G / 5G / Wi‑Fi",
+            "other": "Two-channel stereo"
+        },
+        {
+            "brand": "Huidu",
+            "model": "A8",
+            "range": "3840 × 2160",
+            "max_w": 65536,
+            "max_h": 2160,
+            "storage": "32 GB",
+            "gray": "256 ~ 65536",
+            "iface": "Wired network / U disk / 4G / 5G / Wi‑Fi",
+            "other": "Two-channel stereo"
+        },
+        {
+            "brand": "Huidu",
+            "model": "B6",
+            "range": "1920 × 1200",
+            "max_w": 3840,
+            "max_h": 4096,
+            "storage": "8 GB",
+            "gray": "256 ~ 65536",
+            "iface": "Wired network / U disk / 3G / 4G / Wi‑Fi",
+            "other": "Two-channel stereo"
+        },
+        {
+            "brand": "Huidu",
+            "model": "B6L",
+            "range": "1920 × 1356",
+            "max_w": 16384,
+            "max_h": 4096,
+            "storage": "16 GB",
+            "gray": "256 ~ 65536",
+            "iface": "Wired network / U disk / 4G / 5G / Wi‑Fi",
+            "other": "Two-channel stereo"
+        },
+        {
+            "brand": "Huidu",
+            "model": "C08L",
+            "range": "1024 × 192",
+            "max_w": 2048,
+            "max_h": 1024,
+            "storage": "4 GB",
+            "gray": "256 ~ 65536",
+            "iface": "Wired network / U disk / 3G / 4G / Wi‑Fi",
+            "other": "Two-channel stereo"
+        },
+        {
+            "brand": "Huidu",
+            "model": "C15",
             "range": "384 × 320",
             "max_w": 1024,
             "max_h": 512,
             "storage": "4 GB",
             "gray": "256 ~ 65536",
-            "iface": "Wired / U‑disk / 3G / 4G / Wi‑Fi",
-            "other": "Single/Dual color & small full-color LED displays"
+            "iface": "Wired network / U disk / 3G / 4G / Wi‑Fi",
+            "other": "Two-channel stereo"
         },
         {
             "brand": "Huidu",
-            "model": "HD-C16",
-            "range": "512 × 384",
-            "max_w": 1024,
+            "model": "C16",
+            "range": "640 × 320",
+            "max_w": 8192,
             "max_h": 1024,
-            "storage": "8 GB",
-            "gray": "256 ~ 65536",
-            "iface": "Wired / U‑disk / Wi‑Fi",
-            "other": "Full-color LED displays - Standard model"
-        },
-        {
-            "brand": "Huidu",
-            "model": "HD-C20",
-            "range": "640 × 512",
-            "max_w": 2048,
-            "max_h": 1024,
-            "storage": "8 GB",
-            "gray": "256 ~ 65536",
-            "iface": "Wired / U‑disk / Wi‑Fi / 4G",
-            "other": "Full-color LED displays - Enhanced model"
-        },
-        {
-            "brand": "Huidu",
-            "model": "HD-C30",
-            "range": "1024 × 768",
-            "max_w": 4096,
-            "max_h": 2048,
-            "storage": "16 GB",
-            "gray": "256 ~ 65536",
-            "iface": "Wired / U‑disk / Wi‑Fi / 4G",
-            "other": "Full-color LED displays - High-end model"
-        },
-        # HD-M Series (Monochrome controllers)
-        {
-            "brand": "Huidu",
-            "model": "HD-M30",
-            "range": "320 × 320",
-            "max_w": 1024,
-            "max_h": 512,
             "storage": "4 GB",
             "gray": "256 ~ 65536",
-            "iface": "Wired / U‑disk",
-            "other": "Monochrome LED displays - Entry level"
+            "iface": "Wired network / U disk / 3G / 4G / Wi‑Fi",
+            "other": "Two-channel stereo"
         },
         {
             "brand": "Huidu",
-            "model": "HD-M50",
-            "range": "512 × 256",
+            "model": "C16L",
+            "range": "1280 × 510",
+            "max_w": 8192,
+            "max_h": 1920,
+            "storage": "4 GB",
+            "gray": "256 ~ 65536",
+            "iface": "Wired network / U disk / 3G / 4G / Wi‑Fi",
+            "other": "Two-channel stereo"
+        },
+        {
+            "brand": "Huidu",
+            "model": "C35",
+            "range": "1024 × 512",
             "max_w": 1024,
             "max_h": 1024,
-            "storage": "8 GB",
+            "storage": "4 GB",
             "gray": "256 ~ 65536",
-            "iface": "Wired / U‑disk",
-            "other": "Monochrome LED displays - Standard model"
+            "iface": "Wired network / U disk / 3G / 4G / Wi‑Fi",
+            "other": "Two-channel stereo"
         },
         {
             "brand": "Huidu",
-            "model": "HD-M60",
-            "range": "640 × 512",
-            "max_w": 2048,
+            "model": "C36",
+            "range": "1024 × 512",
+            "max_w": 8192,
             "max_h": 1024,
-            "storage": "8 GB",
+            "storage": "4 GB",
             "gray": "256 ~ 65536",
-            "iface": "Wired / U‑disk / Wi‑Fi",
-            "other": "Monochrome LED displays - Enhanced model"
-        },
-        # HD-A Series (Advanced controllers)
-        {
-            "brand": "Huidu",
-            "model": "HD-A10",
-            "range": "512 × 384",
-            "max_w": 2048,
-            "max_h": 1024,
-            "storage": "8 GB",
-            "gray": "256 ~ 65536",
-            "iface": "Wired / U‑disk / Wi‑Fi / 4G",
-            "other": "Advanced controller - Multi-protocol support"
+            "iface": "Wired network / U disk / 3G / 4G / Wi‑Fi",
+            "other": "Two-channel stereo"
         },
         {
             "brand": "Huidu",
-            "model": "HD-A20",
-            "range": "1024 × 768",
-            "max_w": 4096,
-            "max_h": 2048,
+            "model": "D15",
+            "range": "640 × 64",
+            "max_w": 640,
+            "max_h": 128,
+            "storage": "4 GB",
+            "gray": "256 ~ 65536",
+            "iface": "Wired network / U disk / 3G / 4G / Wi‑Fi",
+            "other": ""
+        },
+        {
+            "brand": "Huidu",
+            "model": "D16",
+            "range": "1024 × 64",
+            "max_w": 1024,
+            "max_h": 256,
+            "storage": "4 GB",
+            "gray": "256 ~ 65536",
+            "iface": "Wired network / U disk / 3G / 4G / Wi‑Fi",
+            "other": ""
+        },
+        {
+            "brand": "Huidu",
+            "model": "D18",
+            "range": "640 × 128",
+            "max_w": 1024,
+            "max_h": 256,
+            "storage": "4 GB",
+            "gray": "256 ~ 65536",
+            "iface": "U disk / Wi‑Fi / 3G / 4G",
+            "other": ""
+        },
+        {
+            "brand": "Huidu",
+            "model": "D35",
+            "range": "1024 × 64",
+            "max_w": 1024,
+            "max_h": 128,
+            "storage": "4 GB",
+            "gray": "256 ~ 65536",
+            "iface": "Wired network / U disk / 3G / 4G / Wi‑Fi",
+            "other": ""
+        },
+        {
+            "brand": "Huidu",
+            "model": "D36",
+            "range": "1024 × 64",
+            "max_w": 1024,
+            "max_h": 256,
+            "storage": "4 GB",
+            "gray": "256 ~ 65536",
+            "iface": "Wired network / U disk / 3G / 4G / Wi‑Fi",
+            "other": ""
+        },
+        {
+            "brand": "Huidu",
+            "model": "H4K",
+            "range": "3840 × 2160",
+            "max_w": 32768,
+            "max_h": 4096,
             "storage": "16 GB",
             "gray": "256 ~ 65536",
-            "iface": "Wired / U‑disk / Wi‑Fi / 4G / HDMI",
-            "other": "Advanced controller - High-resolution support"
-        },
+            "iface": "Wired network / U disk / 4G / 5G / Wi‑Fi",
+            "other": "Two-channel stereo"
+        }
     ]
     
     @classmethod

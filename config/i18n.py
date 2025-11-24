@@ -12,7 +12,7 @@ _STRINGS: Dict[str, Dict[str, str]] = {
     "content.video": {"en": "Video", "it": "Video", "pl": "Wideo"},
     "content.photo": {"en": "Photo", "it": "Foto", "pl": "Zdjęcie"},
     "content.text": {"en": "Text", "it": "Testo", "pl": "Tekst"},
-    "content.single_line_text": {"en": "Single Line Text", "it": "Testo su singola riga", "pl": "Tekst jednoliniowy"},
+    "content.singleline_text": {"en": "Single Line Text", "it": "Testo su singola riga", "pl": "Tekst jednoliniowy"},
     "content.animation": {"en": "Animation", "it": "Animazione", "pl": "Animacja"},
     "content.clock": {"en": "Clock", "it": "Orologio", "pl": "Zegar"},
     "content.timing": {"en": "Timing", "it": "Timing", "pl": "Czasowanie"},

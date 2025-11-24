@@ -102,7 +102,7 @@ class BaseController(ABC):
                                 for part in parts:
                                     if ':' in part or '-' in part:
                                         return part.replace('-', ':')
-                except:
+                except (OSError, subprocess.SubprocessError, IndexError, AttributeError):
                     pass
             
             elif system in ["Linux", "Darwin"]:
@@ -120,7 +120,7 @@ class BaseController(ABC):
                                 for part in parts:
                                     if ':' in part or '-' in part:
                                         return part.replace('-', ':')
-                except:
+                except (OSError, subprocess.SubprocessError, IndexError, AttributeError):
                     pass
             
             try:
@@ -135,7 +135,7 @@ class BaseController(ABC):
                                         return mac_addr.address
             except ImportError:
                 pass
-            except:
+            except (OSError, AttributeError, KeyError):
                 pass
                 
         except Exception:

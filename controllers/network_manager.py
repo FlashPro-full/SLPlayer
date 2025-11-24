@@ -70,7 +70,7 @@ class NetworkManager:
         if sock:
             try:
                 sock.close()
-            except:
+            except (OSError, AttributeError):
                 pass
     
     def ping(self, ip_address: str, port: int, timeout: int = 2) -> bool:
@@ -83,9 +83,12 @@ class NetworkManager:
             sock.connect((ip_address, port))
             sock.close()
             return True
-        except:
+        except (OSError, ConnectionError, TimeoutError):
             if sock:
-                sock.close()
+                try:
+                    sock.close()
+                except (OSError, AttributeError):
+                    pass
             return False
     
     @staticmethod

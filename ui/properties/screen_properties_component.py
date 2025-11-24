@@ -87,46 +87,39 @@ class ScreenPropertiesComponent(BasePropertiesComponent):
             self.update_properties()
     
     def update_properties(self):
-        if not self.current_screen_programs or len(self.current_screen_programs) == 0:
-            return
+        from core.screen_config import get_screen_config
         
-        first_program = self.current_screen_programs[0]
-        if not first_program:
-            return
+        screen_config = get_screen_config()
         
-        screen_props = first_program.properties.get("screen", {})
-        
-        controller_type = screen_props.get("controller_type", "")
-        if not controller_type:
-            brand = screen_props.get("brand", "")
-            model = screen_props.get("model", "")
+        controller_type = ""
+        if screen_config:
+            brand = screen_config.get("brand", "")
+            model = screen_config.get("model", "")
             if brand and model:
                 controller_type = f"{brand} {model}"
             elif model:
                 controller_type = model
+            elif brand:
+                controller_type = brand
+        
         self.screen_controller_type_input.setText(controller_type if controller_type else "N/A")
         
-        screen_props = first_program.properties.get("screen", {})
-        width = screen_props.get("width")
-        height = screen_props.get("height")
+        width = screen_config.get("width")
+        height = screen_config.get("height")
         if width and height:
             self.screen_size_input.setText(f"{width} x {height}")
         else:
             self.screen_size_input.setText("Not set")
         
-        working_file_path = first_program.properties.get("working_file_path", "")
-        if working_file_path:
-            self.screen_path_input.setText(working_file_path)
-        else:
-            if self.program_manager:
-                from utils.app_data import get_app_data_dir
-                work_dir = get_app_data_dir() / "work"
-                safe_name = self.current_screen_name.replace("/", "_").replace("\\", "_").replace(":", "_").replace("*", "_").replace("?", "_").replace("\"", "_").replace("<", "_").replace(">", "_").replace("|", "_")
-                soo_file = work_dir / f"{safe_name}.soo"
-                if soo_file.exists():
-                    self.screen_path_input.setText(str(soo_file))
-                else:
-                    self.screen_path_input.setText(str(soo_file))
+        if self.program_manager:
+            from utils.app_data import get_app_data_dir
+            work_dir = get_app_data_dir() / "work"
+            safe_name = self.current_screen_name.replace("/", "_").replace("\\", "_").replace(":", "_").replace("*", "_").replace("?", "_").replace("\"", "_").replace("<", "_").replace(">", "_").replace("|", "_")
+            soo_file = work_dir / f"{safe_name}.soo"
+            if soo_file.exists():
+                self.screen_path_input.setText(str(soo_file))
             else:
-                self.screen_path_input.setText("N/A")
+                self.screen_path_input.setText(str(soo_file))
+        else:
+            self.screen_path_input.setText("N/A")
 

@@ -193,6 +193,6 @@ class HuiduController(BaseController):
         try:
             json_str = data.decode('utf-8')
             return json.loads(json_str)
-        except:
+        except (UnicodeDecodeError, json.JSONDecodeError, AttributeError):
             return None
 

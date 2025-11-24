@@ -30,7 +30,7 @@ class LicenseManager:
             try:
                 from config.settings import settings
                 api_base_url = settings.get("license.api_url", "https://www.starled-italia.com/license/api")
-            except:
+            except (ImportError, AttributeError, KeyError):
                 api_base_url = "https://www.starled-italia.com/license/api"
         
         self.api_base_url = api_base_url.rstrip('/')
@@ -397,7 +397,7 @@ class LicenseManager:
                 smtp_user = settings.get("license.smtp_user", "")
                 smtp_password = settings.get("license.smtp_password", "")
                 transfer_email = settings.get("license.transfer_email", "license@starled-italia.com")
-            except:
+            except (ImportError, AttributeError, KeyError):
                 # Use defaults if settings not available
                 smtp_server = "smtp.gmail.com"
                 smtp_port = 587

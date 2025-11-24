@@ -64,7 +64,7 @@ class MenuBar(QMenuBar):
         
         new_action = QAction(tr("action.new"), self)
         new_action.setShortcut(QKeySequence.New)
-        new_action.triggered.connect(self.new_program_requested.emit)
+        new_action.triggered.connect(self.new_screen_requested.emit)
         file_menu.addAction(new_action)
         self.actions["file.new"] = new_action
         

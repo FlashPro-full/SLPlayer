@@ -236,7 +236,8 @@ class LicenseDialog(QDialog):
                         if not self.email_input.text():
                             self.email_input.setText(data.get("email", ""))
                         self.remember_check.setChecked(True)
-            except:
+            except (json.JSONDecodeError, KeyError, TypeError, IOError):
+                # Silently fail if credentials file is corrupted or missing
                 pass
     
     def check_license_status(self):

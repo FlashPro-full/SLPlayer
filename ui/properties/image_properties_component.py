@@ -22,58 +22,170 @@ class ImagePropertiesComponent(BasePropertiesComponent):
         layout.setSpacing(8)
         layout.setAlignment(Qt.AlignLeft | Qt.AlignTop)
         
-        area_group = QGroupBox("Area Attribute")
+        self.setStyleSheet("""
+            QGroupBox {
+                font-weight: 600;
+                font-size: 13px;
+                border: 1px solid #D0D0D0;
+                border-radius: 4px;
+                margin-top: 8px;
+                padding-top: 12px;
+                background-color: #FAFAFA;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 8px;
+                padding: 0 4px;
+                color: #333333;
+            }
+            QLineEdit {
+                border: 1px solid #CCCCCC;
+                border-radius: 3px;
+                padding: 4px 6px;
+                background-color: #000000;
+                color: #FFFFFF;
+                font-size: 12px;
+                selection-background-color: #4A90E2;
+                selection-color: #FFFFFF;
+            }
+            QLineEdit:focus {
+                border: 1px solid #4A90E2;
+                background-color: #000000;
+                color: #FFFFFF;
+            }
+            QLineEdit:hover {
+                border: 1px solid #999999;
+            }
+            QComboBox {
+                border: 1px solid #CCCCCC;
+                border-radius: 3px;
+                padding: 4px 6px;
+                background-color: #FFFFFF;
+                font-size: 12px;
+                min-width: 80px;
+            }
+            QComboBox:hover {
+                border: 1px solid #999999;
+            }
+            QComboBox:focus {
+                border: 1px solid #4A90E2;
+            }
+            QComboBox::drop-down {
+                border: none;
+                width: 20px;
+            }
+            QComboBox::down-arrow {
+                image: none;
+                border-left: 4px solid transparent;
+                border-right: 4px solid transparent;
+                border-top: 5px solid #666666;
+                width: 0;
+                height: 0;
+            }
+            QComboBox QAbstractItemView {
+                border: 1px solid #CCCCCC;
+                border-radius: 3px;
+                background-color: #FFFFFF;
+                selection-background-color: #4A90E2;
+                selection-color: #FFFFFF;
+                padding: 2px;
+            }
+            QTextEdit {
+                border: 1px solid #CCCCCC;
+                border-radius: 3px;
+                padding: 6px;
+                background-color: #FFFFFF;
+                font-size: 12px;
+                selection-background-color: #4A90E2;
+                selection-color: #FFFFFF;
+            }
+            QTextEdit:focus {
+                border: 1px solid #4A90E2;
+            }
+            QTextEdit:hover {
+                border: 1px solid #999999;
+            }
+            QDoubleSpinBox {
+                border: 1px solid #CCCCCC;
+                border-radius: 3px;
+                padding: 4px 6px;
+                background-color: #FFFFFF;
+                font-size: 12px;
+                selection-background-color: #4A90E2;
+                selection-color: #FFFFFF;
+            }
+            QDoubleSpinBox:focus {
+                border: 1px solid #4A90E2;
+            }
+            QDoubleSpinBox:hover {
+                border: 1px solid #999999;
+            }
+            QDoubleSpinBox::up-button, QDoubleSpinBox::down-button {
+                border: none;
+                background-color: transparent;
+                width: 16px;
+            }
+            QDoubleSpinBox::up-button:hover, QDoubleSpinBox::down-button:hover {
+                background-color: #F0F0F0;
+            }
+            QLabel {
+                color: #333333;
+                font-size: 12px;
+            }
+        """)
+        
+        area_group = QGroupBox("Area attribute")
+        area_group.setMaximumWidth(200)
         area_layout = QVBoxLayout(area_group)
-        area_layout.setContentsMargins(6, 6, 6, 6)
-        area_layout.setSpacing(4)
+        area_layout.setContentsMargins(10, 16, 10, 10)
+        area_layout.setSpacing(8)
+        area_layout.setAlignment(Qt.AlignTop)
         
-        layout_section = QVBoxLayout()
-        layout_section.setSpacing(4)
-        layout_section.setAlignment(Qt.AlignTop)
-        
-        coords_layout = QHBoxLayout()
-        coords_layout.setSpacing(2)
+        coords_row = QHBoxLayout()
+        coords_row.setSpacing(6)
         coords_label = QLabel("📍")
+        coords_label.setStyleSheet("font-size: 16px;")
         self.image_coords_x = QLineEdit()
         self.image_coords_x.setPlaceholderText("0")
-        self.image_coords_x.setMinimumWidth(60)
+        self.image_coords_x.setMinimumWidth(70)
         self.image_coords_x.setText("0")
+        self.image_coords_x.textChanged.connect(self._on_image_coords_changed)
         coords_comma = QLabel(",")
+        coords_comma.setStyleSheet("color: #666666; font-weight: bold;")
         self.image_coords_y = QLineEdit()
         self.image_coords_y.setPlaceholderText("0")
-        self.image_coords_y.setMinimumWidth(60)
+        self.image_coords_y.setMinimumWidth(70)
         self.image_coords_y.setText("0")
-        coords_layout.addWidget(coords_label)
-        coords_layout.addWidget(self.image_coords_x)
-        coords_layout.addWidget(coords_comma)
-        coords_layout.addWidget(self.image_coords_y)
-        coords_layout.addStretch()
-        layout_section.addLayout(coords_layout)
-        
-        dims_layout = QHBoxLayout()
-        dims_layout.setSpacing(2)
-        dims_label = QLabel("📐")
-        self.image_dims_width = QLineEdit()
-        self.image_dims_width.setPlaceholderText("screen width")
-        self.image_dims_width.setMinimumWidth(60)
-        dims_comma = QLabel(",")
-        self.image_dims_height = QLineEdit()
-        self.image_dims_height.setPlaceholderText("screen height")
-        self.image_dims_height.setMinimumWidth(60)
-        dims_layout.addWidget(dims_label)
-        dims_layout.addWidget(self.image_dims_width)
-        dims_layout.addWidget(dims_comma)
-        dims_layout.addWidget(self.image_dims_height)
-        dims_layout.addStretch()
-        layout_section.addLayout(dims_layout)
-        
-        area_layout.addLayout(layout_section)
-        
-        self.image_coords_x.textChanged.connect(self._on_image_coords_changed)
         self.image_coords_y.textChanged.connect(self._on_image_coords_changed)
-        self.image_dims_width.textChanged.connect(self._on_image_dims_changed)
-        self.image_dims_height.textChanged.connect(self._on_image_dims_changed)
+        coords_row.addWidget(coords_label)
+        coords_row.addWidget(self.image_coords_x)
+        coords_row.addWidget(coords_comma)
+        coords_row.addWidget(self.image_coords_y)
+        area_layout.addLayout(coords_row)
         
+        dims_row = QHBoxLayout()
+        dims_row.setSpacing(6)
+        dims_label = QLabel("📐")
+        dims_label.setStyleSheet("font-size: 16px;")
+        self.image_dims_width = QLineEdit()
+        self.image_dims_width.setPlaceholderText("1920")
+        self.image_dims_width.setMinimumWidth(70)
+        self.image_dims_width.setText("1920")
+        self.image_dims_width.textChanged.connect(self._on_image_dims_changed)
+        dims_comma = QLabel(",")
+        dims_comma.setStyleSheet("color: #666666; font-weight: bold;")
+        self.image_dims_height = QLineEdit()
+        self.image_dims_height.setPlaceholderText("1080")
+        self.image_dims_height.setMinimumWidth(70)
+        self.image_dims_height.setText("1080")
+        self.image_dims_height.textChanged.connect(self._on_image_dims_changed)
+        dims_row.addWidget(dims_label)
+        dims_row.addWidget(self.image_dims_width)
+        dims_row.addWidget(dims_comma)
+        dims_row.addWidget(self.image_dims_height)
+        area_layout.addLayout(dims_row)
+        
+        area_layout.addStretch()
         layout.addWidget(area_group)
         
         photo_list_group = QGroupBox("Photo List")
@@ -113,18 +225,84 @@ class ImagePropertiesComponent(BasePropertiesComponent):
         
         animation_group = QGroupBox("Animation")
         animation_group.setMinimumWidth(250)
-        animation_layout = QFormLayout(animation_group)
+        animation_main_layout = QHBoxLayout(animation_group)
+        animation_main_layout.setContentsMargins(10, 16, 10, 10)
+        animation_main_layout.setSpacing(12)
+        
+        buttons_column = QVBoxLayout()
+        buttons_column.setSpacing(8)
+        buttons_column.setAlignment(Qt.AlignTop)
+        buttons_column.setContentsMargins(0, 0, 0, 0)
+        
+        self.image_fixed_animation_btn = QPushButton("🚫")
+        self.image_fixed_animation_btn.setFixedSize(44, 44)
+        self.image_fixed_animation_btn.setToolTip("Fixed Animation")
+        font = self.image_fixed_animation_btn.font()
+        font.setPointSize(28)
+        self.image_fixed_animation_btn.setFont(font)
+        self.image_fixed_animation_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #F5F5F5;
+                border: 1px solid #CCCCCC;
+                border-radius: 4px;
+            }
+            QPushButton:hover {
+                background-color: #E8F4F8;
+                border: 1px solid #4A90E2;
+            }
+            QPushButton:pressed {
+                background-color: #D0E8F2;
+                border: 1px solid #2E5C8A;
+            }
+        """)
+        self.image_fixed_animation_btn.clicked.connect(self._on_fixed_animation_clicked)
+        buttons_column.addWidget(self.image_fixed_animation_btn)
+        
+        self.image_random_animation_btn = QPushButton("🔀")
+        self.image_random_animation_btn.setFixedSize(44, 44)
+        self.image_random_animation_btn.setToolTip("Selected Random")
+        font = self.image_random_animation_btn.font()
+        font.setPointSize(28)
+        self.image_random_animation_btn.setFont(font)
+        self.image_random_animation_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #F5F5F5;
+                border: 1px solid #CCCCCC;
+                border-radius: 4px;
+            }
+            QPushButton:hover {
+                background-color: #E8F4F8;
+                border: 1px solid #4A90E2;
+            }
+            QPushButton:pressed {
+                background-color: #D0E8F2;
+                border: 1px solid #2E5C8A;
+            }
+        """)
+        self.image_random_animation_btn.clicked.connect(self._on_random_animation_clicked)
+        buttons_column.addWidget(self.image_random_animation_btn)
+        
+        buttons_column.addStretch()
+        animation_main_layout.addLayout(buttons_column, stretch=1)
+        
+        content_column = QVBoxLayout()
+        content_column.setSpacing(8)
+        content_column.setContentsMargins(0, 0, 0, 0)
+        
+        animation_layout = QFormLayout()
+        animation_layout.setContentsMargins(0, 0, 0, 0)
+        animation_layout.setSpacing(8)
         
         entrance_animation_layout = QHBoxLayout()
         entrance_icon = QLabel("🚫")
         entrance_animation_layout.addWidget(entrance_icon)
         self.image_entrance_animation_combo = QComboBox()
         self.image_entrance_animation_combo.addItems([
-            "Random", "None", "Fade", "Fly In", "Wipe", "Split", "Strips",
-            "Circle", "Wheel", "Zoom", "Box", "Plus", "Checkerboard", "Blinds",
-            "Diamond", "Dissolve", "Peek", "Bounce", "Flash", "Grow & Turn",
-            "Spiral", "Swivel", "Unfold", "Fade & Zoom", "Float In", "Pinwheel",
-            "Rise Up", "Swing", "Zoom & Fade", "Zoom & Turn"
+            "Random", "Immediate Show", "Move Left", "Move Right", "Move Up", "Move Down",
+            "Cover Left", "Cover Right", "Cover Up", "Cover Down",
+            "Top Left Cover", "Top Right Cover", "Bottom Left Cover", "Bottom Right Cover",
+            "Open From Middle", "Up Down Open", "Close From Middle", "Up Down Close",
+            "Gradual Change", "Vertical Blinds", "Horizontal Blinds", "Twinkle"
         ])
         self.image_entrance_animation_combo.setCurrentText("Random")
         self.image_entrance_animation_combo.currentTextChanged.connect(self._on_entrance_animation_changed)
@@ -134,7 +312,9 @@ class ImagePropertiesComponent(BasePropertiesComponent):
         entrance_speed_layout = QHBoxLayout()
         entrance_speed_layout.addStretch()
         self.image_entrance_speed_combo = QComboBox()
-        self.image_entrance_speed_combo.addItems([f"{i} fast" if i > 1 else "1 fast" for i in range(1, 11)])
+        self.image_entrance_speed_combo.addItem("1 fast")
+        self.image_entrance_speed_combo.addItems([f"{i}" for i in range(2, 9)])
+        self.image_entrance_speed_combo.addItem("9 slow")
         self.image_entrance_speed_combo.setCurrentText("1 fast")
         self.image_entrance_speed_combo.currentTextChanged.connect(self._on_entrance_speed_changed)
         entrance_speed_layout.addWidget(self.image_entrance_speed_combo, stretch=1)
@@ -145,11 +325,11 @@ class ImagePropertiesComponent(BasePropertiesComponent):
         exit_animation_layout.addWidget(exit_icon)
         self.image_exit_animation_combo = QComboBox()
         self.image_exit_animation_combo.addItems([
-            "Random", "None", "Fade", "Fly Out", "Wipe", "Split", "Strips",
-            "Circle", "Wheel", "Zoom", "Box", "Plus", "Checkerboard", "Blinds",
-            "Diamond", "Dissolve", "Peek", "Bounce", "Flash", "Grow & Turn",
-            "Spiral", "Swivel", "Unfold", "Fade & Zoom", "Float Out", "Pinwheel",
-            "Rise Up", "Swing", "Zoom & Fade", "Zoom & Turn"
+            "Random", "Immediate Show", "Move Left", "Move Right", "Move Up", "Move Down",
+            "Cover Left", "Cover Right", "Cover Up", "Cover Down",
+            "Top Left Cover", "Top Right Cover", "Bottom Left Cover", "Bottom Right Cover",
+            "Open From Middle", "Up Down Open", "Close From Middle", "Up Down Close",
+            "Gradual Change", "Vertical Blinds", "Horizontal Blinds", "Twinkle"
         ])
         self.image_exit_animation_combo.setCurrentText("Random")
         self.image_exit_animation_combo.currentTextChanged.connect(self._on_exit_animation_changed)
@@ -159,7 +339,9 @@ class ImagePropertiesComponent(BasePropertiesComponent):
         exit_speed_layout = QHBoxLayout()
         exit_speed_layout.addStretch()
         self.image_exit_speed_combo = QComboBox()
-        self.image_exit_speed_combo.addItems([f"{i} fast" if i > 1 else "1 fast" for i in range(1, 11)])
+        self.image_exit_speed_combo.addItem("1 fast")
+        self.image_exit_speed_combo.addItems([f"{i}" for i in range(2, 9)])
+        self.image_exit_speed_combo.addItem("9 slow")
         self.image_exit_speed_combo.setCurrentText("1 fast")
         self.image_exit_speed_combo.currentTextChanged.connect(self._on_exit_speed_changed)
         exit_speed_layout.addWidget(self.image_exit_speed_combo, stretch=1)
@@ -174,6 +356,10 @@ class ImagePropertiesComponent(BasePropertiesComponent):
         self.image_hold_time_spin.setValue(0.0)
         self.image_hold_time_spin.valueChanged.connect(self._on_hold_time_changed)
         animation_layout.addRow("Hold", self.image_hold_time_spin)
+        
+        content_column.addLayout(animation_layout)
+        content_column.addStretch()
+        animation_main_layout.addLayout(content_column, stretch=9)
         
         layout.addWidget(animation_group)
     
@@ -340,6 +526,49 @@ class ImagePropertiesComponent(BasePropertiesComponent):
         self.property_changed.emit("image_hold_time", value)
         self._trigger_autosave()
     
+    def _on_fixed_animation_clicked(self):
+        if not self.current_element or not self.current_program:
+            return
+        
+        if "properties" not in self.current_element:
+            self.current_element["properties"] = {}
+        if "animation" not in self.current_element["properties"]:
+            self.current_element["properties"]["animation"] = {}
+        
+        # Set both entrance and exit to "Immediate Show"
+        self.image_entrance_animation_combo.setCurrentText("Immediate Show")
+        self.image_exit_animation_combo.setCurrentText("Immediate Show")
+        
+        self.current_element["properties"]["animation"]["entrance"] = "Immediate Show"
+        self.current_element["properties"]["animation"]["entrance_animation"] = get_animation_index("Immediate Show")
+        self.current_element["properties"]["animation"]["exit"] = "Immediate Show"
+        self.current_element["properties"]["animation"]["exit_animation"] = get_animation_index("Immediate Show")
+        
+        self.current_program.modified = datetime.now().isoformat()
+        self.property_changed.emit("image_animation_fixed", True)
+        self._trigger_autosave()
+    
+    def _on_random_animation_clicked(self):
+        if not self.current_element or not self.current_program:
+            return
+        
+        if "properties" not in self.current_element:
+            self.current_element["properties"] = {}
+        if "animation" not in self.current_element["properties"]:
+            self.current_element["properties"]["animation"] = {}
+        
+        self.image_entrance_animation_combo.setCurrentText("Random")
+        self.image_exit_animation_combo.setCurrentText("Random")
+        
+        self.current_element["properties"]["animation"]["entrance"] = "Random"
+        self.current_element["properties"]["animation"]["entrance_animation"] = get_animation_index("Random")
+        self.current_element["properties"]["animation"]["exit"] = "Random"
+        self.current_element["properties"]["animation"]["exit_animation"] = get_animation_index("Random")
+        
+        self.current_program.modified = datetime.now().isoformat()
+        self.property_changed.emit("image_animation_random", True)
+        self._trigger_autosave()
+    
     def _on_image_coords_changed(self):
         if not self.current_element or not self.current_program:
             return
@@ -424,7 +653,7 @@ class ImagePropertiesComponent(BasePropertiesComponent):
                 if "photo_list" not in self.current_element["properties"]:
                     self.current_element["properties"]["photo_list"] = []
                 self.current_element["properties"]["photo_list"].append({"path": file_path})
-                self.photo_list.add_item(file_path)
+                self.photo_list.set_photos(self.current_element["properties"]["photo_list"])
                 self.property_changed.emit("photo_list", self.current_element["properties"]["photo_list"])
                 self._trigger_autosave()
     
@@ -432,44 +661,58 @@ class ImagePropertiesComponent(BasePropertiesComponent):
         pass
     
     def _on_photo_item_deleted(self, index: int):
-        if self.current_element:
-            if "properties" in self.current_element and "photo_list" in self.current_element["properties"]:
-                self.current_element["properties"]["photo_list"].pop(index)
-                self.photo_list.remove_item(index)
-                self.current_program.modified = datetime.now().isoformat()
-                self.property_changed.emit("photo_list", self.current_element["properties"]["photo_list"])
-                self._trigger_autosave()
-    
-    def _on_photo_delete(self):
-        current_index = self.photo_list.get_current_index()
-        if current_index >= 0 and self.current_element:
+        if self.current_element and self.current_program:
             if "properties" in self.current_element and "photo_list" in self.current_element["properties"]:
                 photo_list = self.current_element["properties"]["photo_list"]
-                if 0 <= current_index < len(photo_list):
-                    self.current_element["properties"]["photo_list"].pop(current_index)
-                    self.photo_list.remove_item(current_index)
+                if 0 <= index < len(photo_list):
+                    self.current_element["properties"]["photo_list"].pop(index)
+                    if len(photo_list) > 0:
+                        new_active = min(index, len(photo_list) - 1)
+                    else:
+                        new_active = -1
+                    self.photo_list.set_photos(self.current_element["properties"]["photo_list"])
+                    if new_active >= 0:
+                        self.photo_list.set_active_index(new_active)
+                    self.current_program.modified = datetime.now().isoformat()
+                    self.property_changed.emit("photo_list", self.current_element["properties"]["photo_list"])
+                    self._trigger_autosave()
+    
+    def _on_photo_delete(self):
+        active_index = self.photo_list.get_active_index()
+        if active_index >= 0 and self.current_element:
+            if "properties" in self.current_element and "photo_list" in self.current_element["properties"]:
+                photo_list = self.current_element["properties"]["photo_list"]
+                if 0 <= active_index < len(photo_list):
+                    self.current_element["properties"]["photo_list"].pop(active_index)
+                    if len(photo_list) > 0:
+                        new_active = min(active_index, len(photo_list) - 1)
+                    else:
+                        new_active = -1
+                    self.photo_list.set_photos(self.current_element["properties"]["photo_list"])
+                    if new_active >= 0:
+                        self.photo_list.set_active_index(new_active)
                     self.current_program.modified = datetime.now().isoformat()
                     self.property_changed.emit("photo_list", self.current_element["properties"]["photo_list"])
                     self._trigger_autosave()
     
     def _on_photo_up(self):
-        current_index = self.photo_list.get_current_index()
-        if current_index > 0 and self.current_element:
+        active_index = self.photo_list.get_active_index()
+        if active_index > 0 and self.current_element:
             if "properties" in self.current_element and "photo_list" in self.current_element["properties"]:
                 photo_list = self.current_element["properties"]["photo_list"]
-                new_index = self.photo_list.move_item_up(current_index)
-                photo_list[current_index], photo_list[current_index - 1] = photo_list[current_index - 1], photo_list[current_index]
+                new_index = self.photo_list.move_item_up(active_index)
+                photo_list[active_index], photo_list[active_index - 1] = photo_list[active_index - 1], photo_list[active_index]
                 self.current_program.modified = datetime.now().isoformat()
                 self.property_changed.emit("photo_list", photo_list)
                 self._trigger_autosave()
     
     def _on_photo_down(self):
-        current_index = self.photo_list.get_current_index()
+        active_index = self.photo_list.get_active_index()
         if self.current_element and "properties" in self.current_element and "photo_list" in self.current_element["properties"]:
             photo_list = self.current_element["properties"]["photo_list"]
-            if 0 <= current_index < len(photo_list) - 1:
-                new_index = self.photo_list.move_item_down(current_index)
-                photo_list[current_index], photo_list[current_index + 1] = photo_list[current_index + 1], photo_list[current_index]
+            if 0 <= active_index < len(photo_list) - 1:
+                new_index = self.photo_list.move_item_down(active_index)
+                photo_list[active_index], photo_list[active_index + 1] = photo_list[active_index + 1], photo_list[active_index]
                 self.current_program.modified = datetime.now().isoformat()
                 self.property_changed.emit("photo_list", photo_list)
                 self._trigger_autosave()

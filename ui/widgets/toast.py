@@ -122,7 +122,7 @@ class ToastWidget(QWidget):
                         y = screen_full.top() + offset_y
                 else:
                     y = screen_full.top() + offset_y
-            except:
+            except (OSError, AttributeError, ctypes.ArgumentError):
                 y = screen_full.top() + offset_y
         else:
 

@@ -86,7 +86,7 @@ class TextElement(ContentElement):
 class SingleLineTextElement(ContentElement):
     
     def __init__(self, x: int = 0, y: int = 0, width: int = 200, height: int = 50):
-        super().__init__(ContentType.SINGLE_LINE_TEXT, x, y, width, height)
+        super().__init__(ContentType.SINGLELINE_TEXT, x, y, width, height)
         self.properties = {
             "text": "Scrolling Text",
             "font_family": "Arial",
@@ -219,7 +219,7 @@ class HdmiElement(ContentElement):
 def create_element(content_type: ContentType, x: int = 0, y: int = 0) -> ContentElement:
     default_sizes = {
         ContentType.TEXT: (200, 100),
-        ContentType.SINGLE_LINE_TEXT: (200, 50),
+        ContentType.SINGLELINE_TEXT: (200, 50),
         ContentType.VIDEO: (640, 360),
         ContentType.PHOTO: (400, 300),
         ContentType.CLOCK: (200, 100),
@@ -233,7 +233,7 @@ def create_element(content_type: ContentType, x: int = 0, y: int = 0) -> Content
     
     if content_type == ContentType.TEXT:
         return TextElement(x, y, width, height)
-    elif content_type == ContentType.SINGLE_LINE_TEXT:
+    elif content_type == ContentType.SINGLELINE_TEXT:
         return SingleLineTextElement(x, y, width, height)
     elif content_type == ContentType.VIDEO:
         return VideoElement(x, y, width, height)

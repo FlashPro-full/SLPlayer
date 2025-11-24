@@ -194,49 +194,43 @@ class VideoPlayer(QWidget):
         self.videoError.emit(error_string)
     
     @staticmethod
-    def get_video_thumbnail(video_path: str, callback=None):
-        """
-        Extract thumbnail from video file using OpenCV.
-        If callback is provided, generates thumbnail in background thread.
-        Otherwise, returns cached thumbnail or None.
-        """
-        from media.thumbnail_generator import ThumbnailCache, VideoThumbnailThread
-        
-        # Check cache first
-        cache = ThumbnailCache()
-        cached = cache.get(video_path)
-        if cached:
-            return cached
-        
-        # If callback provided, generate in background
-        if callback:
-            thread = VideoThumbnailThread(video_path)
-            thread.finished.connect(callback)
-            thread.start()
-            return None  # Return None immediately, callback will be called
-        
-        # Synchronous fallback (for backward compatibility)
+    def get_video_thumbnail(video_path: str, frame_time: float = 1.0):
         try:
             import cv2
             import numpy as np
             from PyQt5.QtGui import QPixmap, QImage
             
             cap = cv2.VideoCapture(video_path)
-            if cap.isOpened():
-                ret, frame = cap.read()
-                cap.release()
-                if ret and frame is not None:
-                    frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                    frame_rgb = np.ascontiguousarray(frame_rgb)
-                    height, width, channel = frame_rgb.shape
-                    bytes_per_line = 3 * width
-                    q_image = QImage(frame_rgb.data, width, height, bytes_per_line, QImage.Format_RGB888)
-                    q_image = q_image.copy()
-                    pixmap = QPixmap.fromImage(q_image)
-                    cache.set(video_path, pixmap)  # Cache it
+            if not cap.isOpened():
+                return None
+            
+            fps = cap.get(cv2.CAP_PROP_FPS)
+            if fps <= 0:
+                fps = 30.0
+            
+            frame_number = int(frame_time * fps)
+            
+            cap.set(cv2.CAP_PROP_POS_FRAMES, frame_number)
+            
+            ret, frame = cap.read()
+            cap.release()
+            
+            if ret and frame is not None:
+                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                frame_rgb = np.ascontiguousarray(frame_rgb)
+                height, width = frame_rgb.shape[:2]
+                bytes_per_line = 3 * width
+                q_image = QImage(frame_rgb.data, width, height, bytes_per_line, QImage.Format_RGB888)
+                q_image = q_image.copy()
+                pixmap = QPixmap.fromImage(q_image)
+                if pixmap and not pixmap.isNull():
                     return pixmap
-        except Exception:
+        except ImportError:
             pass
+        except Exception as e:
+            from utils.logger import get_logger
+            logger = get_logger(__name__)
+            logger.warning(f"Failed to extract thumbnail from {video_path}: {e}")
         
         return None
 
