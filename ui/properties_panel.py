@@ -291,3 +291,10 @@ class PropertiesPanel(QWidget):
             logger = get_logger(__name__)
             logger.error(f"Error in set_screen: {e}", exc_info=True)
             self.show_empty()
+
+    def save_all_current_properties(self):
+        if self.current_element and self.current_program:
+            element_type = self.current_element.get("type", "").lower()
+            if element_type == "animation":
+                if hasattr(self.animation_properties_widget, 'save_all_animation_text_properties'):
+                    self.animation_properties_widget.save_all_animation_text_properties()

@@ -121,11 +121,11 @@ class TimingPropertiesComponent(BasePropertiesComponent):
         area_layout.addStretch()
         main_layout.addWidget(area_group)
         
-        # No title group (without group border)
-        no_title_widget = QWidget()
-        no_title_widget.setMinimumWidth(600)
-        no_title_layout = QVBoxLayout(no_title_widget)
-        no_title_layout.setContentsMargins(0, 0, 0, 0)
+        # No title group (grouped in QGroupBox)
+        no_title_group = QGroupBox()
+        no_title_group.setMaximumWidth(600)
+        no_title_layout = QVBoxLayout(no_title_group)
+        no_title_layout.setContentsMargins(10, 16, 10, 10)
         no_title_layout.setSpacing(12)
         
         # Radio button group (without group border)
@@ -170,7 +170,7 @@ class TimingPropertiesComponent(BasePropertiesComponent):
         self.suitable_time_datetime.dateTimeChanged.connect(self._on_suitable_time_changed)
         suitable_time_layout.addWidget(self.suitable_time_datetime, stretch=1)
         suitable_time_layout.addWidget(QLabel("Color:"))
-        self.suitable_time_color_btn = QPushButton("Choose Color")
+        self.suitable_time_color_btn = QPushButton("")
         self.suitable_time_color_btn.clicked.connect(self._on_suitable_time_color_clicked)
         suitable_time_layout.addWidget(self.suitable_time_color_btn)
         self.settings_layout.addWidget(self.suitable_time_widget)
@@ -187,7 +187,7 @@ class TimingPropertiesComponent(BasePropertiesComponent):
         self.count_down_datetime.dateTimeChanged.connect(self._on_count_down_changed)
         count_down_layout.addWidget(self.count_down_datetime, stretch=1)
         count_down_layout.addWidget(QLabel("Color:"))
-        self.count_down_color_btn = QPushButton("Choose Color")
+        self.count_down_color_btn = QPushButton("")
         self.count_down_color_btn.clicked.connect(self._on_count_down_color_clicked)
         count_down_layout.addWidget(self.count_down_color_btn)
         self.settings_layout.addWidget(self.count_down_widget)
@@ -230,19 +230,20 @@ class TimingPropertiesComponent(BasePropertiesComponent):
         top_text_layout.addWidget(QLabel("Top Text:"))
         self.top_text_input = QLineEdit()
         self.top_text_input.setPlaceholderText("Enter top text")
+        self.top_text_input.setText("To **")
         self.top_text_input.textChanged.connect(self._on_top_text_changed)
         top_text_layout.addWidget(self.top_text_input, stretch=1)
         top_text_layout.addWidget(QLabel("Color:"))
-        self.top_text_color_btn = QPushButton("Choose Color")
+        self.top_text_color_btn = QPushButton("")
         self.top_text_color_btn.clicked.connect(self._on_top_text_color_clicked)
         top_text_layout.addWidget(self.top_text_color_btn)
         
-        # Multiline/Singleline button
-        self.multiline_btn = QPushButton("Multiline")
-        self.multiline_btn.setCheckable(True)
-        self.multiline_btn.setChecked(True)  # Active: multiline
-        self.multiline_btn.clicked.connect(self._on_multiline_toggled)
-        top_text_layout.addWidget(self.multiline_btn)
+        multiline_combo = QComboBox()
+        multiline_combo.addItems(["Multiline", "Singleline"])
+        multiline_combo.setCurrentText("Multiline")
+        multiline_combo.currentTextChanged.connect(self._on_multiline_changed)
+        top_text_layout.addWidget(multiline_combo)
+        self.multiline_combo = multiline_combo
         
         # Space setting
         top_text_layout.addWidget(QLabel("Space:"))
@@ -301,7 +302,7 @@ class TimingPropertiesComponent(BasePropertiesComponent):
         display_settings_layout = QHBoxLayout()
         display_settings_layout.setSpacing(8)
         display_settings_layout.addWidget(QLabel("Display Color:"))
-        self.display_color_btn = QPushButton("Choose Color")
+        self.display_color_btn = QPushButton("")
         self.display_color_btn.clicked.connect(self._on_display_color_clicked)
         display_settings_layout.addWidget(self.display_color_btn)
         
@@ -316,7 +317,7 @@ class TimingPropertiesComponent(BasePropertiesComponent):
         no_title_layout.addLayout(display_settings_layout)
         no_title_layout.addStretch()
         
-        main_layout.addWidget(no_title_widget, stretch=1)
+        main_layout.addWidget(no_title_group, stretch=1)
         main_layout.addStretch()
         
         # Connect signals
@@ -464,16 +465,17 @@ class TimingPropertiesComponent(BasePropertiesComponent):
             self._trigger_autosave()
             self.top_text_color_btn.setStyleSheet(f"background-color: {color.name()};")
     
-    def _on_multiline_toggled(self, checked: bool):
+    def _on_multiline_changed(self, text: str):
         if not self.current_element or not self.current_program:
             return
         if "properties" not in self.current_element:
             self.current_element["properties"] = {}
         if "timing" not in self.current_element["properties"]:
             self.current_element["properties"]["timing"] = {}
-        self.current_element["properties"]["timing"]["multiline"] = checked
+        multiline = text == "Multiline"
+        self.current_element["properties"]["timing"]["multiline"] = multiline
         self.current_program.modified = datetime.now().isoformat()
-        self.property_changed.emit("timing_multiline", checked)
+        self.property_changed.emit("timing_multiline", multiline)
         self._trigger_autosave()
     
     def _on_top_text_space_changed(self, space: int):
@@ -644,8 +646,16 @@ class TimingPropertiesComponent(BasePropertiesComponent):
                 self.suitable_time_datetime.blockSignals(True)
                 self.suitable_time_datetime.setDateTime(dt)
                 self.suitable_time_datetime.blockSignals(False)
-        if "color" in suitable_time:
-            self.suitable_time_color_btn.setStyleSheet(f"background-color: {suitable_time['color']};")
+        suitable_time_color = suitable_time.get("color", "#cdcd00")
+        if "color" not in suitable_time:
+            if "properties" not in self.current_element:
+                self.current_element["properties"] = {}
+            if "timing" not in self.current_element["properties"]:
+                self.current_element["properties"]["timing"] = {}
+            if "suitable_time" not in self.current_element["properties"]["timing"]:
+                self.current_element["properties"]["timing"]["suitable_time"] = {}
+            self.current_element["properties"]["timing"]["suitable_time"]["color"] = suitable_time_color
+        self.suitable_time_color_btn.setStyleSheet(f"background-color: {suitable_time_color};")
         
         # Load count down
         count_down = timing_props.get("count_down", {})
@@ -655,8 +665,16 @@ class TimingPropertiesComponent(BasePropertiesComponent):
                 self.count_down_datetime.blockSignals(True)
                 self.count_down_datetime.setDateTime(dt)
                 self.count_down_datetime.blockSignals(False)
-        if "color" in count_down:
-            self.count_down_color_btn.setStyleSheet(f"background-color: {count_down['color']};")
+        count_down_color = count_down.get("color", "#cdcd00")
+        if "color" not in count_down:
+            if "properties" not in self.current_element:
+                self.current_element["properties"] = {}
+            if "timing" not in self.current_element["properties"]:
+                self.current_element["properties"]["timing"] = {}
+            if "count_down" not in self.current_element["properties"]["timing"]:
+                self.current_element["properties"]["timing"]["count_down"] = {}
+            self.current_element["properties"]["timing"]["count_down"]["color"] = count_down_color
+        self.count_down_color_btn.setStyleSheet(f"background-color: {count_down_color};")
         
         # Load fixed time
         fixed_time = timing_props.get("fixed_time", {})
@@ -671,20 +689,31 @@ class TimingPropertiesComponent(BasePropertiesComponent):
                 self.fixed_time_time.setTime(time)
                 self.fixed_time_time.blockSignals(False)
         
-        # Load top text
-        top_text = timing_props.get("top_text", "")
+        top_text = timing_props.get("top_text", "To **")
+        if "top_text" not in timing_props:
+            if "properties" not in self.current_element:
+                self.current_element["properties"] = {}
+            if "timing" not in self.current_element["properties"]:
+                self.current_element["properties"]["timing"] = {}
+            self.current_element["properties"]["timing"]["top_text"] = top_text
         self.top_text_input.blockSignals(True)
         self.top_text_input.setText(top_text)
         self.top_text_input.blockSignals(False)
         
-        top_text_color = timing_props.get("top_text_color", "")
-        if top_text_color:
+        top_text_color = timing_props.get("top_text_color", "#cdcd00")
+        if "top_text_color" not in timing_props:
+            if "properties" not in self.current_element:
+                self.current_element["properties"] = {}
+            if "timing" not in self.current_element["properties"]:
+                self.current_element["properties"]["timing"] = {}
+            self.current_element["properties"]["timing"]["top_text_color"] = top_text_color
             self.top_text_color_btn.setStyleSheet(f"background-color: {top_text_color};")
         
         multiline = timing_props.get("multiline", True)
-        self.multiline_btn.blockSignals(True)
-        self.multiline_btn.setChecked(multiline)
-        self.multiline_btn.blockSignals(False)
+        if hasattr(self, 'multiline_combo'):
+            self.multiline_combo.blockSignals(True)
+            self.multiline_combo.setCurrentText("Multiline" if multiline else "Singleline")
+            self.multiline_combo.blockSignals(False)
         
         top_text_space = timing_props.get("top_text_space", 5)
         self.top_text_space.blockSignals(True)
@@ -717,8 +746,15 @@ class TimingPropertiesComponent(BasePropertiesComponent):
         self.millisecond_check.setChecked(display_style.get("millisecond", False))
         self.millisecond_check.blockSignals(False)
         
-        display_color = display_style.get("color", "")
-        if display_color:
+        display_color = display_style.get("color", "#ff9900")
+        if "color" not in display_style:
+            if "properties" not in self.current_element:
+                self.current_element["properties"] = {}
+            if "timing" not in self.current_element["properties"]:
+                self.current_element["properties"]["timing"] = {}
+            if "display_style" not in self.current_element["properties"]["timing"]:
+                self.current_element["properties"]["timing"]["display_style"] = {}
+            self.current_element["properties"]["timing"]["display_style"]["color"] = display_color
             self.display_color_btn.setStyleSheet(f"background-color: {display_color};")
         
         position_align = display_style.get("position_align", "center")

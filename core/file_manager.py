@@ -13,10 +13,13 @@ class FileManager:
     def __init__(self, screen_manager: Optional[ScreenManager] = None):
         self.screen_manager = screen_manager
     
-    def save_screen_to_file(self, screen: Screen, file_path: str) -> bool:
+    def save_screen_to_file(self, screen: Screen, file_path: str, properties_panel=None) -> bool:
         try:
             from core.soo_file_config import SOOFileConfig, ScreenPropertiesConfig
             from core.screen_config import get_screen_config
+            
+            if properties_panel:
+                properties_panel.save_all_current_properties()
             
             screen_config = get_screen_config()
             

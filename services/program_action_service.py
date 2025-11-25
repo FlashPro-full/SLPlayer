@@ -127,6 +127,11 @@ class ProgramActionService:
             if self.screen_manager.current_screen and self.screen_manager.current_screen.programs:
                 current_program = self.screen_manager.current_screen.programs[0]
         if not current_program:
+            UIService.show_warning(
+                parent_widget,
+                tr("toolbar.clear_tooltip"),
+                tr("message.no_program_selected")
+            )
             return False
         
         program_name = current_program.name if hasattr(current_program, 'name') else "Program"
@@ -138,8 +143,9 @@ class ProgramActionService:
         )
         
         if reply == QMessageBox.Yes:
+            from datetime import datetime
             current_program.elements = []
-            current_program.modified = current_program.created
+            current_program.modified = datetime.now().isoformat()
             logger.info(f"Program '{current_program.name}' cleared")
             return True
         

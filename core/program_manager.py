@@ -61,6 +61,9 @@ class Program:
         self.created = data.get("created", datetime.now().isoformat())
         self.modified = data.get("modified", datetime.now().isoformat())
         self.elements = data.get("elements", [])
+        from controllers.element_defaults import ensure_element_defaults
+        for element in self.elements:
+            ensure_element_defaults(element)
         self.properties = data.get("properties", self.properties)
         if "checked" not in self.properties:
             self.properties["checked"] = True

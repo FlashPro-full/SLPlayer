@@ -170,6 +170,9 @@ class BaseController(ABC):
             return self.upload_data("schedule", schedule_data)
         return False
     
+    def get_time(self) -> Optional[datetime]:
+        return None
+    
     def set_time(self, time: datetime) -> bool:
         return False
     
@@ -179,7 +182,19 @@ class BaseController(ABC):
     def set_brightness(self, brightness: int) -> bool:
         return False
     
+    def get_power_schedule(self) -> Optional[Dict]:
+        return None
+    
     def set_power_schedule(self, on_time: str, off_time: str, enabled: bool = True) -> bool:
+        return False
+    
+    def get_network_config(self) -> Optional[Dict]:
+        return None
+    
+    def set_network_config(self, network_config: Dict) -> bool:
+        return False
+    
+    def delete_program(self, program_id: str) -> bool:
         return False
     
     def set_status(self, status: ConnectionStatus):

@@ -1,7 +1,10 @@
 from typing import Optional, Dict, List
 from pathlib import Path
+from datetime import datetime
+import ctypes
 from controllers.base_controller import BaseController, ControllerType, ConnectionStatus
 from controllers.huidu_sdk import HuiduSDK
+from controllers.property_adapter import adapt_element_for_controller
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -13,8 +16,8 @@ class HuiduController(BaseController):
         super().__init__(ControllerType.HUIDU, ip_address, port)
         self.sdk = HuiduSDK()
         self._screen_created = False
-        self._current_program_id = None
-        self._current_area_id = None
+        self._current_program_id: Optional[int] = None
+        self._current_area_id: Optional[int] = None
     
     def connect(self) -> bool:
         if self.status == ConnectionStatus.CONNECTED:
@@ -118,12 +121,13 @@ class HuiduController(BaseController):
             return False
     
     def _add_element_to_sdk(self, element: Dict, program_id: int, screen_width: int, screen_height: int) -> bool:
-        element_type = element.get("type")
-        properties = element.get("properties", {})
-        x = element.get("x", 0)
-        y = element.get("y", 0)
-        width = element.get("width", 200)
-        height = element.get("height", 100)
+        adapted_element = adapt_element_for_controller(element, "huidu")
+        element_type = adapted_element.get("type")
+        properties = adapted_element.get("properties", {})
+        x = adapted_element.get("x", 0)
+        y = adapted_element.get("y", 0)
+        width = adapted_element.get("width", 200)
+        height = adapted_element.get("height", 100)
         area_id = self.sdk.add_area(program_id, x, y, width, height)
         if not area_id:
             return False
@@ -132,6 +136,28 @@ class HuiduController(BaseController):
             font_family = properties.get("font_family", "Arial")
             font_size = properties.get("font_size", 24)
             color_hex = properties.get("color", "#000000")
+            color_rgb = self._hex_to_rgb(color_hex)
+            item_id = self.sdk.add_text_item(
+                area_id, text, font_family, font_size,
+                color_rgb, 0, 4, 0, 25, 201, 3
+            )
+            return item_id is not None
+        elif element_type == "animation":
+            text = properties.get("text", "")
+            font_family = properties.get("font_family", "Arial")
+            font_size = properties.get("font_size", 24)
+            color_hex = properties.get("color", "#FFFFFF")
+            color_rgb = self._hex_to_rgb(color_hex)
+            item_id = self.sdk.add_text_item(
+                area_id, text, font_family, font_size,
+                color_rgb, 0, 4, 0, 25, 201, 3
+            )
+            return item_id is not None
+        elif element_type == "weather":
+            text = properties.get("text", "")
+            font_family = properties.get("font_family", "Arial")
+            font_size = properties.get("font_size", 24)
+            color_hex = properties.get("color", "#FFFFFF")
             color_rgb = self._hex_to_rgb(color_hex)
             item_id = self.sdk.add_text_item(
                 area_id, text, font_family, font_size,
@@ -190,6 +216,91 @@ class HuiduController(BaseController):
     def get_program_list(self) -> List[Dict]:
         logger.warning("Program list not directly supported by Huidu SDK")
         return []
+    
+    def get_time(self) -> Optional[datetime]:
+        try:
+            from datetime import datetime
+            return datetime.now()
+        except Exception:
+            return None
+    
+    def get_brightness(self) -> Optional[int]:
+        try:
+            device_info = self.get_device_info()
+            if device_info:
+                return device_info.get("brightness")
+        except Exception:
+            pass
+        return None
+    
+    def set_brightness(self, brightness: int) -> bool:
+        try:
+            if hasattr(self.sdk, 'set_luminance'):
+                return self.sdk.set_luminance(self.ip_address, brightness)
+            elif hasattr(self.sdk.dll, 'Cmd_SetLuminance'):
+                ip_w = ctypes.c_wchar_p(self.ip_address)
+                result = self.sdk.dll.Cmd_SetLuminance(0, ip_w, brightness, None)
+                return result == 0
+        except Exception as e:
+            logger.error(f"Error setting brightness: {e}")
+        return False
+    
+    def get_power_schedule(self) -> Optional[Dict]:
+        logger.warning("Power schedule get not directly supported by Huidu SDK")
+        return None
+    
+    def set_power_schedule(self, on_time: str, off_time: str, enabled: bool = True) -> bool:
+        try:
+            if hasattr(self.sdk.dll, 'Cmd_TimeSwitch'):
+                on_seconds = self._time_str_to_seconds(on_time)
+                off_seconds = self._time_str_to_seconds(off_time)
+                ip_w = ctypes.c_wchar_p(self.ip_address)
+                result = self.sdk.dll.Cmd_TimeSwitch(0, ip_w, 1 if enabled else 0, on_seconds, off_seconds, None)
+                return result == 0
+        except Exception as e:
+            logger.error(f"Error setting power schedule: {e}")
+        return False
+    
+    def _time_str_to_seconds(self, time_str: str) -> int:
+        try:
+            parts = time_str.split(':')
+            if len(parts) >= 2:
+                hours = int(parts[0])
+                minutes = int(parts[1])
+                return hours * 3600 + minutes * 60
+        except Exception:
+            pass
+        return 0
+    
+    def get_network_config(self) -> Optional[Dict]:
+        try:
+            device_info = self.get_device_info()
+            if device_info:
+                return {
+                    "ip": device_info.get("ip"),
+                    "gateway": device_info.get("gateway"),
+                    "subnet": device_info.get("subnet")
+                }
+        except Exception:
+            pass
+        return None
+    
+    def set_network_config(self, network_config: Dict) -> bool:
+        try:
+            if hasattr(self.sdk.dll, 'Cmd_SetIP'):
+                src_ip = ctypes.c_wchar_p(self.ip_address)
+                dest_ip = ctypes.c_wchar_p(network_config.get("ip", self.ip_address))
+                mask = ctypes.c_wchar_p(network_config.get("subnet", "255.255.255.0"))
+                gateway = ctypes.c_wchar_p(network_config.get("gateway", ""))
+                result = self.sdk.dll.Cmd_SetIP(src_ip, dest_ip, mask, gateway, None)
+                return result == 0
+        except Exception as e:
+            logger.error(f"Error setting network config: {e}")
+        return False
+    
+    def delete_program(self, program_id: str) -> bool:
+        logger.warning("Program deletion not directly supported by Huidu SDK")
+        return False
     
     def test_connection(self) -> bool:
         try:

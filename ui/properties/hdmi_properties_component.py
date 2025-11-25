@@ -72,53 +72,25 @@ class HdmiPropertiesComponent(BasePropertiesComponent):
         self.hdmi_dims_width.textChanged.connect(self._on_dims_changed)
         self.hdmi_dims_height.textChanged.connect(self._on_dims_changed)
         
-        frame_group_layout = QVBoxLayout()
-        frame_group_layout.setSpacing(4)
-        
-        frame_checkbox_layout = QHBoxLayout()
-        self.hdmi_frame_checkbox = QCheckBox("Frame")
-        self.hdmi_frame_checkbox.toggled.connect(self._on_frame_enabled_changed)
-        frame_checkbox_layout.addWidget(self.hdmi_frame_checkbox)
-        frame_checkbox_layout.addStretch()
-        frame_group_layout.addLayout(frame_checkbox_layout)
-        
-        border_layout = QHBoxLayout()
-        border_layout.addWidget(QLabel("Border:"))
-        self.hdmi_frame_border_combo = QComboBox()
-        borders = self.get_available_borders()
-        if borders:
-            self.hdmi_frame_border_combo.addItems(["---"] + borders)
-        else:
-            self.hdmi_frame_border_combo.addItems(["---", "000", "001", "002", "003"])
-        self.hdmi_frame_border_combo.setCurrentText("---")
-        self.hdmi_frame_border_combo.setEnabled(False)
-        self.hdmi_frame_border_combo.currentTextChanged.connect(self._on_frame_border_changed)
-        border_layout.addWidget(self.hdmi_frame_border_combo, stretch=1)
-        frame_group_layout.addLayout(border_layout)
-        
-        effect_layout = QHBoxLayout()
-        effect_layout.addWidget(QLabel("Effect:"))
-        self.hdmi_frame_effect_combo = QComboBox()
-        self.hdmi_frame_effect_combo.addItems(["static", "rotate", "twinkle"])
-        self.hdmi_frame_effect_combo.setCurrentText("static")
-        self.hdmi_frame_effect_combo.setEnabled(False)
-        self.hdmi_frame_effect_combo.currentTextChanged.connect(self._on_frame_effect_changed)
-        effect_layout.addWidget(self.hdmi_frame_effect_combo, stretch=1)
-        frame_group_layout.addLayout(effect_layout)
-        
-        speed_layout = QHBoxLayout()
-        speed_layout.addWidget(QLabel("Speed:"))
-        self.hdmi_frame_speed_combo = QComboBox()
-        self.hdmi_frame_speed_combo.addItems(["slow", "in", "fast"])
-        self.hdmi_frame_speed_combo.setCurrentText("in")
-        self.hdmi_frame_speed_combo.setEnabled(False)
-        self.hdmi_frame_speed_combo.currentTextChanged.connect(self._on_frame_speed_changed)
-        speed_layout.addWidget(self.hdmi_frame_speed_combo, stretch=1)
-        frame_group_layout.addLayout(speed_layout)
-        
-        area_layout.addLayout(frame_group_layout)
-        
         main_layout.addWidget(area_group)
+        
+        display_group = QGroupBox("Display attribute")
+        display_group.setMinimumWidth(300)
+        display_layout = QVBoxLayout(display_group)
+        display_layout.setContentsMargins(10, 16, 10, 10)
+        display_layout.setSpacing(8)
+        
+        display_mode_layout = QHBoxLayout()
+        display_mode_layout.addWidget(QLabel("Display Mode:"))
+        self.hdmi_display_mode_combo = QComboBox()
+        self.hdmi_display_mode_combo.addItems(["Full Screen Zoom", "Screen Capture"])
+        self.hdmi_display_mode_combo.setCurrentText("Full Screen Zoom")
+        self.hdmi_display_mode_combo.currentTextChanged.connect(self._on_display_mode_changed)
+        display_mode_layout.addWidget(self.hdmi_display_mode_combo, stretch=1)
+        display_layout.addLayout(display_mode_layout)
+        
+        display_layout.addStretch()
+        main_layout.addWidget(display_group)
         main_layout.addStretch()
     
     def set_program_data(self, program, element):
@@ -159,37 +131,13 @@ class HdmiPropertiesComponent(BasePropertiesComponent):
         self.hdmi_dims_width.blockSignals(False)
         self.hdmi_dims_height.blockSignals(False)
         
-        frame_props = element_props.get("frame", {})
-        frame_enabled = frame_props.get("enabled", False) if isinstance(frame_props, dict) else False
-        self.hdmi_frame_checkbox.blockSignals(True)
-        self.hdmi_frame_checkbox.setChecked(frame_enabled)
-        self.hdmi_frame_checkbox.setEnabled(True)
-        self.hdmi_frame_checkbox.blockSignals(False)
-        
-        self.hdmi_frame_border_combo.setEnabled(frame_enabled)
-        self.hdmi_frame_effect_combo.setEnabled(frame_enabled)
-        self.hdmi_frame_speed_combo.setEnabled(frame_enabled)
-        
-        border = frame_props.get("border", "---") if isinstance(frame_props, dict) else "---"
-        border_index = self.hdmi_frame_border_combo.findText(border)
-        if border_index >= 0:
-            self.hdmi_frame_border_combo.setCurrentIndex(border_index)
-        else:
-            self.hdmi_frame_border_combo.setCurrentIndex(0)
-        
-        effect = frame_props.get("effect", "static") if isinstance(frame_props, dict) else "static"
-        effect_index = self.hdmi_frame_effect_combo.findText(effect)
-        if effect_index >= 0:
-            self.hdmi_frame_effect_combo.setCurrentIndex(effect_index)
-        else:
-            self.hdmi_frame_effect_combo.setCurrentIndex(0)
-        
-        speed = frame_props.get("speed", "in") if isinstance(frame_props, dict) else "in"
-        speed_index = self.hdmi_frame_speed_combo.findText(speed)
-        if speed_index >= 0:
-            self.hdmi_frame_speed_combo.setCurrentIndex(speed_index)
-        else:
-            self.hdmi_frame_speed_combo.setCurrentIndex(1)
+        hdmi_props = element_props.get("hdmi", {})
+        display_mode = hdmi_props.get("display_mode", "Full Screen Zoom") if isinstance(hdmi_props, dict) else "Full Screen Zoom"
+        display_mode_index = self.hdmi_display_mode_combo.findText(display_mode)
+        if display_mode_index >= 0:
+            self.hdmi_display_mode_combo.blockSignals(True)
+            self.hdmi_display_mode_combo.setCurrentIndex(display_mode_index)
+            self.hdmi_display_mode_combo.blockSignals(False)
     
     def _on_coords_changed(self):
         if not self.current_element or not self.current_program:
@@ -238,60 +186,15 @@ class HdmiPropertiesComponent(BasePropertiesComponent):
         except ValueError:
             pass
     
-    def _on_frame_enabled_changed(self, enabled: bool):
-        if not self.current_element or not self.current_program:
-            self.hdmi_frame_checkbox.blockSignals(True)
-            self.hdmi_frame_checkbox.setEnabled(False)
-            self.hdmi_frame_checkbox.setChecked(False)
-            self.hdmi_frame_checkbox.blockSignals(False)
-            return
-        
-        self.hdmi_frame_checkbox.setEnabled(True)
-        self.hdmi_frame_border_combo.setEnabled(enabled)
-        self.hdmi_frame_effect_combo.setEnabled(enabled)
-        self.hdmi_frame_speed_combo.setEnabled(enabled)
-        if "properties" not in self.current_element:
-            self.current_element["properties"] = {}
-        if "frame" not in self.current_element["properties"]:
-            self.current_element["properties"]["frame"] = {}
-        self.current_element["properties"]["frame"]["enabled"] = enabled
-        self.current_program.modified = datetime.now().isoformat()
-        self.property_changed.emit("hdmi_frame_enabled", enabled)
-        self._trigger_autosave()
-    
-    def _on_frame_border_changed(self, border: str):
+    def _on_display_mode_changed(self, display_mode: str):
         if not self.current_element or not self.current_program:
             return
         if "properties" not in self.current_element:
             self.current_element["properties"] = {}
-        if "frame" not in self.current_element["properties"]:
-            self.current_element["properties"]["frame"] = {}
-        self.current_element["properties"]["frame"]["border"] = border
+        if "hdmi" not in self.current_element["properties"]:
+            self.current_element["properties"]["hdmi"] = {}
+        self.current_element["properties"]["hdmi"]["display_mode"] = display_mode
         self.current_program.modified = datetime.now().isoformat()
-        self.property_changed.emit("hdmi_frame_border", border)
-        self._trigger_autosave()
-    
-    def _on_frame_effect_changed(self, effect: str):
-        if not self.current_element or not self.current_program:
-            return
-        if "properties" not in self.current_element:
-            self.current_element["properties"] = {}
-        if "frame" not in self.current_element["properties"]:
-            self.current_element["properties"]["frame"] = {}
-        self.current_element["properties"]["frame"]["effect"] = effect
-        self.current_program.modified = datetime.now().isoformat()
-        self.property_changed.emit("hdmi_frame_effect", effect)
-        self._trigger_autosave()
-    
-    def _on_frame_speed_changed(self, speed: str):
-        if not self.current_element or not self.current_program:
-            return
-        if "properties" not in self.current_element:
-            self.current_element["properties"] = {}
-        if "frame" not in self.current_element["properties"]:
-            self.current_element["properties"]["frame"] = {}
-        self.current_element["properties"]["frame"]["speed"] = speed
-        self.current_program.modified = datetime.now().isoformat()
-        self.property_changed.emit("hdmi_frame_speed", speed)
+        self.property_changed.emit("hdmi_display_mode", display_mode)
         self._trigger_autosave()
 

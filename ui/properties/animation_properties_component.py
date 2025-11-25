@@ -2,17 +2,18 @@ from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QComboBo
                              QPushButton, QGroupBox, QLineEdit, QCheckBox, QTextEdit,
                              QSpinBox, QColorDialog, QFormLayout, QGridLayout, QScrollArea,
                              QFrame, QDoubleSpinBox)
-from PyQt5.QtCore import Qt, pyqtSignal
-from PyQt5.QtGui import QColor, QTextCursor, QTextCharFormat, QFont, QBrush, QPainter, QPixmap
+from PyQt5.QtCore import Qt, pyqtSignal, QTimer, QDateTime
+from PyQt5.QtGui import QColor, QTextCursor, QTextCharFormat, QFont, QBrush, QPainter, QPixmap, QPen, QTransform
 from typing import Optional, Dict
 from datetime import datetime
+import math
 from ui.properties.base_properties_component import BasePropertiesComponent
 from ui.widgets.text_editor_toolbar import TextEditorToolbar
 from ui.utils.color_utils import get_gradient_color_at_position
+from ui.utils import animation_effects
 
 
 class AnimationStyleThumbnail(QFrame):
-    """Thumbnail widget for animation style preview"""
     selected = pyqtSignal(int)
     
     def __init__(self, index: int, parent=None):
@@ -20,6 +21,10 @@ class AnimationStyleThumbnail(QFrame):
         self.index = index
         self.is_selected = False
         self.setFixedSize(80, 80)
+        self.start_time = QDateTime.currentDateTime()
+        self.animation_timer = QTimer(self)
+        self.animation_timer.timeout.connect(self.update)
+        self.animation_timer.start(50)
         self.setStyleSheet("""
             QFrame {
                 background-color: #000000;
@@ -58,25 +63,156 @@ class AnimationStyleThumbnail(QFrame):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
         
-        # Draw preview of animation style with "ABC" text using gradient colors
         rect = self.rect().adjusted(4, 4, -4, -4)
-        
-        # Use gradient color function based on InputLayout.fx
-        font = QFont("Arial", 12, QFont.Bold)
+        font = QFont("Arial", 10, QFont.Bold)
         painter.setFont(font)
+        font_metrics = painter.fontMetrics()
         
-        # Draw "ABC" with gradient colors based on style index
         text = "ABC"
-        char_width = rect.width() / len(text)
-        for i, char in enumerate(text):
-            # Calculate position in gradient (0.0 to 1.0)
-            pos = i / max(len(text) - 1, 1)
-            # Get gradient color for this style and position
-            color = get_gradient_color_at_position(pos, self.index)
-            painter.setPen(color)
-            x = rect.x() + i * char_width
-            painter.drawText(int(x), rect.y(), int(char_width), rect.height(), 
-                           Qt.AlignCenter, char)
+        text_length = len(text)
+        elapsed_ms = self.start_time.msecsTo(QDateTime.currentDateTime())
+        elapsed_sec = elapsed_ms / 1000.0
+        
+        text_width = font_metrics.width(text)
+        text_height = font_metrics.height()
+        
+        base_x = rect.x() + (rect.width() - text_width) / 2
+        base_y = rect.y() + rect.height() / 2 + font_metrics.ascent() / 2 - font_metrics.descent() / 2
+        
+        hold_time = 1.0
+        speed = 5
+        
+        char_positions = []
+        current_x = base_x
+        for char in text:
+            char_width = font_metrics.width(char)
+            char_positions.append((current_x, char_width))
+            current_x += char_width
+        
+        is_continuous_scroll = self.index in [0, 1, 2, 3]
+        
+        if is_continuous_scroll:
+            if self.index == 0 or self.index == 1:
+                scroll_speed = speed * 10
+                scroll_offset = (elapsed_sec * scroll_speed) % text_width
+                
+                num_repeats = max(3, int((rect.width() + text_width) / max(text_width, 1)) + 2)
+                start_offset = -text_width
+                
+                for repeat_idx in range(num_repeats):
+                    if self.index == 0:
+                        text_offset_x = start_offset + (repeat_idx * text_width) - scroll_offset
+                    else:
+                        text_offset_x = start_offset + (repeat_idx * text_width) + scroll_offset
+                    
+                    if text_offset_x + text_width < rect.x() - text_width or text_offset_x > rect.x() + rect.width() + text_width:
+                        continue
+                    
+                    for i, char in enumerate(text):
+                        char_x_base, char_width = char_positions[i]
+                        char_height = font_metrics.height()
+                        
+                        draw_x = int(text_offset_x + (char_x_base - min(pos[0] for pos in char_positions)))
+                        draw_y = int(base_y)
+                        
+                        if draw_x + char_width < rect.x() or draw_x > rect.x() + rect.width():
+                            continue
+                        
+                        color = animation_effects.get_animation_color(self.index, i, text_length, elapsed_sec)
+                        
+                        painter.save()
+                        painter.setPen(QPen(color))
+                        painter.setOpacity(1.0)
+                        painter.drawText(draw_x, draw_y, char)
+                        painter.restore()
+            elif self.index == 2 or self.index == 3:
+                vertical_char_width = max(font_metrics.width(char) for char in text)
+                vertical_text_height = sum(font_metrics.height() for _ in text)
+                
+                vertical_base_x = rect.x() + (rect.width() - vertical_char_width) / 2
+                vertical_base_y = rect.y()
+                
+                scroll_speed = speed * 10
+                scroll_offset = (elapsed_sec * scroll_speed) % max(vertical_text_height, 1)
+                
+                num_repeats = max(3, int((rect.height() + vertical_text_height) / max(vertical_text_height, 1)) + 2)
+                start_offset = -vertical_text_height
+                
+                char_heights = []
+                current_y = 0
+                for char in text:
+                    char_height = font_metrics.height()
+                    char_heights.append((current_y, char_height))
+                    current_y += char_height
+                
+                for repeat_idx in range(num_repeats):
+                    if self.index == 2:
+                        text_offset_y = start_offset + (repeat_idx * vertical_text_height) - scroll_offset
+                    else:
+                        text_offset_y = start_offset + (repeat_idx * vertical_text_height) + scroll_offset
+                    
+                    if text_offset_y + vertical_text_height < rect.y() - vertical_text_height or text_offset_y > rect.y() + rect.height() + vertical_text_height:
+                        continue
+                    
+                    for i, char in enumerate(text):
+                        char_y_offset, char_height = char_heights[i]
+                        char_width = font_metrics.width(char)
+                        ascent = font_metrics.ascent()
+                        
+                        draw_x = int(vertical_base_x + (vertical_char_width - char_width) / 2)
+                        draw_y = int(vertical_base_y + text_offset_y + char_y_offset + ascent)
+                        
+                        if draw_y + char_height < rect.y() or draw_y > rect.y() + rect.height():
+                            continue
+                        
+                        color = animation_effects.get_animation_color(self.index, i, text_length, elapsed_sec)
+                        
+                        painter.save()
+                        painter.setPen(QPen(color))
+                        painter.setOpacity(1.0)
+                        painter.drawText(draw_x, draw_y, char)
+                        painter.restore()
+        else:
+            for i, char in enumerate(text):
+                char_x_base, char_width = char_positions[i]
+                char_height = font_metrics.height()
+                
+                transform = animation_effects.get_animation_transform(
+                    self.index, i, text_length, elapsed_sec, hold_time, speed,
+                    char_x_base, base_y, char_width, char_height,
+                    text_width, text_height
+                )
+                
+                color = animation_effects.get_animation_color(self.index, i, text_length, elapsed_sec)
+                
+                painter.save()
+                painter.setPen(QPen(color))
+                
+                opacity = transform.get('opacity', 1.0)
+                painter.setOpacity(opacity)
+                
+                char_x = transform.get('x', char_x_base)
+                char_y = transform.get('y', base_y)
+                scale_x = transform.get('scale_x', 1.0)
+                scale_y = transform.get('scale_y', 1.0)
+                rotation = transform.get('rotation', 0.0)
+                
+                pivot_x = transform.get('pivot_x', char_x + char_width / 2)
+                pivot_y = transform.get('pivot_y', char_y)
+                
+                transform_matrix = QTransform()
+                transform_matrix.translate(pivot_x, pivot_y)
+                transform_matrix.rotate(math.degrees(rotation))
+                transform_matrix.scale(scale_x, scale_y)
+                transform_matrix.translate(-pivot_x, -pivot_y)
+                
+                dx = char_x - char_x_base
+                dy = char_y - base_y
+                transform_matrix.translate(dx, dy)
+                
+                painter.setTransform(transform_matrix)
+                painter.drawText(int(char_x_base), int(base_y), char)
+                painter.restore()
 
 
 class AnimationPropertiesComponent(BasePropertiesComponent):
@@ -269,11 +405,10 @@ class AnimationPropertiesComponent(BasePropertiesComponent):
         self.thumbnail_grid_layout.setContentsMargins(10, 10, 10, 10)
         self.thumbnail_grid_layout.setSpacing(8)
         
-        # Create 26 thumbnail previews (7 rows x 4 columns, last row has 2)
         self.animation_thumbnails = []
         self.selected_thumbnail_index = 0
         
-        for i in range(26):
+        for i in range(34):
             row = i // 4
             col = i % 4
             thumbnail = AnimationStyleThumbnail(i, self)
@@ -352,9 +487,26 @@ class AnimationPropertiesComponent(BasePropertiesComponent):
                 self.current_element["properties"] = {}
             if "animation_style" not in self.current_element["properties"]:
                 self.current_element["properties"]["animation_style"] = {}
+            
             self.current_element["properties"]["animation_style"]["style_index"] = index
+            
+            if index < 13:
+                writing_direction = "Horizontal Line Writing"
+            else:
+                writing_direction = "Vertical Line Writing"
+            
+            if index < 9 or (index >= 18 and index < 22):
+                character_movement = True
+            else:
+                character_movement = False
+            
+            self.current_element["properties"]["animation_style"]["writing_direction"] = writing_direction
+            self.current_element["properties"]["animation_style"]["character_movement"] = character_movement
+            
             self.current_program.modified = datetime.now().isoformat()
             self.property_changed.emit("animation_style_index", index)
+            self.property_changed.emit("animation_writing_direction", writing_direction)
+            self.property_changed.emit("animation_character_movement", character_movement)
             self._trigger_autosave()
     
     
@@ -511,6 +663,106 @@ class AnimationPropertiesComponent(BasePropertiesComponent):
                 self.animation_speed_combo.setCurrentText(str(speed))
             self.animation_speed_combo.blockSignals(False)
     
+    def save_all_animation_text_properties(self):
+        if not self.current_element or not self.current_program:
+            return
+        
+        if "properties" not in self.current_element:
+            self.current_element["properties"] = {}
+        
+        element_props = self.current_element["properties"]
+        
+        try:
+            x = int(self.animation_coords_x.text() or "0")
+            y = int(self.animation_coords_y.text() or "0")
+            element_props["x"] = x
+            element_props["y"] = y
+            self.current_element["x"] = x
+            self.current_element["y"] = y
+        except ValueError:
+            pass
+        
+        try:
+            width = int(self.animation_dims_width.text() or "640")
+            height = int(self.animation_dims_height.text() or "480")
+            element_props["width"] = width
+            element_props["height"] = height
+            self.current_element["width"] = width
+            self.current_element["height"] = height
+        except ValueError:
+            pass
+        
+        if "text" not in element_props:
+            element_props["text"] = {}
+        
+        text_content = self.animation_text_content_edit.toPlainText()
+        element_props["text"]["content"] = text_content
+        
+        if hasattr(self, 'animation_text_editor_toolbar') and self.animation_text_editor_toolbar:
+            toolbar = self.animation_text_editor_toolbar
+            alignment_str = "left"
+            if toolbar._horizontal_alignment == Qt.AlignHCenter:
+                alignment_str = "center"
+            elif toolbar._horizontal_alignment == Qt.AlignRight:
+                alignment_str = "right"
+            
+            vertical_alignment_str = "top"
+            if toolbar._vertical_alignment == Qt.AlignVCenter:
+                vertical_alignment_str = "middle"
+            elif toolbar._vertical_alignment == Qt.AlignBottom:
+                vertical_alignment_str = "bottom"
+            
+            if "format" not in element_props["text"]:
+                element_props["text"]["format"] = {}
+            
+            format_dict = element_props["text"]["format"]
+            format_dict["font_family"] = toolbar.font_family_combo.currentText()
+            format_dict["font_size"] = toolbar.font_size_spin.value()
+            format_dict["bold"] = toolbar.bold_btn.isChecked()
+            format_dict["italic"] = toolbar.italic_btn.isChecked()
+            format_dict["underline"] = toolbar.underline_btn.isChecked()
+            format_dict["font_color"] = toolbar.font_color.name() if toolbar.font_color else None
+            format_dict["text_bg_color"] = toolbar.text_bg_color.name() if toolbar.text_bg_color else None
+            format_dict["outline"] = toolbar.outline_btn.isChecked()
+            format_dict["alignment"] = alignment_str
+            format_dict["vertical_alignment"] = vertical_alignment_str
+        
+        if "animation_style" not in element_props:
+            element_props["animation_style"] = {}
+        
+        animation_style = element_props["animation_style"]
+        animation_style["style_index"] = self.selected_thumbnail_index if hasattr(self, 'selected_thumbnail_index') else 0
+        
+        if hasattr(self, 'animation_holdtime_spin'):
+            animation_style["hold_time"] = self.animation_holdtime_spin.value()
+        
+        if hasattr(self, 'animation_speed_combo'):
+            speed_text = self.animation_speed_combo.currentText()
+            speed = 5
+            if speed_text == "1 fast":
+                speed = 1
+            elif speed_text == "9 slow":
+                speed = 9
+            else:
+                try:
+                    speed = int(speed_text)
+                except ValueError:
+                    speed = 5
+            animation_style["speed"] = speed
+        
+        style_index = animation_style.get("style_index", 0)
+        if style_index < 13:
+            animation_style["writing_direction"] = "Horizontal Line Writing"
+        else:
+            animation_style["writing_direction"] = "Vertical Line Writing"
+        
+        if style_index < 9 or (style_index >= 18 and style_index < 22):
+            animation_style["character_movement"] = True
+        else:
+            animation_style["character_movement"] = False
+        
+        self.current_program.modified = datetime.now().isoformat()
+    
     def _apply_format_to_text_edit(self, text_format: Dict):
         """Apply format to text edit similar to text_properties_component"""
         if not text_format:
@@ -538,7 +790,6 @@ class AnimationPropertiesComponent(BasePropertiesComponent):
         if text_format.get("font_color"):
             char_format.setForeground(QColor(text_format.get("font_color")))
         else:
-            # Default to white text color
             char_format.setForeground(QColor("#FFFFFF"))
         
         text_bg_color_str = text_format.get("text_bg_color")
@@ -549,6 +800,61 @@ class AnimationPropertiesComponent(BasePropertiesComponent):
             char_format.setBackground(QBrush())
             char_format.clearBackground()
         
+        outline = text_format.get("outline", False)
+        if outline:
+            pen = QPen(QColor(Qt.black))
+            pen.setStyle(Qt.SolidLine)
+            pen.setWidth(1)
+            char_format.setTextOutline(pen)
+        else:
+            pen = QPen(Qt.NoPen)
+            char_format.setTextOutline(pen)
+        
+        horizontal_align = Qt.AlignLeft
+        vertical_align = Qt.AlignTop
+        
+        if text_format.get("alignment"):
+            alignment_str = text_format["alignment"]
+            if alignment_str == "center":
+                horizontal_align = Qt.AlignHCenter
+            elif alignment_str == "right":
+                horizontal_align = Qt.AlignRight
+        
+        if text_format.get("vertical_alignment"):
+            vertical_str = text_format["vertical_alignment"]
+            if vertical_str == "middle":
+                vertical_align = Qt.AlignVCenter
+            elif vertical_str == "bottom":
+                vertical_align = Qt.AlignBottom
+        
+        from PyQt5.QtGui import QTextBlockFormat
+        block_format = QTextBlockFormat()
+        block_format.setAlignment(horizontal_align)
+        cursor.setBlockFormat(block_format)
+        
         cursor.setCharFormat(char_format)
         cursor.clearSelection()
         self.animation_text_content_edit.setTextCursor(cursor)
+        
+        if hasattr(self, 'animation_text_editor_toolbar') and self.animation_text_editor_toolbar:
+            toolbar = self.animation_text_editor_toolbar
+            toolbar._horizontal_alignment = horizontal_align
+            toolbar._vertical_alignment = vertical_align
+            toolbar.align_left_btn.blockSignals(True)
+            toolbar.align_center_btn.blockSignals(True)
+            toolbar.align_right_btn.blockSignals(True)
+            toolbar.align_left_btn.setChecked(horizontal_align == Qt.AlignLeft)
+            toolbar.align_center_btn.setChecked(horizontal_align == Qt.AlignHCenter)
+            toolbar.align_right_btn.setChecked(horizontal_align == Qt.AlignRight)
+            toolbar.align_left_btn.blockSignals(False)
+            toolbar.align_center_btn.blockSignals(False)
+            toolbar.align_right_btn.blockSignals(False)
+            toolbar.align_top_btn.blockSignals(True)
+            toolbar.align_middle_btn.blockSignals(True)
+            toolbar.align_bottom_btn.blockSignals(True)
+            toolbar.align_top_btn.setChecked(vertical_align == Qt.AlignTop)
+            toolbar.align_middle_btn.setChecked(vertical_align == Qt.AlignVCenter)
+            toolbar.align_bottom_btn.setChecked(vertical_align == Qt.AlignBottom)
+            toolbar.align_top_btn.blockSignals(False)
+            toolbar.align_middle_btn.blockSignals(False)
+            toolbar.align_bottom_btn.blockSignals(False)

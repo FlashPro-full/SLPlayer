@@ -1,6 +1,7 @@
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QComboBox,
-                             QPushButton, QGroupBox, QLineEdit, QCheckBox)
+                             QPushButton, QGroupBox, QLineEdit, QColorDialog)
 from PyQt5.QtCore import Qt
+from PyQt5.QtGui import QColor
 from typing import Optional, Dict
 from datetime import datetime
 from ui.properties.base_properties_component import BasePropertiesComponent
@@ -72,53 +73,67 @@ class SensorPropertiesComponent(BasePropertiesComponent):
         self.sensor_dims_width.textChanged.connect(self._on_dims_changed)
         self.sensor_dims_height.textChanged.connect(self._on_dims_changed)
         
-        frame_group_layout = QVBoxLayout()
-        frame_group_layout.setSpacing(4)
-        
-        frame_checkbox_layout = QHBoxLayout()
-        self.sensor_frame_checkbox = QCheckBox("Frame")
-        self.sensor_frame_checkbox.toggled.connect(self._on_frame_enabled_changed)
-        frame_checkbox_layout.addWidget(self.sensor_frame_checkbox)
-        frame_checkbox_layout.addStretch()
-        frame_group_layout.addLayout(frame_checkbox_layout)
-        
-        border_layout = QHBoxLayout()
-        border_layout.addWidget(QLabel("Border:"))
-        self.sensor_frame_border_combo = QComboBox()
-        borders = self.get_available_borders()
-        if borders:
-            self.sensor_frame_border_combo.addItems(["---"] + borders)
-        else:
-            self.sensor_frame_border_combo.addItems(["---", "000", "001", "002", "003"])
-        self.sensor_frame_border_combo.setCurrentText("---")
-        self.sensor_frame_border_combo.setEnabled(False)
-        self.sensor_frame_border_combo.currentTextChanged.connect(self._on_frame_border_changed)
-        border_layout.addWidget(self.sensor_frame_border_combo, stretch=1)
-        frame_group_layout.addLayout(border_layout)
-        
-        effect_layout = QHBoxLayout()
-        effect_layout.addWidget(QLabel("Effect:"))
-        self.sensor_frame_effect_combo = QComboBox()
-        self.sensor_frame_effect_combo.addItems(["static", "rotate", "twinkle"])
-        self.sensor_frame_effect_combo.setCurrentText("static")
-        self.sensor_frame_effect_combo.setEnabled(False)
-        self.sensor_frame_effect_combo.currentTextChanged.connect(self._on_frame_effect_changed)
-        effect_layout.addWidget(self.sensor_frame_effect_combo, stretch=1)
-        frame_group_layout.addLayout(effect_layout)
-        
-        speed_layout = QHBoxLayout()
-        speed_layout.addWidget(QLabel("Speed:"))
-        self.sensor_frame_speed_combo = QComboBox()
-        self.sensor_frame_speed_combo.addItems(["slow", "in", "fast"])
-        self.sensor_frame_speed_combo.setCurrentText("in")
-        self.sensor_frame_speed_combo.setEnabled(False)
-        self.sensor_frame_speed_combo.currentTextChanged.connect(self._on_frame_speed_changed)
-        speed_layout.addWidget(self.sensor_frame_speed_combo, stretch=1)
-        frame_group_layout.addLayout(speed_layout)
-        
-        area_layout.addLayout(frame_group_layout)
-        
         main_layout.addWidget(area_group)
+        
+        other_group = QGroupBox("Other")
+        other_group.setMinimumWidth(300)
+        other_layout = QVBoxLayout(other_group)
+        other_layout.setContentsMargins(10, 16, 10, 10)
+        other_layout.setSpacing(8)
+        
+        sensor_type_layout = QHBoxLayout()
+        sensor_type_layout.addWidget(QLabel("Sensor Type:"))
+        self.sensor_type_combo = QComboBox()
+        self.sensor_types = [
+            "temp",
+            "Air Humidity",
+            "PM2.5",
+            "PM10",
+            "Wind power",
+            "Wind Direction",
+            "Noise",
+            "Pressure",
+            "Light Intensity",
+            "CO2"
+        ]
+        self.sensor_type_combo.addItems(self.sensor_types)
+        self.sensor_type_combo.setCurrentText("temp")
+        self.sensor_type_combo.currentTextChanged.connect(self._on_sensor_type_changed)
+        sensor_type_layout.addWidget(self.sensor_type_combo, stretch=1)
+        other_layout.addLayout(sensor_type_layout)
+        
+        fixed_text_layout = QHBoxLayout()
+        fixed_text_layout.addWidget(QLabel("Fixed Text:"))
+        self.sensor_fixed_text = QLineEdit()
+        self.sensor_fixed_text.setText("The Temperature")
+        self.sensor_fixed_text.textChanged.connect(self._on_fixed_text_changed)
+        fixed_text_layout.addWidget(self.sensor_fixed_text, stretch=1)
+        self.font_family_combo = QComboBox()
+        self.font_family_combo.addItems([
+            "Arial", "Times New Roman", "Courier New", "Verdana", "Georgia",
+            "Palatino", "Garamond", "Bookman", "Comic Sans MS", "Trebuchet MS",
+            "Arial Black", "Impact", "Tahoma", "Lucida Console", "Monaco"
+        ])
+        self.font_family_combo.currentTextChanged.connect(self._on_font_family_changed)
+        fixed_text_layout.addWidget(self.font_family_combo)
+        self.font_color_btn = QPushButton("A")
+        self.font_color_btn.setToolTip("Font Color")
+        self.font_color_btn.clicked.connect(self._on_font_color_clicked)
+        self.font_color = QColor(Qt.white)
+        self._update_font_color_button()
+        fixed_text_layout.addWidget(self.font_color_btn)
+        other_layout.addLayout(fixed_text_layout)
+        
+        sensor_unit_layout = QHBoxLayout()
+        sensor_unit_layout.addWidget(QLabel("Sensor Unit:"))
+        self.sensor_unit_input = QLineEdit()
+        self.sensor_unit_input.setPlaceholderText("°C")
+        self.sensor_unit_input.textChanged.connect(self._on_sensor_unit_changed)
+        sensor_unit_layout.addWidget(self.sensor_unit_input, stretch=1)
+        other_layout.addLayout(sensor_unit_layout)
+        
+        other_layout.addStretch()
+        main_layout.addWidget(other_group)
         main_layout.addStretch()
     
     def set_program_data(self, program, element):
@@ -159,37 +174,36 @@ class SensorPropertiesComponent(BasePropertiesComponent):
         self.sensor_dims_width.blockSignals(False)
         self.sensor_dims_height.blockSignals(False)
         
-        frame_props = element_props.get("frame", {})
-        frame_enabled = frame_props.get("enabled", False) if isinstance(frame_props, dict) else False
-        self.sensor_frame_checkbox.blockSignals(True)
-        self.sensor_frame_checkbox.setChecked(frame_enabled)
-        self.sensor_frame_checkbox.setEnabled(True)
-        self.sensor_frame_checkbox.blockSignals(False)
+        sensor_props = element_props.get("sensor", {})
+        sensor_type = sensor_props.get("sensor_type", "temp") if isinstance(sensor_props, dict) else "temp"
+        sensor_type_index = self.sensor_type_combo.findText(sensor_type)
+        if sensor_type_index >= 0:
+            self.sensor_type_combo.blockSignals(True)
+            self.sensor_type_combo.setCurrentIndex(sensor_type_index)
+            self.sensor_type_combo.blockSignals(False)
         
-        self.sensor_frame_border_combo.setEnabled(frame_enabled)
-        self.sensor_frame_effect_combo.setEnabled(frame_enabled)
-        self.sensor_frame_speed_combo.setEnabled(frame_enabled)
+        default_fixed_text = self._get_default_fixed_text(sensor_type)
+        fixed_text = sensor_props.get("fixed_text", default_fixed_text) if isinstance(sensor_props, dict) else default_fixed_text
+        self.sensor_fixed_text.blockSignals(True)
+        self.sensor_fixed_text.setText(fixed_text)
+        self.sensor_fixed_text.blockSignals(False)
         
-        border = frame_props.get("border", "---") if isinstance(frame_props, dict) else "---"
-        border_index = self.sensor_frame_border_combo.findText(border)
-        if border_index >= 0:
-            self.sensor_frame_border_combo.setCurrentIndex(border_index)
-        else:
-            self.sensor_frame_border_combo.setCurrentIndex(0)
+        font_family = sensor_props.get("font_family", "Arial") if isinstance(sensor_props, dict) else "Arial"
+        font_family_index = self.font_family_combo.findText(font_family)
+        if font_family_index >= 0:
+            self.font_family_combo.blockSignals(True)
+            self.font_family_combo.setCurrentIndex(font_family_index)
+            self.font_family_combo.blockSignals(False)
         
-        effect = frame_props.get("effect", "static") if isinstance(frame_props, dict) else "static"
-        effect_index = self.sensor_frame_effect_combo.findText(effect)
-        if effect_index >= 0:
-            self.sensor_frame_effect_combo.setCurrentIndex(effect_index)
-        else:
-            self.sensor_frame_effect_combo.setCurrentIndex(0)
+        font_color_str = sensor_props.get("font_color", "#FFFFFF") if isinstance(sensor_props, dict) else "#FFFFFF"
+        self.font_color = QColor(font_color_str)
+        self._update_font_color_button()
         
-        speed = frame_props.get("speed", "in") if isinstance(frame_props, dict) else "in"
-        speed_index = self.sensor_frame_speed_combo.findText(speed)
-        if speed_index >= 0:
-            self.sensor_frame_speed_combo.setCurrentIndex(speed_index)
-        else:
-            self.sensor_frame_speed_combo.setCurrentIndex(1)
+        default_unit = self._get_default_unit(sensor_type)
+        unit = sensor_props.get("unit", default_unit) if isinstance(sensor_props, dict) else default_unit
+        self.sensor_unit_input.blockSignals(True)
+        self.sensor_unit_input.setText(unit)
+        self.sensor_unit_input.blockSignals(False)
     
     def _on_coords_changed(self):
         if not self.current_element or not self.current_program:
@@ -238,60 +252,128 @@ class SensorPropertiesComponent(BasePropertiesComponent):
         except ValueError:
             pass
     
-    def _on_frame_enabled_changed(self, enabled: bool):
+    def _get_default_fixed_text(self, sensor_type: str) -> str:
+        text_map = {
+            "temp": "The Temperature",
+            "Air Humidity": "The Humidity",
+            "PM2.5": "The PM2.5:",
+            "PM10": "The PM10:",
+            "Wind power": "The Wind Grade",
+            "Wind Direction": "The Wind Direction",
+            "Noise": "The Noise",
+            "Pressure": "The Pressure",
+            "Light Intensity": "The Light Intensity",
+            "CO2": "The CO2"
+        }
+        return text_map.get(sensor_type, f"The {sensor_type}")
+    
+    def _get_default_unit(self, sensor_type: str) -> str:
+        unit_map = {
+            "temp": "°C",
+            "Air Humidity": "%",
+            "PM2.5": "",
+            "PM10": "",
+            "Wind power": "LV",
+            "Wind Direction": "wind",
+            "Noise": "dB",
+            "Pressure": "kPa",
+            "Light Intensity": "Lux",
+            "CO2": "ppm"
+        }
+        return unit_map.get(sensor_type, "")
+    
+    def _on_sensor_type_changed(self, sensor_type: str):
         if not self.current_element or not self.current_program:
-            self.sensor_frame_checkbox.blockSignals(True)
-            self.sensor_frame_checkbox.setEnabled(False)
-            self.sensor_frame_checkbox.setChecked(False)
-            self.sensor_frame_checkbox.blockSignals(False)
             return
+        if "properties" not in self.current_element:
+            self.current_element["properties"] = {}
+        if "sensor" not in self.current_element["properties"]:
+            self.current_element["properties"]["sensor"] = {}
+        self.current_element["properties"]["sensor"]["sensor_type"] = sensor_type
         
-        self.sensor_frame_checkbox.setEnabled(True)
-        self.sensor_frame_border_combo.setEnabled(enabled)
-        self.sensor_frame_effect_combo.setEnabled(enabled)
-        self.sensor_frame_speed_combo.setEnabled(enabled)
-        if "properties" not in self.current_element:
-            self.current_element["properties"] = {}
-        if "frame" not in self.current_element["properties"]:
-            self.current_element["properties"]["frame"] = {}
-        self.current_element["properties"]["frame"]["enabled"] = enabled
+        default_text = self._get_default_fixed_text(sensor_type)
+        default_unit = self._get_default_unit(sensor_type)
+        
+        self.sensor_fixed_text.blockSignals(True)
+        self.sensor_fixed_text.setText(default_text)
+        self.sensor_fixed_text.blockSignals(False)
+        
+        self.sensor_unit_input.blockSignals(True)
+        self.sensor_unit_input.setText(default_unit)
+        self.sensor_unit_input.blockSignals(False)
+        
+        self.current_element["properties"]["sensor"]["fixed_text"] = default_text
+        self.current_element["properties"]["sensor"]["unit"] = default_unit
+        
         self.current_program.modified = datetime.now().isoformat()
-        self.property_changed.emit("sensor_frame_enabled", enabled)
+        self.property_changed.emit("sensor_type", sensor_type)
         self._trigger_autosave()
     
-    def _on_frame_border_changed(self, border: str):
+    def _on_fixed_text_changed(self, text: str):
         if not self.current_element or not self.current_program:
             return
         if "properties" not in self.current_element:
             self.current_element["properties"] = {}
-        if "frame" not in self.current_element["properties"]:
-            self.current_element["properties"]["frame"] = {}
-        self.current_element["properties"]["frame"]["border"] = border
+        if "sensor" not in self.current_element["properties"]:
+            self.current_element["properties"]["sensor"] = {}
+        self.current_element["properties"]["sensor"]["fixed_text"] = text
         self.current_program.modified = datetime.now().isoformat()
-        self.property_changed.emit("sensor_frame_border", border)
+        self.property_changed.emit("sensor_fixed_text", text)
         self._trigger_autosave()
     
-    def _on_frame_effect_changed(self, effect: str):
+    def _on_font_family_changed(self, font_family: str):
         if not self.current_element or not self.current_program:
             return
         if "properties" not in self.current_element:
             self.current_element["properties"] = {}
-        if "frame" not in self.current_element["properties"]:
-            self.current_element["properties"]["frame"] = {}
-        self.current_element["properties"]["frame"]["effect"] = effect
+        if "sensor" not in self.current_element["properties"]:
+            self.current_element["properties"]["sensor"] = {}
+        self.current_element["properties"]["sensor"]["font_family"] = font_family
         self.current_program.modified = datetime.now().isoformat()
-        self.property_changed.emit("sensor_frame_effect", effect)
+        self.property_changed.emit("sensor_font_family", font_family)
         self._trigger_autosave()
     
-    def _on_frame_speed_changed(self, speed: str):
+    def _on_font_color_clicked(self):
+        color = QColorDialog.getColor(self.font_color)
+        if color.isValid():
+            self.font_color = color
+            self._update_font_color_button()
+            if not self.current_element or not self.current_program:
+                return
+            if "properties" not in self.current_element:
+                self.current_element["properties"] = {}
+            if "sensor" not in self.current_element["properties"]:
+                self.current_element["properties"]["sensor"] = {}
+            self.current_element["properties"]["sensor"]["font_color"] = color.name()
+            self.current_program.modified = datetime.now().isoformat()
+            self.property_changed.emit("sensor_font_color", color.name())
+            self._trigger_autosave()
+    
+    def _on_sensor_unit_changed(self, unit: str):
         if not self.current_element or not self.current_program:
             return
         if "properties" not in self.current_element:
             self.current_element["properties"] = {}
-        if "frame" not in self.current_element["properties"]:
-            self.current_element["properties"]["frame"] = {}
-        self.current_element["properties"]["frame"]["speed"] = speed
+        if "sensor" not in self.current_element["properties"]:
+            self.current_element["properties"]["sensor"] = {}
+        self.current_element["properties"]["sensor"]["unit"] = unit
         self.current_program.modified = datetime.now().isoformat()
-        self.property_changed.emit("sensor_frame_speed", speed)
+        self.property_changed.emit("sensor_unit", unit)
         self._trigger_autosave()
+    
+    def _update_font_color_button(self):
+        self.font_color_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {self.font_color.name()};
+                border: 1px solid #CCCCCC;
+                border-radius: 3px;
+                color: {'white' if self.font_color.lightness() < 128 else 'black'};
+                font-weight: bold;
+                padding: 4px;
+                min-width: 30px;
+            }}
+            QPushButton:hover {{
+                border: 2px solid #4A90E2;
+            }}
+        """)
 

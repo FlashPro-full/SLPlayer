@@ -701,6 +701,21 @@ class ScreenSettingsDialog(QDialog):
             pass
         return None
 
+    def load_screen_parameters(self, brand: str = "", model: str = "", width: int = 640, height: int = 480, rotate: int = 0):
+        if brand:
+            self.series_combo.setCurrentText(brand)
+            self._populate_models()
+            if model:
+                self.model_combo.setCurrentText(model)
+                self._apply_preset_from_selection()
+        
+        self.width_spin.setValue(width)
+        self.height_spin.setValue(height)
+        
+        rotate_str = str(rotate)
+        if rotate_str in ["0", "90", "180", "270"]:
+            self.rotate_combo.setCurrentText(rotate_str)
+
     def accept(self):
         try:
             from core.controller_database import get_controller_database

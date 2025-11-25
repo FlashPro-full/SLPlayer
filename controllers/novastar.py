@@ -4,6 +4,7 @@ from typing import Optional, Dict, List
 from pathlib import Path
 from controllers.base_controller import BaseController, ControllerType, ConnectionStatus
 from controllers.novastar_sdk import ViplexCoreSDK
+from controllers.property_adapter import adapt_element_for_controller
 from utils.logger import get_logger
 from utils.app_data import get_app_data_dir
 
@@ -62,13 +63,13 @@ class NovaStarController(BaseController):
             result = self.sdk.get_callback_result("login", timeout=5.0)
             if result and result.get("code") == 0:
                 self._device_sn = str(self.ip_address)
-                info = self.get_device_info()
-                if info:
-                    self.set_status(ConnectionStatus.CONNECTED)
-                    logger.info(f"Connected to NovaStar controller at {self.ip_address}")
-                    return True
-            self.set_status(ConnectionStatus.ERROR)
-            return False
+            info = self.get_device_info()
+            if info:
+                self.set_status(ConnectionStatus.CONNECTED)
+                logger.info(f"Connected to NovaStar controller at {self.ip_address}")
+                return True
+                self.set_status(ConnectionStatus.ERROR)
+                return False
         except Exception as e:
             logger.error(f"Error connecting to NovaStar controller: {e}", exc_info=True)
             self.set_status(ConnectionStatus.ERROR)
@@ -204,7 +205,7 @@ class NovaStarController(BaseController):
                 return True
             else:
                 logger.error(f"Transfer failed: {result}")
-                return False
+            return False
         except Exception as e:
             logger.error(f"Error uploading program: {e}", exc_info=True)
             return False
@@ -212,16 +213,17 @@ class NovaStarController(BaseController):
     def _convert_elements_to_widgets(self, elements: List[Dict]) -> List[Dict]:
         widgets: List[Dict] = []
         for element in elements:
-            element_type = element.get("type")
-            properties = element.get("properties", {})
+            adapted_element = adapt_element_for_controller(element, "novastar")
+            element_type = adapted_element.get("type")
+            properties = adapted_element.get("properties", {})
             widget = {
                 "id": len(widgets) + 1,
                 "enable": True,
                 "layout": {
-                    "x": f"{element.get('x', 0)}",
-                    "y": f"{element.get('y', 0)}",
-                    "width": f"{element.get('width', 200)}",
-                    "height": f"{element.get('height', 100)}"
+                    "x": f"{adapted_element.get('x', 0)}",
+                    "y": f"{adapted_element.get('y', 0)}",
+                    "width": f"{adapted_element.get('width', 200)}",
+                    "height": f"{adapted_element.get('height', 100)}"
                 },
                 "backgroundColor": "#00000000",
                 "zOrder": 0
@@ -241,6 +243,118 @@ class NovaStarController(BaseController):
                                 }],
                                 "textAttributes": [{
                                     "textColor": properties.get("color", "#000000"),
+                                    "attributes": {
+                                        "font": {
+                                            "family": [properties.get("font_family", "Arial")],
+                                            "size": properties.get("font_size", 24),
+                                            "style": "NORMAL"
+                                        }
+                                    }
+                                }]
+                            }]
+                        }
+                    },
+                    "duration": properties.get("duration", 5000)
+                })
+            elif element_type == "animation":
+                widget.update({
+                    "type": "ARCH_TEXT",
+                    "name": "animation",
+                    "dataSource": "",
+                    "metadata": {
+                        "content": {
+                            "paragraphs": [{
+                                "lines": [{
+                                    "segs": [{
+                                        "content": properties.get("text", "")
+                                    }]
+                                }],
+                                "textAttributes": [{
+                                    "textColor": properties.get("color", "#FFFFFF"),
+                                    "attributes": {
+                                        "font": {
+                                            "family": [properties.get("font_family", "Arial")],
+                                            "size": properties.get("font_size", 24),
+                                            "style": "NORMAL"
+                                        }
+                                    }
+                                }]
+                            }]
+                        }
+                    },
+                    "duration": properties.get("duration", 5000)
+                })
+            elif element_type == "weather":
+                widget.update({
+                    "type": "ARCH_TEXT",
+                    "name": "weather",
+                    "dataSource": "",
+                    "metadata": {
+                        "content": {
+                            "paragraphs": [{
+                                "lines": [{
+                                    "segs": [{
+                                        "content": properties.get("text", "")
+                                    }]
+                                }],
+                                "textAttributes": [{
+                                    "textColor": properties.get("color", "#FFFFFF"),
+                                    "attributes": {
+                                        "font": {
+                                            "family": [properties.get("font_family", "Arial")],
+                                            "size": properties.get("font_size", 24),
+                                            "style": "NORMAL"
+                                        }
+                                    }
+                                }]
+                            }]
+                        }
+                    },
+                    "duration": properties.get("duration", 5000)
+                })
+            elif element_type == "timing":
+                widget.update({
+                    "type": "ARCH_TEXT",
+                    "name": "timing",
+                    "dataSource": "",
+                    "metadata": {
+                        "content": {
+                            "paragraphs": [{
+                                "lines": [{
+                                    "segs": [{
+                                        "content": "Countdown"
+                                    }]
+                                }],
+                                "textAttributes": [{
+                                    "textColor": properties.get("color", "#FFFFFF"),
+                                    "attributes": {
+                                        "font": {
+                                            "family": [properties.get("font_family", "Arial")],
+                                            "size": properties.get("font_size", 24),
+                                            "style": "NORMAL"
+                                        }
+                                    }
+                                }]
+                            }]
+                        }
+                    },
+                    "duration": properties.get("duration", 5000)
+                })
+            elif element_type == "sensor":
+                widget.update({
+                    "type": "ARCH_TEXT",
+                    "name": "sensor",
+                    "dataSource": "",
+                    "metadata": {
+                        "content": {
+                            "paragraphs": [{
+                                "lines": [{
+                                    "segs": [{
+                                        "content": "Sensor"
+                                    }]
+                                }],
+                                "textAttributes": [{
+                                    "textColor": properties.get("color", "#FFFFFF"),
                                     "attributes": {
                                         "font": {
                                             "family": [properties.get("font_family", "Arial")],
@@ -303,9 +417,10 @@ class NovaStarController(BaseController):
             if result and result.get("code") == 0:
                 data = json.loads(result.get("data", "{}"))
                 return self._convert_from_viplexcore_format(data)
+            return None
         except Exception as e:
             logger.error(f"Error downloading program: {e}", exc_info=True)
-        return None
+            return None
     
     def _convert_from_viplexcore_format(self, data: Dict) -> Dict:
         return {
@@ -316,7 +431,161 @@ class NovaStarController(BaseController):
         }
     
     def get_program_list(self) -> List[Dict]:
+        if not self._device_sn:
+            return []
+        try:
+            info_params = {"sn": self._device_sn}
+            self.sdk.get_program_info_async(info_params, "get_program_list")
+            result = self.sdk.get_callback_result("get_program_list", timeout=5.0)
+            if result and result.get("code") == 0:
+                data = json.loads(result.get("data", "[]"))
+                if isinstance(data, list):
+                    return data
+                elif isinstance(data, dict) and "programs" in data:
+                    return data["programs"]
+        except Exception as e:
+            logger.error(f"Error getting program list: {e}")
         return []
+    
+    def get_time(self) -> Optional[datetime]:
+        try:
+            if not self._device_sn:
+                return None
+            info_params = {"sn": self._device_sn}
+            if hasattr(self.sdk, 'get_terminal_info_async'):
+                self.sdk.get_terminal_info_async(info_params, "get_time")
+                result = self.sdk.get_callback_result("get_time", timeout=3.0)
+                if result and result.get("code") == 0:
+                    data = json.loads(result.get("data", "{}"))
+                    time_str = data.get("time") or data.get("system_time")
+                    if time_str:
+                        return datetime.fromisoformat(time_str.replace('Z', '+00:00'))
+            return datetime.now()
+        except Exception as e:
+            logger.warning(f"Error getting time: {e}")
+            return datetime.now()
+    
+    def set_time(self, time: datetime) -> bool:
+        try:
+            if not self._device_sn or not hasattr(self.sdk, 'set_time_async'):
+                return False
+            time_params = {
+                "sn": self._device_sn,
+                "time": time.isoformat()
+            }
+            self.sdk.set_time_async(time_params, "set_time")
+            result = self.sdk.get_callback_result("set_time", timeout=3.0)
+            return result and result.get("code") == 0
+        except Exception as e:
+            logger.error(f"Error setting time: {e}")
+            return False
+    
+    def get_brightness(self) -> Optional[int]:
+        try:
+            if not self._device_sn:
+                return None
+            info_params = {"sn": self._device_sn}
+            self.sdk.get_terminal_info_async(info_params, "get_brightness")
+            result = self.sdk.get_callback_result("get_brightness", timeout=3.0)
+            if result and result.get("code") == 0:
+                data = json.loads(result.get("data", "{}"))
+                return data.get("brightness") or data.get("luminance")
+        except Exception as e:
+            logger.warning(f"Error getting brightness: {e}")
+        return None
+    
+    def set_brightness(self, brightness: int) -> bool:
+        try:
+            if not self._device_sn or not hasattr(self.sdk, 'set_brightness_async'):
+                return False
+            brightness_params = {
+                "sn": self._device_sn,
+                "brightness": brightness
+            }
+            self.sdk.set_brightness_async(brightness_params, "set_brightness")
+            result = self.sdk.get_callback_result("set_brightness", timeout=3.0)
+            return result and result.get("code") == 0
+        except Exception as e:
+            logger.error(f"Error setting brightness: {e}")
+            return False
+    
+    def get_power_schedule(self) -> Optional[Dict]:
+        try:
+            if not self._device_sn or not hasattr(self.sdk, 'get_timing_power_switch_status'):
+                return None
+            params = {"sn": self._device_sn}
+            self.sdk.get_timing_power_switch_status(params, "get_power_schedule")
+            result = self.sdk.get_callback_result("get_power_schedule", timeout=3.0)
+            if result and result.get("code") == 0:
+                return json.loads(result.get("data", "{}"))
+        except Exception as e:
+            logger.warning(f"Error getting power schedule: {e}")
+        return None
+    
+    def set_power_schedule(self, on_time: str, off_time: str, enabled: bool = True) -> bool:
+        try:
+            if not self._device_sn or not hasattr(self.sdk, 'set_timing_power_switch_status'):
+                return False
+            schedule_params = {
+                "sn": self._device_sn,
+                "enabled": enabled,
+                "on_time": on_time,
+                "off_time": off_time
+            }
+            self.sdk.set_timing_power_switch_status(schedule_params, "set_power_schedule")
+            result = self.sdk.get_callback_result("set_power_schedule", timeout=3.0)
+            return result and result.get("code") == 0
+        except Exception as e:
+            logger.error(f"Error setting power schedule: {e}")
+            return False
+    
+    def get_network_config(self) -> Optional[Dict]:
+        try:
+            if not self._device_sn:
+                return None
+            info_params = {"sn": self._device_sn}
+            self.sdk.get_terminal_info_async(info_params, "get_network")
+            result = self.sdk.get_callback_result("get_network", timeout=3.0)
+            if result and result.get("code") == 0:
+                data = json.loads(result.get("data", "{}"))
+                return data.get("network") or {
+                    "ip": data.get("ip"),
+                    "gateway": data.get("gateway"),
+                    "subnet": data.get("subnet")
+                }
+        except Exception as e:
+            logger.warning(f"Error getting network config: {e}")
+        return None
+    
+    def set_network_config(self, network_config: Dict) -> bool:
+        try:
+            if not self._device_sn or not hasattr(self.sdk, 'set_network_config_async'):
+                return False
+            network_params = {
+                "sn": self._device_sn,
+                **network_config
+            }
+            self.sdk.set_network_config_async(network_params, "set_network")
+            result = self.sdk.get_callback_result("set_network", timeout=3.0)
+            return result and result.get("code") == 0
+        except Exception as e:
+            logger.error(f"Error setting network config: {e}")
+            return False
+    
+    def delete_program(self, program_id: str) -> bool:
+        try:
+            if not self._device_sn or not hasattr(self.sdk, 'delete_program_async'):
+                return False
+            delete_params = {
+                "sn": self._device_sn,
+                "program_id": program_id
+            }
+            self.sdk.delete_program_async(delete_params, "delete_program")
+            result = self.sdk.get_callback_result("delete_program", timeout=3.0)
+            return result and result.get("code") == 0
+        except Exception as e:
+            logger.error(f"Error deleting program: {e}")
+            return False
     
     def test_connection(self) -> bool:
         try:

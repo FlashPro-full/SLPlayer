@@ -1,9 +1,18 @@
 from PyQt5 import QtWidgets, QtGui, QtCore
-from PyQt5.QtCore import QSize, Qt, QUrl
+from PyQt5.QtCore import QSize, Qt, QUrl, QTimer
 from PyQt5.QtMultimedia import QMediaContent, QMediaPlayer
 from PyQt5.QtMultimediaWidgets import QVideoWidget
+try:
+    from PyQt5.QtWebEngineWidgets import QWebEngineView
+    WEBENGINE_AVAILABLE = True
+except ImportError:
+    WEBENGINE_AVAILABLE = False
+    QWebEngineView = None
 from typing import Optional, Dict
 from core.screen_config import get_screen_config
+from utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 if False:
     from core.screen_manager import ScreenManager
@@ -26,6 +35,8 @@ class ContentWidget(QtWidgets.QWidget):
         self.screen_list_panel = None
         self._video_players: Dict[str, QMediaPlayer] = {}
         self._video_widgets: Dict[str, QVideoWidget] = {}
+        self._html_widgets: Dict[str, QWidget] = {}
+        self._html_refresh_timers: Dict[str, QTimer] = {}
         self._is_playing = False
         self._photo_animations: Dict[str, Dict] = {}
         self._text_animations: Dict[str, Dict] = {}
@@ -33,11 +44,9 @@ class ContentWidget(QtWidgets.QWidget):
         self._animation_timer = QtCore.QTimer(self)
         self._animation_timer.timeout.connect(self._update_animations)
         self._animation_timer.setInterval(33)
-        # Clock update timer - update every second
         self._clock_timer = QtCore.QTimer(self)
         self._clock_timer.timeout.connect(self._update_clocks)
         self._clock_timer.setInterval(1000)
-        # Start clock timer immediately to update clocks in preview mode
         self._clock_timer.start()
     
     def set_screen_manager(self, screen_manager: Optional['ScreenManager']):
@@ -281,22 +290,46 @@ class ContentWidget(QtWidgets.QWidget):
             # Clock timer continues to run
         self.update()
     
+    def _handle_video_error(self, element_id: str, error):
+        try:
+            if error != QMediaPlayer.NoError:
+                logger.debug(f"Video player error for {element_id}: {error}")
+        except Exception:
+            pass
+    
     def _setup_video_player(self, element_id: str, video_path: str):
         if element_id in self._video_players:
             return
         
-        player = QMediaPlayer(None, QMediaPlayer.VideoSurface)
-        video_widget = QVideoWidget(self)
-        video_widget.setAttribute(Qt.WA_OpaquePaintEvent, False)
-        video_widget.setAutoFillBackground(False)
-        video_widget.setStyleSheet("background-color: transparent;")
-        video_widget.hide()
+        if not video_path or not video_path.strip():
+            return
         
-        player.setVideoOutput(video_widget)
-        player.setMedia(QMediaContent(QUrl.fromLocalFile(video_path)))
+        from pathlib import Path
+        video_file = Path(video_path)
+        if not video_file.exists() or not video_file.is_file():
+            return
         
-        self._video_players[element_id] = player
-        self._video_widgets[element_id] = video_widget
+        try:
+            player = QMediaPlayer(None, QMediaPlayer.VideoSurface)
+            video_widget = QVideoWidget(self)
+            video_widget.setAttribute(Qt.WA_OpaquePaintEvent, False)
+            video_widget.setAutoFillBackground(False)
+            video_widget.setStyleSheet("background-color: transparent;")
+            video_widget.hide()
+            
+            player.setVideoOutput(video_widget)
+            
+            from PyQt5.QtCore import QUrl
+            video_url = QUrl.fromLocalFile(str(video_file.absolute()))
+            if video_url.isValid():
+                player.setMedia(QMediaContent(video_url))
+                player.error.connect(lambda error, eid=element_id: self._handle_video_error(eid, error))
+        
+            self._video_players[element_id] = player
+            self._video_widgets[element_id] = video_widget
+        except Exception as e:
+            logger.warning(f"Failed to setup video player for {element_id}: {e}")
+            return
     
     def _update_video_widget_position(self, element_id: str, x: int, y: int, width: int, height: int):
         if element_id in self._video_widgets:
@@ -366,25 +399,35 @@ class ContentWidget(QtWidgets.QWidget):
         
         for element_id in list(self._video_players.keys()):
             if element_id not in current_elements:
+                try:
+                    if element_id in self._video_players:
+                        player = self._video_players[element_id]
+                        player.stop()
+                        if player.state() != QMediaPlayer.StoppedState:
+                            player.stop()
+                        del self._video_players[element_id]
+                    if element_id in self._video_widgets:
+                        self._video_widgets[element_id].hide()
+                        self._video_widgets[element_id].deleteLater()
+                        del self._video_widgets[element_id]
+                except Exception as e:
+                    logger.warning(f"Error cleaning up video player {element_id}: {e}")
+    
+    def _cleanup_all_video_players(self):
+        for element_id in list(self._video_players.keys()):
+            try:
                 if element_id in self._video_players:
-                    self._video_players[element_id].stop()
-                    self._video_players[element_id].setMedia(QMediaContent())
+                    player = self._video_players[element_id]
+                    player.stop()
+                    if player.state() != QMediaPlayer.StoppedState:
+                        player.stop()
                     del self._video_players[element_id]
                 if element_id in self._video_widgets:
                     self._video_widgets[element_id].hide()
                     self._video_widgets[element_id].deleteLater()
                     del self._video_widgets[element_id]
-    
-    def _cleanup_all_video_players(self):
-        for element_id in list(self._video_players.keys()):
-            if element_id in self._video_players:
-                self._video_players[element_id].stop()
-                self._video_players[element_id].setMedia(QMediaContent())
-                del self._video_players[element_id]
-            if element_id in self._video_widgets:
-                self._video_widgets[element_id].hide()
-                self._video_widgets[element_id].deleteLater()
-                del self._video_widgets[element_id]
+            except Exception as e:
+                logger.warning(f"Error cleaning up video player {element_id}: {e}")
     
     def _get_photo_active_index(self, element_id: str, photo_list: list) -> int:
         if self.properties_panel and hasattr(self.properties_panel, 'image_properties_widget'):
@@ -1523,7 +1566,7 @@ class ContentWidget(QtWidgets.QWidget):
             
             if element_id not in self._video_widgets or not self._video_widgets[element_id].isVisible():
                 painter.setPen(QtGui.QPen(QtGui.QColor(255, 0, 0) if is_selected else QtGui.QColor(100, 100, 100), 2))
-                painter.setBrush(QtGui.QBrush(QtGui.QColor(50, 50, 50)))
+                painter.setBrush(QtGui.QBrush(QtGui.QColor(0, 0, 0, 0)))
                 painter.drawRect(element_rect)
                 painter.setPen(QtGui.QPen(QtGui.QColor(255, 255, 255), 1))
                 painter.drawText(element_rect, Qt.AlignCenter, "VIDEO")
@@ -1549,7 +1592,7 @@ class ContentWidget(QtWidgets.QWidget):
                             pass
             
             painter.setPen(QtGui.QPen(QtGui.QColor(0, 255, 0) if is_selected else QtGui.QColor(100, 100, 100), 2))
-            painter.setBrush(QtGui.QBrush(QtGui.QColor(80, 80, 80)))
+            painter.setBrush(QtGui.QBrush(QtGui.QColor(0, 0, 0, 0)))
             painter.drawRect(element_rect)
             painter.setPen(QtGui.QPen(QtGui.QColor(255, 255, 255), 1))
             painter.drawText(element_rect, Qt.AlignCenter, "PHOTO")
@@ -1580,7 +1623,7 @@ class ContentWidget(QtWidgets.QWidget):
                 )
             else:
                 painter.setPen(QtGui.QPen(QtGui.QColor(100, 100, 100), 1))
-                painter.setBrush(QtGui.QBrush(QtGui.QColor(120, 120, 120)))
+                painter.setBrush(QtGui.QBrush(QtGui.QColor(0, 0, 0, 0)))
                 painter.drawRect(element_rect)
                 painter.setPen(QtGui.QPen(QtGui.QColor(255, 255, 255), 1))
                 painter.drawText(element_rect, Qt.AlignCenter, "TEXT")
@@ -1606,7 +1649,7 @@ class ContentWidget(QtWidgets.QWidget):
                 )
             else:
                 painter.setPen(QtGui.QPen(QtGui.QColor(0, 255, 255) if is_selected else QtGui.QColor(100, 100, 100), 2))
-                painter.setBrush(QtGui.QBrush(QtGui.QColor(100, 120, 120)))
+                painter.setBrush(QtGui.QBrush(QtGui.QColor(0, 0, 0, 0)))
                 painter.drawRect(element_rect)
                 painter.setPen(QtGui.QPen(QtGui.QColor(255, 255, 255), 1))
                 painter.drawText(element_rect, Qt.AlignCenter, "TEXT")
@@ -1619,38 +1662,22 @@ class ContentWidget(QtWidgets.QWidget):
         elif element_type == "clock":
             self._draw_clock(painter, element_props, scaled_x, scaled_y, scaled_width, scaled_height, element_rect, is_selected)
         elif element_type == "timing":
-            painter.setPen(QtGui.QPen(QtGui.QColor(128, 0, 128) if is_selected else QtGui.QColor(100, 100, 100), 2))
-            painter.setBrush(QtGui.QBrush(QtGui.QColor(100, 80, 100)))
-            painter.drawRect(element_rect)
-            painter.setPen(QtGui.QPen(QtGui.QColor(255, 255, 255), 1))
-            painter.drawText(element_rect, Qt.AlignCenter, "TIME")
+            self._draw_timing(painter, element_props, scaled_x, scaled_y, scaled_width, scaled_height, element_rect, is_selected, element_id, scale)
         elif element_type == "weather":
             painter.setPen(QtGui.QPen(QtGui.QColor(135, 206, 250) if is_selected else QtGui.QColor(100, 100, 100), 2))
-            painter.setBrush(QtGui.QBrush(QtGui.QColor(80, 100, 120)))
+            painter.setBrush(QtGui.QBrush(QtGui.QColor(0, 0, 0, 0)))
             painter.drawRect(element_rect)
             painter.setPen(QtGui.QPen(QtGui.QColor(255, 255, 255), 1))
             painter.drawText(element_rect, Qt.AlignCenter, "WEATHER")
         elif element_type == "sensor":
-            painter.setPen(QtGui.QPen(QtGui.QColor(255, 20, 147) if is_selected else QtGui.QColor(100, 100, 100), 2))
-            painter.setBrush(QtGui.QBrush(QtGui.QColor(120, 80, 100)))
-            painter.drawRect(element_rect)
-            painter.setPen(QtGui.QPen(QtGui.QColor(255, 255, 255), 1))
-            painter.drawText(element_rect, Qt.AlignCenter, "SENSOR")
+            self._draw_sensor(painter, element_props, scaled_x, scaled_y, scaled_width, scaled_height, element_rect, is_selected, scale)
         elif element_type == "html":
-            painter.setPen(QtGui.QPen(QtGui.QColor(0, 191, 255) if is_selected else QtGui.QColor(100, 100, 100), 2))
-            painter.setBrush(QtGui.QBrush(QtGui.QColor(80, 120, 140)))
-            painter.drawRect(element_rect)
-            painter.setPen(QtGui.QPen(QtGui.QColor(255, 255, 255), 1))
-            painter.drawText(element_rect, Qt.AlignCenter, "HTML")
+            self._setup_html_widget(painter, element_props, scaled_x, scaled_y, scaled_width, scaled_height, element_rect, is_selected, element_id, scale)
         elif element_type == "hdmi":
-            painter.setPen(QtGui.QPen(QtGui.QColor(255, 140, 0) if is_selected else QtGui.QColor(100, 100, 100), 2))
-            painter.setBrush(QtGui.QBrush(QtGui.QColor(140, 100, 60)))
-            painter.drawRect(element_rect)
-            painter.setPen(QtGui.QPen(QtGui.QColor(255, 255, 255), 1))
-            painter.drawText(element_rect, Qt.AlignCenter, "HDMI")
+            self._setup_hdmi_widget(painter, element_props, scaled_x, scaled_y, scaled_width, scaled_height, element_rect, is_selected, element_id, scale)
         else:
             painter.setPen(QtGui.QPen(QtGui.QColor(255, 255, 0) if is_selected else QtGui.QColor(100, 100, 100), 2))
-            painter.setBrush(QtGui.QBrush(QtGui.QColor(100, 100, 100)))
+            painter.setBrush(QtGui.QBrush(QtGui.QColor(0, 0, 0, 0)))
             painter.drawRect(element_rect)
             painter.setPen(QtGui.QPen(QtGui.QColor(255, 255, 255), 1))
             painter.drawText(element_rect, Qt.AlignCenter, element_type.upper() if element_type else "ELEMENT")
@@ -1695,7 +1722,7 @@ class ContentWidget(QtWidgets.QWidget):
         else:
             # Default: draw placeholder
             painter.setPen(QtGui.QPen(QtGui.QColor(255, 192, 203) if is_selected else QtGui.QColor(100, 100, 100), 2))
-            painter.setBrush(QtGui.QBrush(QtGui.QColor(120, 100, 100)))
+            painter.setBrush(QtGui.QBrush(QtGui.QColor(0, 0, 0, 0)))
             painter.drawRect(element_rect)
             painter.setPen(QtGui.QPen(QtGui.QColor(255, 255, 255), 1))
             painter.drawText(element_rect, Qt.AlignCenter, "CLOCK")
@@ -2118,7 +2145,7 @@ class ContentWidget(QtWidgets.QWidget):
         text_props = element_props.get("text", {})
         if not isinstance(text_props, dict):
             painter.setPen(QtGui.QPen(QtGui.QColor(255, 165, 0) if is_selected else QtGui.QColor(100, 100, 100), 2))
-            painter.setBrush(QtGui.QBrush(QtGui.QColor(120, 100, 80)))
+            painter.setBrush(QtGui.QBrush(QtGui.QColor(0, 0, 0, 0)))
             painter.drawRect(element_rect)
             painter.setPen(QtGui.QPen(QtGui.QColor(255, 255, 255), 1))
             painter.drawText(element_rect, Qt.AlignCenter, "ANIM")
@@ -2131,7 +2158,7 @@ class ContentWidget(QtWidgets.QWidget):
         text_content = text_props.get("content", "")
         if not text_content:
             painter.setPen(QtGui.QPen(QtGui.QColor(255, 165, 0) if is_selected else QtGui.QColor(100, 100, 100), 2))
-            painter.setBrush(QtGui.QBrush(QtGui.QColor(120, 100, 80)))
+            painter.setBrush(QtGui.QBrush(QtGui.QColor(0, 0, 0, 0)))
             painter.drawRect(element_rect)
             painter.setPen(QtGui.QPen(QtGui.QColor(255, 255, 255), 1))
             painter.drawText(element_rect, Qt.AlignCenter, "ANIM")
@@ -2144,37 +2171,22 @@ class ContentWidget(QtWidgets.QWidget):
         text_format = text_props.get("format", {})
         animation_style = element_props.get("animation_style", {})
         
-        # Initialize animation state
         if element_id not in self._text_flow_animations:
             self._text_flow_animations[element_id] = {
-                "start_time": QtCore.QDateTime.currentDateTime(),
-                "char_index": 0
+                "start_time": QtCore.QDateTime.currentDateTime()
             }
             if not self._animation_timer.isActive():
                 self._animation_timer.start()
         
         anim_state = self._text_flow_animations[element_id]
         
-        # Get animation properties
         style_index = animation_style.get("style_index", 0)
-        writing_direction = animation_style.get("writing_direction", "Horizontal Line Writing")
-        character_movement = animation_style.get("character_movement", True)
-        speed = animation_style.get("speed", 10)
+        hold_time = animation_style.get("hold_time", 6.0)
+        speed = animation_style.get("speed", 5)
         
-        # Import color utils for gradient
-        from ui.utils.color_utils import get_gradient_color_at_position
+        from ui.utils import animation_effects
+        import math
         
-        # Calculate elapsed time and character position
-        elapsed_ms = anim_state["start_time"].msecsTo(QtCore.QDateTime.currentDateTime())
-        elapsed_sec = elapsed_ms / 1000.0
-        
-        if character_movement:
-            chars_to_show = int(elapsed_sec * speed)
-            chars_to_show = min(chars_to_show, len(text_content))
-        else:
-            chars_to_show = len(text_content)
-        
-        # Setup font
         font = painter.font()
         font_size = element_props.get("font_size", 24)
         if text_format.get("font_size"):
@@ -2191,64 +2203,713 @@ class ContentWidget(QtWidgets.QWidget):
             font.setUnderline(True)
         painter.setFont(font)
         
-        # Get character spacing
         char_spacing = text_format.get("char_spacing", 0)
         
-        # Set clipping
         element_bounds = QtCore.QRect(x, y, width, height)
         painter.setClipRect(element_bounds)
         
-        # Draw text with gradient colors
         font_metrics = painter.fontMetrics()
         current_x = x
         current_y = y + font_metrics.ascent()
         
-        displayed_text = text_content[:chars_to_show] if character_movement else text_content
+        elapsed_ms = anim_state["start_time"].msecsTo(QtCore.QDateTime.currentDateTime())
+        elapsed_sec = elapsed_ms / 1000.0
         
-        for i, char in enumerate(displayed_text):
-            # Calculate gradient color position (0.0 to 1.0) based on character position
-            pos = i / max(len(displayed_text) - 1, 1) if len(displayed_text) > 1 else 0.0
-            # Apply time-based offset for flowing gradient effect
-            time_offset = (elapsed_sec * 0.5) % 1.0
-            pos = (pos + time_offset) % 1.0
-            # Get gradient color using style index and position
-            color = get_gradient_color_at_position(pos, style_index)
-            
-            painter.setPen(QtGui.QPen(color))
-            
-            # Check for hollow text
-            if text_format.get("hollow", False):
-                # Draw outline for hollow effect
-                outline_pen = QtGui.QPen(color, 2)
-                painter.setPen(outline_pen)
-                for dx in [-1, 0, 1]:
-                    for dy in [-1, 0, 1]:
-                        if dx != 0 or dy != 0:
-                            painter.drawText(current_x + dx, current_y + dy, char)
-                painter.setPen(QtGui.QPen(color))
-            else:
-                painter.drawText(current_x, current_y, char)
-            
-            # Move to next character position
+        text_length = len(text_content)
+        char_positions = []
+        current_pos_x = x
+        current_pos_y = y + font_metrics.ascent()
+        
+        for char in text_content:
             char_width = font_metrics.width(char)
-            if writing_direction == "Horizontal Line Writing":
-                current_x += char_width + char_spacing
-                # Check if we need to wrap to next line
-                if current_x + char_width > x + width and i < len(displayed_text) - 1:
-                    current_x = x
-                    current_y += font_metrics.height()
-            else:  # Vertical Line Writing
-                current_y += font_metrics.height()
-                # Check if we need to wrap to next column
-                if current_y > y + height and i < len(displayed_text) - 1:
-                    current_y = y + font_metrics.ascent()
-                    current_x += font_metrics.maxWidth() + char_spacing
+            char_positions.append((current_pos_x, current_pos_y, char_width))
+            current_pos_x += char_width + char_spacing
+            if current_pos_x + char_width > x + width:
+                current_pos_x = x
+                current_pos_y += font_metrics.height()
+        
+        if char_positions:
+            min_x = min(pos[0] for pos in char_positions)
+            max_x = max(pos[0] + pos[2] for pos in char_positions)
+            min_y = min(pos[1] for pos in char_positions)
+            max_y = max(pos[1] + font_metrics.height() for pos in char_positions)
+            text_width = max_x - min_x
+            text_height = max_y - min_y
+            text_center_x = min_x + text_width / 2
+            text_center_y = min_y + text_height / 2
+        else:
+            text_width = 0
+            text_height = font_metrics.height()
+            text_center_x = x + width / 2
+            text_center_y = y + height / 2
+        
+        is_continuous_scroll = style_index in [0, 1, 2, 3]
+        
+        if is_continuous_scroll:
+            if style_index == 0 or style_index == 1:
+                vertical_align = text_format.get("vertical_alignment", "top")
+                line_height = font_metrics.height()
+                ascent = font_metrics.ascent()
+                descent = font_metrics.descent()
+                
+                if vertical_align == "top":
+                    vertical_offset = 0
+                elif vertical_align == "middle":
+                    vertical_offset = (height - text_height) / 2
+                else:
+                    vertical_offset = height - text_height
+                
+                scroll_speed = speed * 10
+                scroll_offset = (elapsed_sec * scroll_speed) % text_width
+                
+                num_repeats = max(3, int((width + text_width) / max(text_width, 1)) + 2)
+                start_offset = -text_width
+                
+                for repeat_idx in range(num_repeats):
+                    if style_index == 0:
+                        text_offset_x = start_offset + (repeat_idx * text_width) - scroll_offset
+                    else:
+                        text_offset_x = start_offset + (repeat_idx * text_width) + scroll_offset
+                    
+                    if text_offset_x + text_width < x - text_width or text_offset_x > x + width + text_width:
+                        continue
+                    
+                    for i, char in enumerate(text_content):
+                        char_x_base, char_y_base, char_width = char_positions[i]
+                        char_height = font_metrics.height()
+                        
+                        draw_x = int(text_offset_x + (char_x_base - min(pos[0] for pos in char_positions)))
+                        draw_y = int(y + vertical_offset + (char_y_base - min(pos[1] for pos in char_positions)) + ascent)
+                        
+                        draw_y = max(y + ascent, min(draw_y, y + height - descent))
+                        
+                        if draw_x + char_width < x or draw_x > x + width:
+                            continue
+                        
+                        color = animation_effects.get_animation_color(style_index, i, text_length, elapsed_sec)
+                        
+                        painter.save()
+                        painter.setPen(QtGui.QPen(color))
+                        painter.setOpacity(1.0)
+                        
+                        if text_format.get("hollow", False):
+                            outline_pen = QtGui.QPen(color, 2)
+                            painter.setPen(outline_pen)
+                            for ddx in [-1, 0, 1]:
+                                for ddy in [-1, 0, 1]:
+                                    if ddx != 0 or ddy != 0:
+                                        painter.drawText(draw_x + ddx, draw_y + ddy, char)
+                            painter.setPen(QtGui.QPen(color))
+                        painter.drawText(draw_x, draw_y, char)
+                        painter.restore()
+            
+            if style_index == 2 or style_index == 3:
+                vertical_char_width = max(font_metrics.width(char) for char in text_content) if text_content else font_metrics.width("A")
+                vertical_text_height = sum(font_metrics.height() for _ in text_content) if text_content else font_metrics.height()
+                
+                alignment = text_format.get("alignment", "center")
+                ascent = font_metrics.ascent()
+                descent = font_metrics.descent()
+                
+                if alignment == "left":
+                    horizontal_offset = 0
+                elif alignment == "right":
+                    horizontal_offset = width - vertical_char_width
+                else:
+                    horizontal_offset = (width - vertical_char_width) / 2
+                
+                vertical_base_x = x + horizontal_offset
+                vertical_base_y = y
+                
+                scroll_speed = speed * 10
+                scroll_offset = (elapsed_sec * scroll_speed) % max(vertical_text_height, 1)
+                
+                num_repeats = max(3, int((height + vertical_text_height) / max(vertical_text_height, 1)) + 2)
+                start_offset = -vertical_text_height
+                
+                char_heights = []
+                current_y = 0
+                for char in text_content:
+                    char_height = font_metrics.height()
+                    char_heights.append((current_y, char_height))
+                    current_y += char_height
+                
+                for repeat_idx in range(num_repeats):
+                    if style_index == 2:
+                        text_offset_y = start_offset + (repeat_idx * vertical_text_height) - scroll_offset
+                    else:
+                        text_offset_y = start_offset + (repeat_idx * vertical_text_height) + scroll_offset
+                    
+                    if text_offset_y + vertical_text_height < y - vertical_text_height or text_offset_y > y + height + vertical_text_height:
+                        continue
+                    
+                    for i, char in enumerate(text_content):
+                        char_y_offset, char_height = char_heights[i]
+                        char_width = font_metrics.width(char)
+                        
+                        draw_x = int(vertical_base_x + (vertical_char_width - char_width) / 2)
+                        draw_y = int(vertical_base_y + text_offset_y + char_y_offset + ascent)
+                        
+                        draw_y = max(y + ascent, min(draw_y, y + height - descent))
+                        
+                        if draw_y + char_height < y or draw_y > y + height:
+                            continue
+                        
+                        color = animation_effects.get_animation_color(style_index, i, text_length, elapsed_sec)
+                        
+                        painter.save()
+                        painter.setPen(QtGui.QPen(color))
+                        painter.setOpacity(1.0)
+                        
+                        if text_format.get("hollow", False):
+                            outline_pen = QtGui.QPen(color, 2)
+                            painter.setPen(outline_pen)
+                            for ddx in [-1, 0, 1]:
+                                for ddy in [-1, 0, 1]:
+                                    if ddx != 0 or ddy != 0:
+                                        painter.drawText(draw_x, draw_y, char)
+                            painter.setPen(QtGui.QPen(color))
+                        else:
+                            painter.drawText(draw_x, draw_y, char)
+                        
+                        painter.restore()
+        else:
+            for i, char in enumerate(text_content):
+                char_x_base, char_y_base, char_width = char_positions[i]
+                char_height = font_metrics.height()
+                
+                transform = animation_effects.get_animation_transform(
+                    style_index, i, text_length, elapsed_sec, hold_time, speed,
+                    char_x_base, char_y_base,
+                    char_width, char_height, text_width, text_height,
+                    text_center_x, text_center_y
+                )
+                
+                color = animation_effects.get_animation_color(style_index, i, text_length, elapsed_sec)
+                
+                painter.save()
+                painter.setPen(QtGui.QPen(color))
+                painter.setOpacity(transform.get('opacity', 1.0))
+                
+                char_x = transform.get('x', char_x_base)
+                char_y = transform.get('y', char_y_base)
+                scale_x = transform.get('scale_x', 1.0)
+                scale_y = transform.get('scale_y', 1.0)
+                rotation = transform.get('rotation', 0.0)
+                
+                pivot_x = transform.get('pivot_x', char_x + char_width / 2)
+                pivot_y = transform.get('pivot_y', char_y)
+                
+                dx = char_x - char_x_base
+                dy = char_y - char_y_base
+                
+                if rotation != 0.0 or scale_x != 1.0 or scale_y != 1.0 or dx != 0.0 or dy != 0.0:
+                    transform_matrix = QtGui.QTransform()
+                    transform_matrix.translate(pivot_x, pivot_y)
+                    transform_matrix.rotate(math.degrees(rotation))
+                    transform_matrix.scale(scale_x, scale_y)
+                    transform_matrix.translate(-pivot_x, -pivot_y)
+                    transform_matrix.translate(dx, dy)
+                    painter.setTransform(transform_matrix)
+                
+                if text_format.get("hollow", False):
+                    outline_pen = QtGui.QPen(color, 2)
+                    painter.setPen(outline_pen)
+                    for ddx in [-1, 0, 1]:
+                        for ddy in [-1, 0, 1]:
+                            if ddx != 0 or ddy != 0:
+                                painter.drawText(int(char_x_base), int(char_y_base), char)
+                    painter.setPen(QtGui.QPen(color))
+                else:
+                    painter.drawText(int(char_x_base), int(char_y_base), char)
+                
+                painter.restore()
         
         painter.setClipping(False)
         
         if is_selected:
             painter.setPen(QtGui.QPen(QtGui.QColor(255, 0, 0), 2))
             painter.setBrush(QtGui.QBrush(QtGui.QColor(255, 0, 0, 50)))
+            painter.drawRect(element_rect)
+
+    def _draw_timing(self, painter, element_props, x, y, width, height, element_rect, is_selected, element_id, scale):
+        from datetime import datetime, timedelta
+        from PyQt5.QtCore import QDateTime, Qt
+        
+        timing_props = element_props.get("timing", {})
+        mode = timing_props.get("mode", "suitable_time")
+        
+        element_bounds = QtCore.QRect(x, y, width, height)
+        painter.setClipRect(element_bounds)
+        
+        top_text = timing_props.get("top_text", "To **")
+        top_text_color_str = timing_props.get("top_text_color", "#cdcd00")
+        top_text_color = QtGui.QColor(top_text_color_str)
+        multiline = timing_props.get("multiline", True)
+        top_text_space = timing_props.get("top_text_space", 5)
+        
+        display_style = timing_props.get("display_style", {})
+        display_color_str = display_style.get("color", "#ff9900")
+        display_color = QtGui.QColor(display_color_str)
+        position_align = display_style.get("position_align", "center")
+        
+        font = painter.font()
+        font.setPointSize(max(8, int(24 * scale)))
+        painter.setFont(font)
+        font_metrics = painter.fontMetrics()
+        
+        year_enabled = display_style.get("year", True)
+        day_enabled = display_style.get("day", True)
+        hour_enabled = display_style.get("hour", True)
+        minute_enabled = display_style.get("minute", True)
+        second_enabled = display_style.get("second", True)
+        millisecond_enabled = display_style.get("millisecond", False)
+        
+        now = datetime.now()
+        
+        if mode == "suitable_time":
+            suitable_time = timing_props.get("suitable_time", {})
+            suitable_time_str = suitable_time.get("datetime", "")
+            if suitable_time_str:
+                target_dt = QDateTime.fromString(suitable_time_str, Qt.ISODate)
+                if target_dt.isValid():
+                    target_datetime = target_dt.toPyDateTime()
+                    if now > target_datetime:
+                        time_delta = now - target_datetime
+                    else:
+                        time_delta = timedelta(0)
+                else:
+                    time_delta = timedelta(0)
+            else:
+                time_delta = timedelta(0)
+        elif mode == "count_down":
+            count_down = timing_props.get("count_down", {})
+            count_down_str = count_down.get("datetime", "")
+            if count_down_str:
+                target_dt = QDateTime.fromString(count_down_str, Qt.ISODate)
+                if target_dt.isValid():
+                    target_datetime = target_dt.toPyDateTime()
+                    if target_datetime > now:
+                        time_delta = target_datetime - now
+                    else:
+                        time_delta = timedelta(0)
+                else:
+                    time_delta = timedelta(0)
+            else:
+                time_delta = timedelta(0)
+        else:
+            fixed_time = timing_props.get("fixed_time", {})
+            day_period = fixed_time.get("day_period", 0)
+            time_str = fixed_time.get("time", "")
+            if element_id:
+                current_period_seconds = day_period * 86400
+                if time_str:
+                    time_obj = QDateTime.fromString(time_str, Qt.ISODate).time()
+                    if time_obj.isValid():
+                        current_period_seconds += time_obj.hour() * 3600 + time_obj.minute() * 60 + time_obj.second()
+                
+                if element_id not in self._text_flow_animations:
+                    self._text_flow_animations[element_id] = {
+                        "start_time": QtCore.QDateTime.currentDateTime(),
+                        "period_seconds": current_period_seconds
+                    }
+                
+                anim_state = self._text_flow_animations[element_id]
+                stored_period = anim_state.get("period_seconds", 0)
+                
+                if current_period_seconds != stored_period:
+                    anim_state["start_time"] = QtCore.QDateTime.currentDateTime()
+                    anim_state["period_seconds"] = current_period_seconds
+                    stored_period = current_period_seconds
+                
+                start_dt = anim_state.get("start_time", QtCore.QDateTime.currentDateTime())
+                elapsed_seconds = start_dt.secsTo(QtCore.QDateTime.currentDateTime())
+                remaining_seconds = max(0, stored_period - elapsed_seconds)
+                time_delta = timedelta(seconds=int(remaining_seconds))
+            else:
+                time_delta = timedelta(0)
+        
+        total_seconds = int(time_delta.total_seconds())
+        milliseconds = int(time_delta.total_seconds() * 1000) % 1000
+        
+        years = total_seconds // 31536000
+        remaining = total_seconds % 31536000
+        days = remaining // 86400
+        remaining = remaining % 86400
+        hours = remaining // 3600
+        remaining = remaining % 3600
+        minutes = remaining // 60
+        seconds = remaining % 60
+        
+        if mode == "fixed_time":
+            total_hours = total_seconds // 3600
+            remaining_for_minutes = total_seconds % 3600
+            total_minutes = remaining_for_minutes // 60
+            total_secs = remaining_for_minutes % 60
+            display_text = f"{total_hours:02d}:{total_minutes:02d}:{total_secs:02d}"
+        else:
+            display_parts = []
+            if year_enabled:
+                display_parts.append(f"{years}Y")
+            if day_enabled:
+                display_parts.append(f"{days}D")
+            if hour_enabled:
+                display_parts.append(f"{hours}H")
+            if minute_enabled:
+                display_parts.append(f"{minutes}M")
+            if second_enabled:
+                display_parts.append(f"{seconds}S")
+            if millisecond_enabled:
+                display_parts.append(f"{milliseconds}ms")
+            
+            if not display_parts:
+                display_parts = ["0S"]
+            
+            display_text = " ".join(display_parts)
+        
+        line_height = font_metrics.height()
+        ascent = font_metrics.ascent()
+        descent = font_metrics.descent()
+        
+        if top_text:
+            painter.setPen(QtGui.QPen(top_text_color))
+            if multiline:
+                top_text_lines = [line for line in top_text.split('\n') if line]
+                if not top_text_lines:
+                    top_text_lines = [""]
+                
+                total_lines = len(top_text_lines)
+                total_content_height = total_lines * line_height + max(0, (total_lines - 1) * top_text_space)
+                
+                if position_align == "top":
+                    start_y = y + ascent
+                elif position_align == "center":
+                    start_y = y + max(0, (height - total_content_height) / 2) + ascent
+                else:
+                    start_y = y + max(0, height - total_content_height) + ascent
+                
+                start_y = max(y + ascent, min(start_y, y + height - descent))
+                
+                current_line_y = start_y
+                for line in top_text_lines:
+                    if current_line_y < y or current_line_y + line_height > y + height:
+                        break
+                    
+                    if line:
+                        line_width = font_metrics.width(line)
+                        display_width = font_metrics.width(display_text)
+                        combined_width = line_width + top_text_space + display_width
+                        
+                        line_x = x + max(0, (width - combined_width) / 2)
+                        line_x = max(x, min(line_x, x + max(0, width - min(combined_width, width))))
+                        line_x = int(line_x)
+                        current_line_y_int = int(current_line_y)
+                        
+                        painter.drawText(line_x, current_line_y_int, line)
+                        display_x = line_x + line_width + top_text_space
+                        painter.setPen(QtGui.QPen(display_color))
+                        painter.drawText(display_x, current_line_y_int, display_text)
+                        painter.setPen(QtGui.QPen(top_text_color))
+                    
+                    current_line_y += line_height + top_text_space
+                    if current_line_y > y + height:
+                        break
+            else:
+                single_line_text = top_text.replace('\n', ' ')
+                top_text_width = font_metrics.width(single_line_text)
+                display_width = font_metrics.width(display_text)
+                combined_width = top_text_width + top_text_space + display_width
+                
+                if position_align == "top":
+                    line_y = y + ascent
+                elif position_align == "center":
+                    line_y = y + height / 2 + ascent / 2
+                else:
+                    line_y = y + height - line_height
+                
+                line_y = max(y + ascent, min(int(line_y), y + height - descent))
+                
+                line_x = x + max(0, (width - combined_width) / 2)
+                line_x = max(x, min(int(line_x), x + max(0, width - min(combined_width, width))))
+                
+                painter.drawText(line_x, line_y, single_line_text)
+                display_x = line_x + top_text_width + top_text_space
+                painter.setPen(QtGui.QPen(display_color))
+                painter.drawText(display_x, line_y, display_text)
+        else:
+            display_width = font_metrics.width(display_text)
+            
+            if position_align == "top":
+                display_y = y + ascent
+            elif position_align == "center":
+                display_y = y + height / 2 + ascent / 2
+            else:
+                display_y = y + height - line_height
+            
+            display_y = max(y + ascent, min(int(display_y), y + height - descent))
+            
+            display_x = x + max(0, (width - display_width) / 2)
+            display_x = max(x, min(int(display_x), x + max(0, width - min(display_width, width))))
+            
+            painter.setPen(QtGui.QPen(display_color))
+            painter.drawText(display_x, display_y, display_text)
+        
+        painter.setClipping(False)
+        
+        if is_selected:
+            painter.setPen(QtGui.QPen(QtGui.QColor(255, 0, 0), 2))
+            painter.setBrush(QtGui.QBrush(QtGui.QColor(255, 0, 0, 50)))
+            painter.drawRect(element_rect)
+
+    def _get_sensor_unit(self, sensor_props: dict) -> str:
+        unit = sensor_props.get("unit", "")
+        if unit:
+            return unit
+        
+        sensor_type = sensor_props.get("sensor_type", "temp")
+        unit_map = {
+            "temp": "°C",
+            "Air Humidity": "%",
+            "PM2.5": "",
+            "PM10": "",
+            "Wind power": "LV",
+            "Wind Direction": "wind",
+            "Noise": "dB",
+            "Pressure": "kPa",
+            "Light Intensity": "Lux",
+            "CO2": "ppm"
+        }
+        return unit_map.get(sensor_type, "")
+    
+    def _get_sensor_value(self, sensor_props: dict, sensor_type: str) -> float:
+        stored_value = sensor_props.get("value")
+        if stored_value is not None:
+            try:
+                return float(stored_value)
+            except (ValueError, TypeError):
+                pass
+        
+        default_values = {
+            "temp": 25.0,
+            "Air Humidity": 60.0,
+            "PM2.5": 50.0,
+            "PM10": 70.0,
+            "Wind power": 5.0,
+            "Wind Direction": 180.0,
+            "Noise": 65.0,
+            "Pressure": 1013.25,
+            "Light Intensity": 500.0,
+            "CO2": 400.0
+        }
+        return default_values.get(sensor_type, 0.0)
+    
+    def _draw_sensor(self, painter, element_props, x, y, width, height, element_rect, is_selected, scale):
+        sensor_props = element_props.get("sensor", {})
+        if not isinstance(sensor_props, dict):
+            painter.setPen(QtGui.QPen(QtGui.QColor(255, 20, 147) if is_selected else QtGui.QColor(100, 100, 100), 2))
+            painter.setBrush(QtGui.QBrush(QtGui.QColor(0, 0, 0, 0)))
+            painter.drawRect(element_rect)
+            painter.setPen(QtGui.QPen(QtGui.QColor(255, 255, 255), 1))
+            painter.drawText(element_rect, Qt.AlignCenter, "SENSOR")
+            if is_selected:
+                painter.setPen(QtGui.QPen(QtGui.QColor(255, 0, 0), 2))
+                painter.setBrush(QtGui.QBrush(QtGui.QColor(255, 0, 0, 50)))
+                painter.drawRect(element_rect)
+            return
+        
+        element_bounds = QtCore.QRect(x, y, width, height)
+        painter.setClipRect(element_bounds)
+        
+        sensor_type = sensor_props.get("sensor_type", "temp")
+        fixed_text = sensor_props.get("fixed_text", f"The {sensor_type}")
+        sensor_value = self._get_sensor_value(sensor_props, sensor_type)
+        sensor_unit = self._get_sensor_unit(sensor_props)
+        
+        if sensor_type == "Wind Direction":
+            value_text = f"{int(sensor_value)}"
+        elif sensor_type in ["Light Intensity", "CO2"]:
+            value_text = f"{int(sensor_value)}"
+        else:
+            value_text = f"{sensor_value}"
+        
+        if sensor_unit:
+            display_text = f"{fixed_text} {value_text}{sensor_unit}"
+        else:
+            display_text = f"{fixed_text} {value_text}"
+        
+        font = painter.font()
+        font_family = sensor_props.get("font_family", "Arial")
+        font.setFamily(font_family)
+        font.setPointSize(max(8, int(24 * scale)))
+        painter.setFont(font)
+        font_metrics = painter.fontMetrics()
+        
+        text_width = font_metrics.width(display_text)
+        line_height = font_metrics.height()
+        ascent = font_metrics.ascent()
+        descent = font_metrics.descent()
+        
+        display_x = x + max(0, (width - text_width) / 2)
+        display_x = max(x, min(int(display_x), x + max(0, width - min(text_width, width))))
+        
+        display_y = y + height / 2 + ascent / 2
+        display_y = max(y + ascent, min(int(display_y), y + height - descent))
+        
+        font_color_str = sensor_props.get("font_color", "#FFFFFF")
+        font_color = QtGui.QColor(font_color_str)
+        painter.setPen(QtGui.QPen(font_color))
+        painter.drawText(display_x, display_y, display_text)
+        
+        painter.setClipping(False)
+        
+        if is_selected:
+            painter.setPen(QtGui.QPen(QtGui.QColor(255, 0, 0), 2))
+            painter.setBrush(QtGui.QBrush(QtGui.QColor(255, 0, 0, 50)))
+            painter.drawRect(element_rect)
+
+    def _setup_html_widget(self, painter, element_props, x, y, width, height, element_rect, is_selected, element_id, scale):
+        html_props = element_props.get("html", {})
+        url = html_props.get("url", "https://www.google.com/") if isinstance(html_props, dict) else "https://www.google.com/"
+        
+        if not WEBENGINE_AVAILABLE:
+            painter.setPen(QtGui.QPen(QtGui.QColor(0, 191, 255) if is_selected else QtGui.QColor(100, 100, 100), 2))
+            painter.setBrush(QtGui.QBrush(QtGui.QColor(0, 0, 0, 0)))
+            painter.drawRect(element_rect)
+            painter.setPen(QtGui.QPen(QtGui.QColor(255, 255, 255), 1))
+            painter.drawText(element_rect, Qt.AlignCenter, "HTML\n(WebEngine not available)")
+            if is_selected:
+                painter.setPen(QtGui.QPen(QtGui.QColor(255, 0, 0), 2))
+                painter.setBrush(QtGui.QBrush(QtGui.QColor(255, 0, 0, 50)))
+                painter.drawRect(element_rect)
+            return
+        
+        if element_id not in self._html_widgets:
+            web_view = QWebEngineView(self)
+            web_view.hide()
+            web_view.setAttribute(Qt.WA_OpaquePaintEvent, False)
+            web_view.setAutoFillBackground(False)
+            self._html_widgets[element_id] = web_view
+            web_view.load(QUrl(url))
+        
+        web_view = self._html_widgets[element_id]
+        current_url = web_view.url().toString()
+        if current_url != url:
+            web_view.load(QUrl(url))
+        
+        web_view.setGeometry(int(x), int(y), int(width), int(height))
+        web_view.lower()
+        web_view.show()
+        
+        time_refresh_enabled = html_props.get("time_refresh_enabled", False) if isinstance(html_props, dict) else False
+        time_refresh_value = html_props.get("time_refresh_value", 15.0) if isinstance(html_props, dict) else 15.0
+        
+        if time_refresh_enabled and element_id:
+            if element_id not in self._html_refresh_timers:
+                refresh_timer = QTimer(self)
+                refresh_timer.timeout.connect(lambda: self._refresh_html_page(element_id, url))
+                refresh_timer.setSingleShot(False)
+                self._html_refresh_timers[element_id] = refresh_timer
+                refresh_timer.start(int(time_refresh_value * 1000))
+            else:
+                timer = self._html_refresh_timers[element_id]
+                interval = int(time_refresh_value * 1000)
+                if timer.interval() != interval:
+                    timer.setInterval(interval)
+                if not timer.isActive():
+                    timer.start()
+        else:
+            if element_id in self._html_refresh_timers:
+                self._html_refresh_timers[element_id].stop()
+        
+        if is_selected:
+            painter.setPen(QtGui.QPen(QtGui.QColor(255, 0, 0), 2))
+            painter.setBrush(QtGui.QBrush(QtGui.QColor(255, 0, 0, 0)))
+            painter.drawRect(element_rect)
+    
+    def _refresh_html_page(self, element_id: str, url: str):
+        if element_id in self._html_widgets:
+            web_view = self._html_widgets[element_id]
+            html_props = {}
+            for program in self.screen_manager.current_screen.programs if self.screen_manager and self.screen_manager.current_screen else []:
+                for element in program.elements:
+                    if element.get("id") == element_id:
+                        html_props = element.get("properties", {}).get("html", {})
+                        break
+                if html_props:
+                    break
+            
+            current_url = html_props.get("url", url) if isinstance(html_props, dict) else url
+            web_view.load(QUrl(current_url))
+    
+    def _cleanup_html_widgets(self):
+        current_elements = {e.get("id") for e in self._get_current_program_elements() if e.get("type") == "html"}
+        
+        for element_id in list(self._html_widgets.keys()):
+            if element_id not in current_elements:
+                if element_id in self._html_refresh_timers:
+                    self._html_refresh_timers[element_id].stop()
+                    del self._html_refresh_timers[element_id]
+                if element_id in self._html_widgets:
+                    self._html_widgets[element_id].hide()
+                    self._html_widgets[element_id].deleteLater()
+                    del self._html_widgets[element_id]
+    
+    def _setup_hdmi_widget(self, painter, element_props, x, y, width, height, element_rect, is_selected, element_id, scale):
+        hdmi_props = element_props.get("hdmi", {})
+        display_mode = hdmi_props.get("display_mode", "Full Screen Zoom") if isinstance(hdmi_props, dict) else "Full Screen Zoom"
+        
+        element_bounds = QtCore.QRect(x, y, width, height)
+        painter.setClipRect(element_bounds)
+        
+        painter.setPen(QtGui.QPen(QtGui.QColor(50, 50, 50)))
+        painter.setBrush(QtGui.QBrush(QtGui.QColor(0, 0, 0, 0)))
+        painter.drawRect(element_rect)
+        
+        font = painter.font()
+        font.setPointSize(max(8, int(16 * scale)))
+        painter.setFont(font)
+        font_metrics = painter.fontMetrics()
+        
+        mode_text = f"HDMI: {display_mode}"
+        text_width = font_metrics.width(mode_text)
+        text_height = font_metrics.height()
+        ascent = font_metrics.ascent()
+        
+        text_x = x + (width - text_width) / 2
+        text_y = y + (height + ascent) / 2
+        
+        painter.setPen(QtGui.QPen(QtGui.QColor(200, 200, 200)))
+        painter.drawText(int(text_x), int(text_y), mode_text)
+        
+        if display_mode == "Full Screen Zoom":
+            corner_size = min(width, height) // 8
+            corner_length = corner_size
+            corner_thickness = 2
+            
+            painter.setPen(QtGui.QPen(QtGui.QColor(100, 100, 100), corner_thickness))
+            
+            top_left = QtCore.QPoint(x, y)
+            top_right = QtCore.QPoint(x + width, y)
+            bottom_left = QtCore.QPoint(x, y + height)
+            bottom_right = QtCore.QPoint(x + width, y + height)
+            
+            painter.drawLine(top_left, QtCore.QPoint(x + corner_length, y))
+            painter.drawLine(top_left, QtCore.QPoint(x, y + corner_length))
+            
+            painter.drawLine(top_right, QtCore.QPoint(x + width - corner_length, y))
+            painter.drawLine(top_right, QtCore.QPoint(x + width, y + corner_length))
+            
+            painter.drawLine(bottom_left, QtCore.QPoint(x, y + height - corner_length))
+            painter.drawLine(bottom_left, QtCore.QPoint(x + corner_length, y + height))
+            
+            painter.drawLine(bottom_right, QtCore.QPoint(x + width - corner_length, y + height))
+            painter.drawLine(bottom_right, QtCore.QPoint(x + width, y + height - corner_length))
+        
+        painter.setClipping(False)
+        
+        if is_selected:
+            painter.setPen(QtGui.QPen(QtGui.QColor(255, 0, 0), 2))
+            painter.setBrush(QtGui.QBrush(QtGui.QColor(255, 0, 0, 0)))
             painter.drawRect(element_rect)
 
     def paintEvent(self, event):
@@ -2273,10 +2934,17 @@ class ContentWidget(QtWidgets.QWidget):
             self._cached_size = current_size
         
         painter = QtGui.QPainter(self)
+        if not painter.isActive():
+            return
+        
         painter.drawPixmap(rect.topLeft(), self._cached_pixmap)
         
+        has_screens = self.screen_manager and self.screen_manager.screens and len(self.screen_manager.screens) > 0
+        has_current_screen = self.screen_manager and self.screen_manager.current_screen
+        has_programs = has_current_screen and self.screen_manager.current_screen.programs and len(self.screen_manager.current_screen.programs) > 0
+        
         config = get_screen_config()
-        if config:
+        if config and has_screens and has_current_screen and has_programs:
             screen_width = config.get("width", 0)
             screen_height = config.get("height", 0)
             if screen_width > 0 and screen_height > 0:
@@ -2313,7 +2981,11 @@ class ContentWidget(QtWidgets.QWidget):
                 for widget in self._video_widgets.values():
                     widget.hide()
                 
+                for widget in self._html_widgets.values():
+                    widget.hide()
+                
                 self._cleanup_video_players()
+                self._cleanup_html_widgets()
                 
                 current_elements = {e.get("id") for e in self._get_current_program_elements()}
                 for element_id in list(self._photo_animations.keys()):
@@ -2328,30 +3000,40 @@ class ContentWidget(QtWidgets.QWidget):
                     self._draw_element(painter, element, rect_x, rect_y, scale)
                 
                 painter.setClipping(False)
+        else:
+            self.scale_factor = 1.0
+            self.screen_offset_x = 0
+            self.screen_offset_y = 0
+            for widget in self._video_widgets.values():
+                widget.hide()
+            for widget in self._html_widgets.values():
+                widget.hide()
+            self._cleanup_video_players()
+            self._cleanup_html_widgets()
         
         painter.end()
 
     def _on_property_changed(self, property_name: str, value):
         """Handle property changes from properties panel"""
-        # Update content widget when any property changes
         self.update()
     
     def _update_clocks(self):
-        """Update clock displays - called every second"""
-        # Check if there are any clock elements
         if not self.screen_manager or not self.screen_manager.current_screen:
             return
         
         has_clock = False
+        has_timing = False
         for program in self.screen_manager.current_screen.programs:
             for element in program.elements:
-                if element.get("type", "").lower() == "clock":
+                element_type = element.get("type", "").lower()
+                if element_type == "clock":
                     has_clock = True
-                    break
-            if has_clock:
+                elif element_type == "timing":
+                    has_timing = True
+            if has_clock and has_timing:
                 break
         
-        if has_clock:
+        if has_clock or has_timing:
             self.update()
     
     def resizeEvent(self, event):

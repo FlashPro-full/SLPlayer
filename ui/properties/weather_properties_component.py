@@ -43,6 +43,10 @@ class WeatherPropertiesComponent(BasePropertiesComponent):
         main_layout.setSpacing(12)
         main_layout.setAlignment(Qt.AlignLeft | Qt.AlignTop)
         
+        groups_layout = QHBoxLayout()
+        groups_layout.setSpacing(12)
+        groups_layout.setAlignment(Qt.AlignLeft | Qt.AlignTop)
+        
         self.setStyleSheet("""
             QGroupBox {
                 font-weight: 600;
@@ -87,9 +91,11 @@ class WeatherPropertiesComponent(BasePropertiesComponent):
         
         # Area attribute group (same as text)
         area_group = QGroupBox("Area attribute")
+        area_group.setMaximumWidth(200)
         area_layout = QVBoxLayout(area_group)
         area_layout.setContentsMargins(10, 16, 10, 10)
         area_layout.setSpacing(8)
+        area_layout.setAlignment(Qt.AlignTop)
         
         # Coordinates
         coords_row = QHBoxLayout()
@@ -129,37 +135,10 @@ class WeatherPropertiesComponent(BasePropertiesComponent):
         dims_row.addWidget(self.weather_dims_height)
         area_layout.addLayout(dims_row)
         
-        # Frame options
-        frame_group_layout = QVBoxLayout()
-        frame_group_layout.setSpacing(4)
-        
-        effect_layout = QHBoxLayout()
-        effect_layout.addWidget(QLabel("Effect:"))
-        self.weather_frame_effect_combo = QComboBox()
-        self.weather_frame_effect_combo.addItems(["static", "rotate", "twinkle"])
-        self.weather_frame_effect_combo.setCurrentText("static")
-        self.weather_frame_effect_combo.setEnabled(True)
-        self.weather_frame_effect_combo.currentTextChanged.connect(self._on_frame_effect_changed)
-        effect_layout.addWidget(self.weather_frame_effect_combo, stretch=1)
-        frame_group_layout.addLayout(effect_layout)
-        
-        speed_layout = QHBoxLayout()
-        speed_layout.addWidget(QLabel("Speed:"))
-        self.weather_frame_speed_combo = QComboBox()
-        self.weather_frame_speed_combo.addItems(["slow", "in", "fast"])
-        self.weather_frame_speed_combo.setCurrentText("in")
-        self.weather_frame_speed_combo.setEnabled(True)
-        self.weather_frame_speed_combo.currentTextChanged.connect(self._on_frame_speed_changed)
-        speed_layout.addWidget(self.weather_frame_speed_combo, stretch=1)
-        frame_group_layout.addLayout(speed_layout)
-        
-        area_layout.addLayout(frame_group_layout)
-        area_layout.addStretch()
-        
-        main_layout.addWidget(area_group)
+        groups_layout.addWidget(area_group)
         
         # No title group
-        no_title_group = QGroupBox("No title group")
+        no_title_group = QGroupBox("Weather attribute")
         no_title_layout = QVBoxLayout(no_title_group)
         no_title_layout.setContentsMargins(10, 16, 10, 10)
         no_title_layout.setSpacing(8)
@@ -171,6 +150,7 @@ class WeatherPropertiesComponent(BasePropertiesComponent):
         # City search input with autocomplete
         city_label = QLabel("City:")
         self.weather_city_input = QLineEdit()
+        self.weather_city_input.setText("Rome")
         self.weather_city_input.setPlaceholderText("Search city...")
         self.weather_city_input.textChanged.connect(self._on_city_changed)
         
@@ -194,15 +174,15 @@ class WeatherPropertiesComponent(BasePropertiesComponent):
         # Horizontal Align buttons
         align_label = QLabel("Align:")
         self.weather_align_left_btn = QToolButton()
-        self.weather_align_left_btn.setText("◀")
+        self.weather_align_left_btn.setText("↤")
         self.weather_align_left_btn.setCheckable(True)
         self.weather_align_left_btn.setToolTip("Left")
         self.weather_align_center_btn = QToolButton()
-        self.weather_align_center_btn.setText("⬌")
+        self.weather_align_center_btn.setText("↔")
         self.weather_align_center_btn.setCheckable(True)
         self.weather_align_center_btn.setToolTip("Center")
         self.weather_align_right_btn = QToolButton()
-        self.weather_align_right_btn.setText("▶")
+        self.weather_align_right_btn.setText("↦")
         self.weather_align_right_btn.setCheckable(True)
         self.weather_align_right_btn.setToolTip("Right")
         
@@ -238,41 +218,83 @@ class WeatherPropertiesComponent(BasePropertiesComponent):
         display_mode_layout.addStretch()
         no_title_layout.addLayout(display_mode_layout)
         
-        # Attributes
-        attributes_layout = QVBoxLayout()
-        attributes_layout.setSpacing(6)
+        # Attributes combobox
+        attributes_combo_layout = QHBoxLayout()
+        attributes_combo_layout.setSpacing(8)
+        attributes_combo_layout.addWidget(QLabel("Attributes:"))
+        self.weather_attributes_combo = QComboBox()
+        self.weather_attributes_combo.addItems([
+            "City", "Date", "Temp", "Weather", "Wind speed and Direction",
+            "Air Humidity", "Air Quality", "PM 2.5"
+        ])
+        self.weather_attributes_combo.currentTextChanged.connect(self._on_attribute_selected)
+        attributes_combo_layout.addWidget(self.weather_attributes_combo, stretch=1)
         
-        # City attribute
-        self._add_attribute_row(attributes_layout, "city", "City", "#FF0000")
-        # Date attribute
-        self._add_attribute_row(attributes_layout, "date", "Date", "#0000FF")
-        # Temperature attribute (with oC and F buttons)
-        self._add_temperature_row(attributes_layout)
-        # Weather attribute
-        self._add_attribute_row(attributes_layout, "weather", "Weather", "#00FF00")
-        # Wind speed and Direction attribute
-        self._add_attribute_row(attributes_layout, "wind", "Wind speed and Direction", "#FF00FF")
-        # Air Humidity attribute
-        self._add_attribute_row(attributes_layout, "humidity", "Air Humidity", "#00FFFF")
-        # Air Quality attribute
-        self._add_attribute_row(attributes_layout, "air_quality", "Air Quality", "#FFFF00")
-        # PM 2.5 attribute
-        self._add_attribute_row(attributes_layout, "pm25", "PM 2.5", "#FFA500")
+        self.weather_attribute_color_btn = QPushButton("")
+        self.weather_attribute_color_btn.setFixedSize(30, 25)
+        self.weather_attribute_color_btn.setStyleSheet("background-color: #FF0000;")
+        self.weather_attribute_color_btn.clicked.connect(self._on_selected_attribute_color_clicked)
+        attributes_combo_layout.addWidget(self.weather_attribute_color_btn)
         
-        no_title_layout.addLayout(attributes_layout)
+        self.weather_attribute_enabled_check = QCheckBox("Enabled")
+        self.weather_attribute_enabled_check.setChecked(True)
+        self.weather_attribute_enabled_check.toggled.connect(self._on_selected_attribute_enabled_changed)
+        attributes_combo_layout.addWidget(self.weather_attribute_enabled_check)
+        
+        no_title_layout.addLayout(attributes_combo_layout)
+        
+        self._attribute_map = {
+            "City": ("city", "#FF0000"),
+            "Date": ("date", "#0000FF"),
+            "Temp": ("temp", "#FF0000"),
+            "Weather": ("weather", "#00FF00"),
+            "Wind speed and Direction": ("wind", "#FF00FF"),
+            "Air Humidity": ("humidity", "#00FFFF"),
+            "Air Quality": ("air_quality", "#FFFF00"),
+            "PM 2.5": ("pm25", "#FFA500")
+        }
+        
+        self._temp_unit_widget = QWidget()
+        temp_unit_layout = QHBoxLayout(self._temp_unit_widget)
+        temp_unit_layout.setContentsMargins(0, 0, 0, 0)
+        temp_unit_layout.setSpacing(2)
+        self.weather_temp_unit_c_btn = QToolButton()
+        self.weather_temp_unit_c_btn.setText("°C")
+        self.weather_temp_unit_c_btn.setCheckable(True)
+        self.weather_temp_unit_c_btn.setChecked(True)
+        self.weather_temp_unit_c_btn.clicked.connect(lambda: self._on_temp_unit_changed("C"))
+        self.weather_temp_unit_f_btn = QToolButton()
+        self.weather_temp_unit_f_btn.setText("°F")
+        self.weather_temp_unit_f_btn.setCheckable(True)
+        self.weather_temp_unit_f_btn.clicked.connect(lambda: self._on_temp_unit_changed("F"))
+        self.weather_temp_unit_group = QButtonGroup(self)
+        self.weather_temp_unit_group.addButton(self.weather_temp_unit_c_btn, 0)
+        self.weather_temp_unit_group.addButton(self.weather_temp_unit_f_btn, 1)
+        temp_unit_layout.addWidget(self.weather_temp_unit_c_btn)
+        temp_unit_layout.addWidget(self.weather_temp_unit_f_btn)
+        self._temp_unit_widget.setVisible(False)
+        attributes_combo_layout.addWidget(self._temp_unit_widget)
+        
+        if self.weather_attributes_combo.count() > 0:
+            self.weather_attributes_combo.setCurrentIndex(0)
+            self._on_attribute_selected(self.weather_attributes_combo.currentText())
+        
         no_title_layout.addStretch()
         
-        main_layout.addWidget(no_title_group)
+        groups_layout.addWidget(no_title_group)
         
-        # Animation group (same as text)
+        # Animation group (same as text Display)
         animation_group = QGroupBox("Animation")
-        animation_layout = QVBoxLayout(animation_group)
+        animation_group.setMinimumWidth(350)
+        animation_layout = QHBoxLayout(animation_group)
         animation_layout.setContentsMargins(10, 16, 10, 10)
-        animation_layout.setSpacing(8)
+        animation_layout.setSpacing(12)
         
-        # Fixed and Random buttons
-        buttons_row = QHBoxLayout()
-        buttons_row.setSpacing(8)
+        buttons_column = QVBoxLayout()
+        buttons_column.setSpacing(8)
+        buttons_column.setAlignment(Qt.AlignTop)
+        buttons_column.setContentsMargins(0, 0, 0, 0)
+        
         self.weather_fixed_animation_btn = QPushButton("🚫")
         self.weather_fixed_animation_btn.setFixedSize(44, 44)
         self.weather_fixed_animation_btn.setToolTip("Fixed Animation")
@@ -295,7 +317,7 @@ class WeatherPropertiesComponent(BasePropertiesComponent):
             }
         """)
         self.weather_fixed_animation_btn.clicked.connect(self._on_fixed_animation_clicked)
-        buttons_row.addWidget(self.weather_fixed_animation_btn)
+        buttons_column.addWidget(self.weather_fixed_animation_btn)
         
         self.weather_random_animation_btn = QPushButton("🔀")
         self.weather_random_animation_btn.setFixedSize(44, 44)
@@ -319,22 +341,24 @@ class WeatherPropertiesComponent(BasePropertiesComponent):
             }
         """)
         self.weather_random_animation_btn.clicked.connect(self._on_random_animation_clicked)
-        buttons_row.addWidget(self.weather_random_animation_btn)
-        buttons_row.addStretch()
-        animation_layout.addLayout(buttons_row)
+        buttons_column.addWidget(self.weather_random_animation_btn)
         
-        # Entrance animation
-        entrance_layout = QHBoxLayout()
-        entrance_layout.addWidget(QLabel("Entrance:"))
+        buttons_column.addStretch()
+        animation_layout.addLayout(buttons_column, stretch=1)
+        
+        content_column = QVBoxLayout()
+        content_column.setSpacing(8)
+        content_column.setContentsMargins(0, 0, 0, 0)
+        
+        entrance_row = QHBoxLayout()
+        entrance_row.setSpacing(8)
+        entrance_row.setContentsMargins(0, 0, 0, 12)
         self.weather_entrance_animation_combo = QComboBox()
         animations = self._get_animation_list()
         self.weather_entrance_animation_combo.addItems(animations)
         self.weather_entrance_animation_combo.currentTextChanged.connect(self._on_entrance_animation_changed)
-        entrance_layout.addWidget(self.weather_entrance_animation_combo, stretch=1)
-        animation_layout.addLayout(entrance_layout)
+        entrance_row.addWidget(self.weather_entrance_animation_combo, stretch=1)
         
-        entrance_speed_layout = QHBoxLayout()
-        entrance_speed_layout.addWidget(QLabel("Speed:"))
         self.weather_entrance_speed_combo = QComboBox()
         self.weather_entrance_speed_combo.addItem("1 fast")
         self.weather_entrance_speed_combo.addItems([f"{i}" for i in range(2, 9)])
@@ -342,20 +366,17 @@ class WeatherPropertiesComponent(BasePropertiesComponent):
         self.weather_entrance_speed_combo.setCurrentText("1 fast")
         self.weather_entrance_speed_combo.setMinimumWidth(80)
         self.weather_entrance_speed_combo.currentTextChanged.connect(self._on_entrance_speed_changed)
-        entrance_speed_layout.addWidget(self.weather_entrance_speed_combo)
-        animation_layout.addLayout(entrance_speed_layout)
+        entrance_row.addWidget(self.weather_entrance_speed_combo)
+        content_column.addLayout(entrance_row)
         
-        # Exit animation
-        exit_layout = QHBoxLayout()
-        exit_layout.addWidget(QLabel("Exit:"))
+        exit_row = QHBoxLayout()
+        exit_row.setSpacing(8)
+        exit_row.setContentsMargins(0, 0, 0, 12)
         self.weather_exit_animation_combo = QComboBox()
         self.weather_exit_animation_combo.addItems(animations)
         self.weather_exit_animation_combo.currentTextChanged.connect(self._on_exit_animation_changed)
-        exit_layout.addWidget(self.weather_exit_animation_combo, stretch=1)
-        animation_layout.addLayout(exit_layout)
+        exit_row.addWidget(self.weather_exit_animation_combo, stretch=1)
         
-        exit_speed_layout = QHBoxLayout()
-        exit_speed_layout.addWidget(QLabel("Speed:"))
         self.weather_exit_speed_combo = QComboBox()
         self.weather_exit_speed_combo.addItem("1 fast")
         self.weather_exit_speed_combo.addItems([f"{i}" for i in range(2, 9)])
@@ -363,26 +384,31 @@ class WeatherPropertiesComponent(BasePropertiesComponent):
         self.weather_exit_speed_combo.setCurrentText("1 fast")
         self.weather_exit_speed_combo.setMinimumWidth(80)
         self.weather_exit_speed_combo.currentTextChanged.connect(self._on_exit_speed_changed)
-        exit_speed_layout.addWidget(self.weather_exit_speed_combo)
-        animation_layout.addLayout(exit_speed_layout)
+        exit_row.addWidget(self.weather_exit_speed_combo)
+        content_column.addLayout(exit_row)
         
-        # Hold time
-        hold_time_layout = QHBoxLayout()
-        hold_time_layout.addWidget(QLabel("Hold Time:"))
+        hold_row = QHBoxLayout()
+        hold_row.setSpacing(8)
+        hold_label = QLabel("Hold")
+        hold_label.setStyleSheet("font-weight: 500; color: #333333; min-width: 40px;")
+        hold_row.addWidget(hold_label)
         from PyQt5.QtWidgets import QDoubleSpinBox
         self.weather_hold_time = QDoubleSpinBox()
         self.weather_hold_time.setMinimum(0.0)
-        self.weather_hold_time.setMaximum(999.0)
-        self.weather_hold_time.setSingleStep(0.1)
+        self.weather_hold_time.setMaximum(9999.9)
         self.weather_hold_time.setValue(5.0)
+        self.weather_hold_time.setSuffix("S")
+        self.weather_hold_time.setDecimals(1)
         self.weather_hold_time.valueChanged.connect(self._on_hold_time_changed)
-        hold_time_layout.addWidget(self.weather_hold_time)
-        hold_time_layout.addStretch()
-        animation_layout.addLayout(hold_time_layout)
+        hold_row.addWidget(self.weather_hold_time, stretch=1)
+        content_column.addLayout(hold_row)
         
-        animation_layout.addStretch()
-        main_layout.addWidget(animation_group)
+        content_column.addStretch()
+        animation_layout.addLayout(content_column, stretch=9)
         
+        groups_layout.addWidget(animation_group)
+        
+        main_layout.addLayout(groups_layout)
         main_layout.addStretch()
         
         # Connect signals
@@ -503,27 +529,11 @@ class WeatherPropertiesComponent(BasePropertiesComponent):
         self.weather_dims_width.blockSignals(False)
         self.weather_dims_height.blockSignals(False)
         
-        # Frame
-        frame_props = element_props.get("frame", {})
-        # Effect and speed are always enabled (no checkbox to disable frame)
-        self.weather_frame_effect_combo.setEnabled(True)
-        self.weather_frame_speed_combo.setEnabled(True)
-        
-        effect = frame_props.get("effect", "static") if isinstance(frame_props, dict) else "static"
-        effect_index = self.weather_frame_effect_combo.findText(effect)
-        if effect_index >= 0:
-            self.weather_frame_effect_combo.setCurrentIndex(effect_index)
-        
-        speed = frame_props.get("speed", "in") if isinstance(frame_props, dict) else "in"
-        speed_index = self.weather_frame_speed_combo.findText(speed)
-        if speed_index >= 0:
-            self.weather_frame_speed_combo.setCurrentIndex(speed_index)
-        
         # Weather properties
         weather_props = element_props.get("weather", {})
         
         # City
-        city = weather_props.get("city", "")
+        city = weather_props.get("city", "Rome")
         self.weather_city_input.blockSignals(True)
         self.weather_city_input.setText(city)
         self.weather_city_input.blockSignals(False)
@@ -552,17 +562,27 @@ class WeatherPropertiesComponent(BasePropertiesComponent):
         # Attributes
         attributes = ["city", "date", "temp", "weather", "wind", "humidity", "air_quality", "pm25"]
         for attr in attributes:
-            check = getattr(self, f"weather_{attr}_check", None)
-            color_btn = getattr(self, f"weather_{attr}_color_btn", None)
-            if check and color_btn:
-                enabled = weather_props.get(f"{attr}_enabled", False)
-                color = weather_props.get(f"{attr}_color", "#FF0000")
-                check.blockSignals(True)
-                check.setChecked(enabled)
-                check.blockSignals(False)
-                color_btn.setStyleSheet(f"background-color: {color};")
+            enabled = weather_props.get(f"{attr}_enabled", True)
+            attr_display_name = None
+            for display_name, (key, _) in self._attribute_map.items():
+                if key == attr:
+                    attr_display_name = display_name
+                    break
+            default_color = self._attribute_map.get(attr_display_name or "", ("", "#FF0000"))[1] if attr_display_name else "#FF0000"
+            color = weather_props.get(f"{attr}_color", default_color)
         
-        # Temperature unit
+        current_attr = self.weather_attributes_combo.currentText()
+        if current_attr:
+            attr_key, default_color = self._attribute_map.get(current_attr, ("", "#FF0000"))
+            if attr_key:
+                enabled = weather_props.get(f"{attr_key}_enabled", True)
+                color = weather_props.get(f"{attr_key}_color", default_color)
+                self.weather_attribute_enabled_check.blockSignals(True)
+                self.weather_attribute_enabled_check.setChecked(enabled)
+                self.weather_attribute_enabled_check.blockSignals(False)
+                self.weather_attribute_color_btn.setStyleSheet(f"background-color: {color};")
+                if attr_key == "temp":
+                    self._temp_unit_widget.setVisible(True)
         temp_unit = weather_props.get("temp_unit", "C")
         if temp_unit == "F":
             self.weather_temp_unit_f_btn.setChecked(True)
@@ -715,6 +735,67 @@ class WeatherPropertiesComponent(BasePropertiesComponent):
     
     def _on_temp_unit_changed(self, unit: str):
         self._update_weather_property("temp_unit", unit)
+    
+    def _on_attribute_selected(self, text: str):
+        attr_key, default_color = self._attribute_map.get(text, ("", "#FF0000"))
+        if not attr_key:
+            return
+        
+        if self.current_element and self.current_program:
+            weather_props = self.current_element.get("properties", {}).get("weather", {})
+            enabled = weather_props.get(f"{attr_key}_enabled", True)
+            color = weather_props.get(f"{attr_key}_color", default_color)
+        else:
+            enabled = True
+            color = default_color
+        
+        self.weather_attribute_enabled_check.blockSignals(True)
+        self.weather_attribute_enabled_check.setChecked(enabled)
+        self.weather_attribute_enabled_check.blockSignals(False)
+        self.weather_attribute_color_btn.setStyleSheet(f"background-color: {color};")
+        
+        if attr_key == "temp":
+            self._temp_unit_widget.setVisible(True)
+            if self.current_element and self.current_program:
+                weather_props = self.current_element.get("properties", {}).get("weather", {})
+                temp_unit = weather_props.get("temp_unit", "C")
+                if temp_unit == "F":
+                    self.weather_temp_unit_f_btn.setChecked(True)
+                else:
+                    self.weather_temp_unit_c_btn.setChecked(True)
+            else:
+                self.weather_temp_unit_c_btn.setChecked(True)
+        else:
+            self._temp_unit_widget.setVisible(False)
+    
+    def _on_selected_attribute_enabled_changed(self, enabled: bool):
+        current_attr = self.weather_attributes_combo.currentText()
+        if current_attr:
+            attr_key, _ = self._attribute_map.get(current_attr, ("", ""))
+            if attr_key:
+                self._update_weather_property(f"{attr_key}_enabled", enabled)
+    
+    def _on_selected_attribute_color_clicked(self):
+        current_attr = self.weather_attributes_combo.currentText()
+        if not current_attr:
+            return
+        attr_key, default_color = self._attribute_map.get(current_attr, ("", "#FF0000"))
+        if not attr_key:
+            return
+        
+        current_color = QColor(default_color)
+        current_style = self.weather_attribute_color_btn.styleSheet()
+        if "background-color:" in current_style:
+            try:
+                color_str = current_style.split("background-color:")[1].split(";")[0].strip()
+                current_color = QColor(color_str)
+            except:
+                pass
+        
+        color = QColorDialog.getColor(current_color)
+        if color.isValid():
+            self._update_weather_property(f"{attr_key}_color", color.name())
+            self.weather_attribute_color_btn.setStyleSheet(f"background-color: {color.name()};")
     
     def _on_entrance_animation_changed(self, animation: str):
         if "properties" not in self.current_element:

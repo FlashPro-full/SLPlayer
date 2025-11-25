@@ -1,5 +1,5 @@
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QComboBox,
-                             QPushButton, QGroupBox, QLineEdit, QCheckBox)
+                             QPushButton, QGroupBox, QLineEdit, QCheckBox, QDoubleSpinBox)
 from PyQt5.QtCore import Qt
 from typing import Optional, Dict
 from datetime import datetime
@@ -72,53 +72,43 @@ class HtmlPropertiesComponent(BasePropertiesComponent):
         self.html_dims_width.textChanged.connect(self._on_dims_changed)
         self.html_dims_height.textChanged.connect(self._on_dims_changed)
         
-        frame_group_layout = QVBoxLayout()
-        frame_group_layout.setSpacing(4)
-        
-        frame_checkbox_layout = QHBoxLayout()
-        self.html_frame_checkbox = QCheckBox("Frame")
-        self.html_frame_checkbox.toggled.connect(self._on_frame_enabled_changed)
-        frame_checkbox_layout.addWidget(self.html_frame_checkbox)
-        frame_checkbox_layout.addStretch()
-        frame_group_layout.addLayout(frame_checkbox_layout)
-        
-        border_layout = QHBoxLayout()
-        border_layout.addWidget(QLabel("Border:"))
-        self.html_frame_border_combo = QComboBox()
-        borders = self.get_available_borders()
-        if borders:
-            self.html_frame_border_combo.addItems(["---"] + borders)
-        else:
-            self.html_frame_border_combo.addItems(["---", "000", "001", "002", "003"])
-        self.html_frame_border_combo.setCurrentText("---")
-        self.html_frame_border_combo.setEnabled(False)
-        self.html_frame_border_combo.currentTextChanged.connect(self._on_frame_border_changed)
-        border_layout.addWidget(self.html_frame_border_combo, stretch=1)
-        frame_group_layout.addLayout(border_layout)
-        
-        effect_layout = QHBoxLayout()
-        effect_layout.addWidget(QLabel("Effect:"))
-        self.html_frame_effect_combo = QComboBox()
-        self.html_frame_effect_combo.addItems(["static", "rotate", "twinkle"])
-        self.html_frame_effect_combo.setCurrentText("static")
-        self.html_frame_effect_combo.setEnabled(False)
-        self.html_frame_effect_combo.currentTextChanged.connect(self._on_frame_effect_changed)
-        effect_layout.addWidget(self.html_frame_effect_combo, stretch=1)
-        frame_group_layout.addLayout(effect_layout)
-        
-        speed_layout = QHBoxLayout()
-        speed_layout.addWidget(QLabel("Speed:"))
-        self.html_frame_speed_combo = QComboBox()
-        self.html_frame_speed_combo.addItems(["slow", "in", "fast"])
-        self.html_frame_speed_combo.setCurrentText("in")
-        self.html_frame_speed_combo.setEnabled(False)
-        self.html_frame_speed_combo.currentTextChanged.connect(self._on_frame_speed_changed)
-        speed_layout.addWidget(self.html_frame_speed_combo, stretch=1)
-        frame_group_layout.addLayout(speed_layout)
-        
-        area_layout.addLayout(frame_group_layout)
-        
         main_layout.addWidget(area_group)
+        
+        html_group = QGroupBox("HTML attribute")
+        html_group.setMinimumWidth(350)
+        html_layout = QVBoxLayout(html_group)
+        html_layout.setContentsMargins(10, 16, 10, 10)
+        html_layout.setSpacing(8)
+        
+        url_layout = QHBoxLayout()
+        url_layout.addWidget(QLabel("URL:"))
+        self.html_url_input = QLineEdit()
+        self.html_url_input.setPlaceholderText("https://www.google.com/")
+        self.html_url_input.setText("https://www.google.com/")
+        self.html_url_input.textChanged.connect(self._on_url_changed)
+        url_layout.addWidget(self.html_url_input, stretch=1)
+        html_layout.addLayout(url_layout)
+        
+        refresh_layout = QHBoxLayout()
+        self.html_time_refresh_check = QCheckBox("Time refresh")
+        self.html_time_refresh_check.setChecked(False)
+        self.html_time_refresh_check.toggled.connect(self._on_time_refresh_toggled)
+        refresh_layout.addWidget(self.html_time_refresh_check)
+        
+        self.html_time_refresh_value = QDoubleSpinBox()
+        self.html_time_refresh_value.setMinimum(0.1)
+        self.html_time_refresh_value.setMaximum(9999.9)
+        self.html_time_refresh_value.setValue(15.0)
+        self.html_time_refresh_value.setSuffix("s")
+        self.html_time_refresh_value.setDecimals(1)
+        self.html_time_refresh_value.setEnabled(False)
+        self.html_time_refresh_value.valueChanged.connect(self._on_time_refresh_value_changed)
+        refresh_layout.addWidget(self.html_time_refresh_value)
+        refresh_layout.addStretch()
+        html_layout.addLayout(refresh_layout)
+        
+        html_layout.addStretch()
+        main_layout.addWidget(html_group)
         main_layout.addStretch()
     
     def set_program_data(self, program, element):
@@ -159,37 +149,21 @@ class HtmlPropertiesComponent(BasePropertiesComponent):
         self.html_dims_width.blockSignals(False)
         self.html_dims_height.blockSignals(False)
         
-        frame_props = element_props.get("frame", {})
-        frame_enabled = frame_props.get("enabled", False) if isinstance(frame_props, dict) else False
-        self.html_frame_checkbox.blockSignals(True)
-        self.html_frame_checkbox.setChecked(frame_enabled)
-        self.html_frame_checkbox.setEnabled(True)
-        self.html_frame_checkbox.blockSignals(False)
+        html_props = element_props.get("html", {})
+        url = html_props.get("url", "https://www.google.com/") if isinstance(html_props, dict) else "https://www.google.com/"
+        self.html_url_input.blockSignals(True)
+        self.html_url_input.setText(url)
+        self.html_url_input.blockSignals(False)
         
-        self.html_frame_border_combo.setEnabled(frame_enabled)
-        self.html_frame_effect_combo.setEnabled(frame_enabled)
-        self.html_frame_speed_combo.setEnabled(frame_enabled)
-        
-        border = frame_props.get("border", "---") if isinstance(frame_props, dict) else "---"
-        border_index = self.html_frame_border_combo.findText(border)
-        if border_index >= 0:
-            self.html_frame_border_combo.setCurrentIndex(border_index)
-        else:
-            self.html_frame_border_combo.setCurrentIndex(0)
-        
-        effect = frame_props.get("effect", "static") if isinstance(frame_props, dict) else "static"
-        effect_index = self.html_frame_effect_combo.findText(effect)
-        if effect_index >= 0:
-            self.html_frame_effect_combo.setCurrentIndex(effect_index)
-        else:
-            self.html_frame_effect_combo.setCurrentIndex(0)
-        
-        speed = frame_props.get("speed", "in") if isinstance(frame_props, dict) else "in"
-        speed_index = self.html_frame_speed_combo.findText(speed)
-        if speed_index >= 0:
-            self.html_frame_speed_combo.setCurrentIndex(speed_index)
-        else:
-            self.html_frame_speed_combo.setCurrentIndex(1)
+        time_refresh_enabled = html_props.get("time_refresh_enabled", False) if isinstance(html_props, dict) else False
+        time_refresh_value = html_props.get("time_refresh_value", 15.0) if isinstance(html_props, dict) else 15.0
+        self.html_time_refresh_check.blockSignals(True)
+        self.html_time_refresh_check.setChecked(time_refresh_enabled)
+        self.html_time_refresh_check.blockSignals(False)
+        self.html_time_refresh_value.setEnabled(time_refresh_enabled)
+        self.html_time_refresh_value.blockSignals(True)
+        self.html_time_refresh_value.setValue(time_refresh_value)
+        self.html_time_refresh_value.blockSignals(False)
     
     def _on_coords_changed(self):
         if not self.current_element or not self.current_program:
@@ -238,60 +212,40 @@ class HtmlPropertiesComponent(BasePropertiesComponent):
         except ValueError:
             pass
     
-    def _on_frame_enabled_changed(self, enabled: bool):
+    def _on_url_changed(self, url: str):
         if not self.current_element or not self.current_program:
-            self.html_frame_checkbox.blockSignals(True)
-            self.html_frame_checkbox.setEnabled(False)
-            self.html_frame_checkbox.setChecked(False)
-            self.html_frame_checkbox.blockSignals(False)
             return
-        
-        self.html_frame_checkbox.setEnabled(True)
-        self.html_frame_border_combo.setEnabled(enabled)
-        self.html_frame_effect_combo.setEnabled(enabled)
-        self.html_frame_speed_combo.setEnabled(enabled)
         if "properties" not in self.current_element:
             self.current_element["properties"] = {}
-        if "frame" not in self.current_element["properties"]:
-            self.current_element["properties"]["frame"] = {}
-        self.current_element["properties"]["frame"]["enabled"] = enabled
+        if "html" not in self.current_element["properties"]:
+            self.current_element["properties"]["html"] = {}
+        self.current_element["properties"]["html"]["url"] = url
         self.current_program.modified = datetime.now().isoformat()
-        self.property_changed.emit("html_frame_enabled", enabled)
+        self.property_changed.emit("html_url", url)
         self._trigger_autosave()
     
-    def _on_frame_border_changed(self, border: str):
+    def _on_time_refresh_toggled(self, enabled: bool):
+        self.html_time_refresh_value.setEnabled(enabled)
         if not self.current_element or not self.current_program:
             return
         if "properties" not in self.current_element:
             self.current_element["properties"] = {}
-        if "frame" not in self.current_element["properties"]:
-            self.current_element["properties"]["frame"] = {}
-        self.current_element["properties"]["frame"]["border"] = border
+        if "html" not in self.current_element["properties"]:
+            self.current_element["properties"]["html"] = {}
+        self.current_element["properties"]["html"]["time_refresh_enabled"] = enabled
         self.current_program.modified = datetime.now().isoformat()
-        self.property_changed.emit("html_frame_border", border)
+        self.property_changed.emit("html_time_refresh_enabled", enabled)
         self._trigger_autosave()
     
-    def _on_frame_effect_changed(self, effect: str):
+    def _on_time_refresh_value_changed(self, value: float):
         if not self.current_element or not self.current_program:
             return
         if "properties" not in self.current_element:
             self.current_element["properties"] = {}
-        if "frame" not in self.current_element["properties"]:
-            self.current_element["properties"]["frame"] = {}
-        self.current_element["properties"]["frame"]["effect"] = effect
+        if "html" not in self.current_element["properties"]:
+            self.current_element["properties"]["html"] = {}
+        self.current_element["properties"]["html"]["time_refresh_value"] = value
         self.current_program.modified = datetime.now().isoformat()
-        self.property_changed.emit("html_frame_effect", effect)
-        self._trigger_autosave()
-    
-    def _on_frame_speed_changed(self, speed: str):
-        if not self.current_element or not self.current_program:
-            return
-        if "properties" not in self.current_element:
-            self.current_element["properties"] = {}
-        if "frame" not in self.current_element["properties"]:
-            self.current_element["properties"]["frame"] = {}
-        self.current_element["properties"]["frame"]["speed"] = speed
-        self.current_program.modified = datetime.now().isoformat()
-        self.property_changed.emit("html_frame_speed", speed)
+        self.property_changed.emit("html_time_refresh_value", value)
         self._trigger_autosave()
 
