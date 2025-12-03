@@ -1,6 +1,6 @@
 from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
                              QLineEdit, QPushButton, QMessageBox, QCheckBox, QWidget)
-from PyQt5.QtCore import Qt, QThread, pyqtSignal, QTimer
+from PyQt5.QtCore import Qt, QThread, pyqtSignal, QTimer, QEventLoop
 from pathlib import Path
 import json
 from typing import Optional
@@ -8,6 +8,8 @@ from utils.logger import get_logger
 from utils.app_data import get_credentials_file, ensure_app_data_dir
 from ui.widgets.toast import ToastManager
 from ui.widgets.loading_spinner import LoadingWidget
+from services.controller_service import ControllerService
+from controllers.base_controller import BaseController
 
 logger = get_logger(__name__)
 
@@ -45,20 +47,79 @@ class LicenseDialog(QDialog):
         self.setMinimumWidth(450)
         self.setModal(True)
         self.license_valid = False
-        
-
-        if controller_id is None:
-
-            controller_id = "HD-M30-00123456"
+        self.controller_service = ControllerService()
+        self.activation_thread = None
         
         self.controller_id = controller_id
-        self.activation_thread = None
         self.init_ui()
         self.load_saved_email()
         
-
-        if controller_id:
+        if controller_id is None:
+            QTimer.singleShot(100, self._auto_scan_and_connect)
+        elif controller_id:
             self.check_license_status()
+    
+    def _auto_scan_and_connect(self):
+        if hasattr(self, 'controller_id_label'):
+            self.controller_id_label.setText("Scanning network...")
+            self.controller_id_label.setStyleSheet("font-weight: normal; color: #666; font-size: 11pt; padding: 8px; background-color: #FFF9C4; border: 1px solid #FBC02D; border-radius: 4px;")
+        
+        controller_id = self._discover_controller_id()
+        
+        if controller_id:
+            self.controller_id = controller_id
+            if hasattr(self, 'controller_id_label'):
+                self.controller_id_label.setText(controller_id)
+                self.controller_id_label.setStyleSheet("font-weight: bold; color: #2196F3; font-size: 12pt; padding: 8px; background-color: #F5F5F5; border: 1px solid #CCC; border-radius: 4px;")
+            self._update_ui_for_controller()
+            self.check_license_status()
+            if hasattr(self, 'refresh_btn'):
+                ToastManager.success(self, f"Connected to controller: {controller_id}", duration=2000)
+        else:
+            self.controller_id = None
+            if hasattr(self, 'controller_id_label'):
+                self.controller_id_label.setText("Not connected - No controller found on network")
+                self.controller_id_label.setStyleSheet("font-weight: normal; color: #666; font-size: 11pt; padding: 8px; background-color: #F5F5F5; border: 1px solid #CCC; border-radius: 4px; font-style: italic;")
+            self._update_ui_for_controller()
+    
+    def _discover_controller_id(self) -> Optional[str]:
+        try:
+            logger.info("Scanning network for controllers...")
+            
+            discovered = self.controller_service.discover_controllers(timeout=20)
+            
+            if discovered:
+                first_controller = discovered[0]
+                logger.info(f"Found controller: {first_controller.ip}:{first_controller.port} ({first_controller.controller_type})")
+                
+                success = self.controller_service.connect_to_controller(
+                    first_controller.ip,
+                    first_controller.port,
+                    first_controller.controller_type,
+                    first_controller
+                )
+                
+                if success and self.controller_service.current_controller:
+                    device_info = self.controller_service.get_device_info()
+                    if device_info:
+                        logger.info(f"Retrieved all controller information: {device_info}")
+                    
+                    controller_id = self.controller_service.current_controller.get_controller_id()
+                    if controller_id:
+                        logger.info(f"Retrieved controller ID: {controller_id}")
+                        return controller_id
+                    else:
+                        logger.warning("Connected to controller but could not get controller ID")
+                        self.controller_service.disconnect()
+                else:
+                    logger.warning(f"Failed to connect to discovered controller at {first_controller.ip}:{first_controller.port}")
+            else:
+                logger.info("No controllers found on network")
+                
+        except Exception as e:
+            logger.exception(f"Error discovering controller ID: {e}")
+        
+        return None
     
     def init_ui(self):
         layout = QVBoxLayout(self)
@@ -103,14 +164,27 @@ class LicenseDialog(QDialog):
         controller_label = QLabel("Controller ID:")
         controller_layout.addWidget(controller_label)
         
+        # Add refresh button to rescan for controllers
+        refresh_layout = QHBoxLayout()
+        refresh_layout.setContentsMargins(0, 0, 0, 0)
+        
         if self.controller_id:
             controller_id_label = QLabel(self.controller_id)
             controller_id_label.setStyleSheet("font-weight: bold; color: #2196F3; font-size: 12pt; padding: 8px; background-color: #F5F5F5; border: 1px solid #CCC; border-radius: 4px;")
         else:
-            controller_id_label = QLabel("Not connected")
+            controller_id_label = QLabel("Not connected - No controller found on network")
             controller_id_label.setStyleSheet("font-weight: normal; color: #666; font-size: 11pt; padding: 8px; background-color: #F5F5F5; border: 1px solid #CCC; border-radius: 4px; font-style: italic;")
         
-        controller_layout.addWidget(controller_id_label)
+        refresh_layout.addWidget(controller_id_label)
+        
+        refresh_btn = QPushButton("Scan")
+        refresh_btn.setMaximumWidth(80)
+        refresh_btn.setToolTip("Scan network for connected controllers")
+        refresh_btn.clicked.connect(lambda: self._refresh_controller_id(controller_id_label))
+        refresh_layout.addWidget(refresh_btn)
+        
+        controller_layout.addLayout(refresh_layout)
+        self.controller_id_label = controller_id_label  # Store reference for refresh
         layout.addLayout(controller_layout)
         layout.addSpacing(10)
         
@@ -468,6 +542,50 @@ class LicenseDialog(QDialog):
     
     def is_license_valid(self) -> bool:
         return self.license_valid
+    
+    def _refresh_controller_id(self, label_widget: QLabel):
+        try:
+            if self.controller_service.current_controller:
+                self.controller_service.disconnect()
+            
+            label_widget.setText("Scanning network...")
+            label_widget.setStyleSheet("font-weight: normal; color: #666; font-size: 11pt; padding: 8px; background-color: #FFF9C4; border: 1px solid #FBC02D; border-radius: 4px;")
+            
+            controller_id = self._discover_controller_id()
+            
+            if controller_id:
+                self.controller_id = controller_id
+                label_widget.setText(controller_id)
+                label_widget.setStyleSheet("font-weight: bold; color: #2196F3; font-size: 12pt; padding: 8px; background-color: #F5F5F5; border: 1px solid #CCC; border-radius: 4px;")
+                self.check_license_status()
+                self._update_ui_for_controller()
+                ToastManager.success(self, f"Found controller: {controller_id}", duration=2000)
+            else:
+                self.controller_id = None
+                label_widget.setText("Not connected - No controller found on network")
+                label_widget.setStyleSheet("font-weight: normal; color: #666; font-size: 11pt; padding: 8px; background-color: #F5F5F5; border: 1px solid #CCC; border-radius: 4px; font-style: italic;")
+                self._update_ui_for_controller()
+                ToastManager.warning(self, "No controllers found on network", duration=3000)
+                
+        except Exception as e:
+            logger.exception(f"Error refreshing controller ID: {e}")
+            label_widget.setText("Error scanning network")
+            label_widget.setStyleSheet("font-weight: normal; color: #D32F2F; font-size: 11pt; padding: 8px; background-color: #FFEBEE; border: 1px solid #D32F2F; border-radius: 4px;")
+            ToastManager.error(self, f"Error scanning: {str(e)}", duration=3000)
+    
+    def _update_ui_for_controller(self):
+        """Update UI elements based on whether controller is connected"""
+        # Re-check license status if controller is found
+        if self.controller_id:
+            self.check_license_status()
+            # If activation section doesn't exist, we need to recreate the UI
+            # For simplicity, we'll just update the status
+            if hasattr(self, 'activation_section'):
+                if hasattr(self, 'activate_btn'):
+                    self.activate_btn.setEnabled(True)
+                if hasattr(self, 'activation_status'):
+                    self.activation_status.setText("License not activated. Enter your email and click 'Activate License' to activate online.")
+                    self.activation_status.setStyleSheet("color: orange; font-size: 10pt;")
 
 
 LoginDialog = LicenseDialog

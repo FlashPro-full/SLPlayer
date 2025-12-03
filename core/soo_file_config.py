@@ -33,6 +33,7 @@ class SOOFileConfig:
     modified: str = ""
     screen_properties: ScreenPropertiesConfig = field(default_factory=ScreenPropertiesConfig)
     programs: List[Dict] = field(default_factory=list)
+    schedule: Optional[Dict] = None
     
     def __post_init__(self):
         if not self.created:
@@ -41,7 +42,7 @@ class SOOFileConfig:
             self.modified = datetime.now().isoformat()
     
     def to_dict(self) -> Dict[str, Any]:
-        return {
+        result = {
             "version": self.version,
             "file_format": self.file_format,
             "created": self.created,
@@ -49,6 +50,9 @@ class SOOFileConfig:
             "screen_properties": self.screen_properties.to_dict(),
             "programs": self.programs
         }
+        if self.schedule:
+            result["schedule"] = self.schedule
+        return result
     
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'SOOFileConfig':
@@ -60,5 +64,6 @@ class SOOFileConfig:
             created=data.get("created", datetime.now().isoformat()),
             modified=data.get("modified", datetime.now().isoformat()),
             screen_properties=screen_props,
-            programs=data.get("programs", [])
+            programs=data.get("programs", []),
+            schedule=data.get("schedule")
         )

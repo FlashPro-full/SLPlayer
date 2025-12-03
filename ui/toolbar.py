@@ -24,8 +24,8 @@ class BaseToolbar(QToolBar):
             QToolBar {
                 background-color: #D6D6D6;
                 border: 1px solid #B0B0B0;
-                spacing: 3px;
-                padding: 2px;
+                spacing: 0px;
+                padding: 0px;
                 font-size: 14px;
             }
             QToolBar::separator:vertical {
@@ -42,29 +42,13 @@ class BaseToolbar(QToolBar):
                 background-color: #D6D6D6;
                 border: 1px solid #B0B0B0;
                 border-radius: 4px;
-                padding: 6px 10px;
+                padding: 6px 0px;
                 margin: 1px;
             }
             QToolBar::extension:hover {
                 background-color: #E8F4F8;
             }
             QToolBar::extension:pressed {
-                background-color: #D0E8F2;
-            }
-            QToolButton {
-                background-color: transparent;
-                border: none;
-                border-radius: 4px;
-                padding: 6px 10px;
-                margin: 1px;
-                font-size: 14px;
-                font-weight: normal;
-            }
-            QToolButton:hover {
-                background-color: #E8F4F8;
-                border: 1px solid #4A90E2;
-            }
-            QToolButton:pressed {
                 background-color: #D0E8F2;
             }
         """)
@@ -80,6 +64,7 @@ class BaseToolbar(QToolBar):
             layout = self.layout()
             if layout:
                 layout.setAlignment(Qt.AlignLeft | Qt.AlignTop)
+                layout.setContentsMargins(2, 2, 2, 2)
             
             for action in self.actions():
                 widget = self.widgetForAction(action)
@@ -87,16 +72,18 @@ class BaseToolbar(QToolBar):
                     widget.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
                     widget.setLayoutDirection(Qt.LeftToRight)
                     widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+                    widget.setMinimumWidth(0)
                     widget.setStyleSheet("""
                         QToolButton {
                             background-color: transparent;
                             border: none;
                             border-radius: 4px;
-                            padding: 6px 10px;
+                            padding: 6px 0px;
                             margin: 1px;
                             text-align: left;
                             font-size: 14px;
                             font-weight: normal;
+                            width: 120px;
                         }
                         QToolButton:hover {
                             background-color: #E8F4F8;

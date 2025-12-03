@@ -17,6 +17,7 @@ class FileManager:
         try:
             from core.soo_file_config import SOOFileConfig, ScreenPropertiesConfig
             from core.screen_config import get_screen_config
+            from core.schedule_manager import ScheduleManager
             
             if properties_panel:
                 properties_panel.save_all_current_properties()
@@ -32,9 +33,20 @@ class FileManager:
                 rotation=screen_config.get("rotate", 0) if screen_config else 0
             )
             
+            schedule_data = None
+            try:
+                from utils.app_data import get_app_data_dir
+                schedule_file = get_app_data_dir() / "schedules.json"
+                if schedule_file.exists():
+                    with open(schedule_file, 'r', encoding='utf-8') as f:
+                        schedule_data = json.load(f)
+            except Exception as e:
+                logger.debug(f"Could not load schedule data for saving: {e}")
+            
             file_config = SOOFileConfig(
                 screen_properties=screen_props,
-                programs=[p.to_dict() for p in screen.programs]
+                programs=[p.to_dict() for p in screen.programs],
+                schedule=schedule_data
             )
             
             data = file_config.to_dict()
@@ -59,6 +71,7 @@ class FileManager:
         try:
             from core.soo_file_config import SOOFileConfig
             from core.screen_config import set_screen_config
+            from core.schedule_manager import ScheduleManager
             
             file_path_obj = Path(file_path)
             if not file_path_obj.exists():
@@ -81,6 +94,16 @@ class FileManager:
                 program = Program()
                 program.from_dict(program_data)
                 screen.add_program(program)
+            
+            if file_config.schedule:
+                try:
+                    from utils.app_data import get_app_data_dir
+                    schedule_file = get_app_data_dir() / "schedules.json"
+                    schedule_file.parent.mkdir(parents=True, exist_ok=True)
+                    with open(schedule_file, 'w', encoding='utf-8') as f:
+                        json.dump(file_config.schedule, f, indent=2, ensure_ascii=False)
+                except Exception as e:
+                    logger.debug(f"Could not save schedule data: {e}")
             
             screen.file_path = file_path
             

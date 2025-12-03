@@ -5,10 +5,8 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5.QtCore import Qt, pyqtSignal, QTimer
 from typing import List, Optional
-from core.controller_discovery import ControllerDiscovery, ControllerInfo
-from controllers.base_controller import BaseController, ControllerType
-from controllers.novastar import NovaStarController
-from controllers.huidu import HuiduController
+from core.controller_discovery import ControllerInfo
+from services.controller_service import ControllerService
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -18,16 +16,23 @@ class DashboardDialog(QDialog):
     
     controller_selected = pyqtSignal(str, int, str)
     
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, controller_service: Optional[ControllerService] = None):
         super().__init__(parent)
         self.setWindowTitle("Controller Dashboard - Detected Displays")
         self.setModal(False)
         self.setMinimumWidth(800)
         self.setMinimumHeight(600)
         
-        self.discovery = ControllerDiscovery(self)
+        # Use provided controller service or get from parent
+        if controller_service:
+            self.controller_service = controller_service
+        elif parent and hasattr(parent, 'controller_service'):
+            self.controller_service = parent.controller_service
+        else:
+            self.controller_service = ControllerService()
+        
         self.controllers: List[ControllerInfo] = []
-        self.current_controller: Optional[BaseController] = None
+        self._selected_controller_info: Optional[ControllerInfo] = None
         
         self.init_ui()
         self.connect_signals()
@@ -89,15 +94,21 @@ class DashboardDialog(QDialog):
         layout.addLayout(button_layout)
     
     def connect_signals(self):
-        self.discovery.controller_found.connect(self.on_controller_found)
-        self.discovery.discovery_finished.connect(self.on_discovery_finished)
+        # Connect to controller service discovery signals
+        self.controller_service.discovery.controller_found.connect(self.on_controller_found)
+        self.controller_service.discovery.discovery_finished.connect(self.on_discovery_finished)
     
     def start_discovery(self):
         self.controllers.clear()
         self.table.setRowCount(0)
         self.status_label.setText("Scanning network for controllers...")
         self.progress_bar.setRange(0, 0)
-        self.discovery.start_scan()
+        # Use controller service to discover
+        discovered = self.controller_service.discover_controllers(timeout=20)
+        if discovered:
+            self.controllers = discovered
+            self.update_table()
+            self.on_discovery_finished()
     
     def on_controller_found(self, controller_info: ControllerInfo):
         self.controllers.append(controller_info)
@@ -119,61 +130,68 @@ class DashboardDialog(QDialog):
             self.table.setItem(row, 1, QTableWidgetItem(str(controller.port)))
             self.table.setItem(row, 2, QTableWidgetItem(controller.controller_type.upper()))
             self.table.setItem(row, 3, QTableWidgetItem(controller.name or "Unknown"))
-            self.table.setItem(row, 4, QTableWidgetItem(controller.model or "Unknown"))
+            self.table.setItem(row, 4, QTableWidgetItem(getattr(controller, 'model', None) or "Unknown"))
             self.table.setItem(row, 5, QTableWidgetItem(controller.firmware_version or "Unknown"))
-            self.table.setItem(row, 6, QTableWidgetItem(controller.display_resolution or "Unknown"))
-            self.table.setItem(row, 7, QTableWidgetItem(controller.display_name or "Unknown"))
+            self.table.setItem(row, 6, QTableWidgetItem(str(controller.display_resolution) if controller.display_resolution else "Unknown"))
+            self.table.setItem(row, 7, QTableWidgetItem(getattr(controller, 'display_name', None) or "Unknown"))
             
-
+            # Status item
             status_item = QTableWidgetItem("Checking...")
             self.table.setItem(row, 8, status_item)
             
-
-            self.check_controller_status(controller, row)
+            # Check controller status asynchronously
+            QTimer.singleShot(100 * (row + 1), lambda r=row, c=controller: self.check_controller_status(c, r))
     
     def check_controller_status(self, controller_info: ControllerInfo, row: int):
+        """Check controller status asynchronously"""
         try:
-            if controller_info.controller_type == "novastar":
-                controller = NovaStarController(controller_info.ip, controller_info.port)
-            elif controller_info.controller_type == "huidu":
-                controller = HuiduController(controller_info.ip, controller_info.port)
-            else:
-                self.table.item(row, 6).setText("Unknown Type")
-                return
+            # Try to connect using controller service
+            success = self.controller_service.connect_to_controller(
+                controller_info.ip,
+                controller_info.port,
+                controller_info.controller_type
+            )
             
-            if controller.connect():
+            if success and self.controller_service.current_controller:
+                controller = self.controller_service.current_controller
                 device_info = controller.get_device_info()
                 if device_info:
-
+                    # Update controller info with device data
                     if "firmware_version" in device_info:
                         controller_info.firmware_version = device_info["firmware_version"]
-                    if "resolution" in device_info:
-                        controller_info.display_resolution = device_info["resolution"]
+                    if "resolution" in device_info or "display_resolution" in device_info:
+                        controller_info.display_resolution = device_info.get("resolution") or device_info.get("display_resolution")
                     if "name" in device_info:
                         controller_info.name = device_info["name"]
+                    if "model" in device_info:
+                        controller_info.model = device_info["model"]
+                    if "display_name" in device_info:
+                        controller_info.display_name = device_info["display_name"]
                     
-
+                    # Update table
                     if controller_info.firmware_version:
                         self.table.item(row, 5).setText(controller_info.firmware_version)
                     if controller_info.display_resolution:
-                        self.table.item(row, 6).setText(controller_info.display_resolution)
+                        self.table.item(row, 6).setText(str(controller_info.display_resolution))
                     if controller_info.name:
                         self.table.item(row, 3).setText(controller_info.name)
-                    if "model" in device_info:
-                        self.table.item(row, 4).setText(device_info.get("model", "Unknown"))
-                    if "display_name" in device_info:
-                        self.table.item(row, 7).setText(device_info.get("display_name", "Unknown"))
+                    if controller_info.model:
+                        self.table.item(row, 4).setText(controller_info.model)
+                    if controller_info.display_name:
+                        self.table.item(row, 7).setText(controller_info.display_name)
                 
                 self.table.item(row, 8).setText("Connected")
                 self.table.item(row, 8).setForeground(Qt.darkGreen)
-                controller.disconnect()
+                # Disconnect after checking
+                self.controller_service.disconnect()
             else:
                 self.table.item(row, 8).setText("Disconnected")
                 self.table.item(row, 8).setForeground(Qt.red)
         except Exception as e:
-            logger.error(f"Error checking controller status: {e}")
-            self.table.item(row, 8).setText("Error")
-            self.table.item(row, 8).setForeground(Qt.red)
+            logger.error(f"Error checking controller status: {e}", exc_info=True)
+            if row < self.table.rowCount():
+                self.table.item(row, 8).setText("Error")
+                self.table.item(row, 8).setForeground(Qt.red)
     
     def on_table_double_click(self, index):
         self.on_connect()
@@ -189,11 +207,15 @@ class DashboardDialog(QDialog):
             return
         
         controller_info = self.controllers[row]
+        # Emit with controller_info as additional parameter
+        # Note: pyqtSignal doesn't support optional args, so we'll pass it as a dict
         self.controller_selected.emit(
             controller_info.ip,
             controller_info.port,
             controller_info.controller_type
         )
+        # Store controller_info for connection
+        self._selected_controller_info = controller_info
         self.accept()
     
     def exec_(self):

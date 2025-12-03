@@ -179,19 +179,30 @@ class BaseController(ABC):
     def get_brightness(self) -> Optional[int]:
         return None
     
-    def set_brightness(self, brightness: int) -> bool:
+    def set_brightness(self, brightness: int, brightness_settings: Optional[Dict] = None) -> bool:
+        """Set brightness. brightness_settings can contain time_ranges and sensor settings."""
         return False
     
     def get_power_schedule(self) -> Optional[Dict]:
         return None
     
-    def set_power_schedule(self, on_time: str, off_time: str, enabled: bool = True) -> bool:
+    def set_power_schedule(self, schedule: Dict) -> bool:
+        """Set power schedule. Accepts either simple format or full schedule dict."""
         return False
     
     def get_network_config(self) -> Optional[Dict]:
         return None
     
     def set_network_config(self, network_config: Dict) -> bool:
+        return False
+    
+    def get_wifi_config(self) -> Optional[Dict]:
+        return None
+    
+    def set_wifi_config(self, wifi_config: Dict) -> bool:
+        return False
+    
+    def reboot(self) -> bool:
         return False
     
     def delete_program(self, program_id: str) -> bool:

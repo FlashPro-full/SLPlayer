@@ -19,11 +19,41 @@ class NTPSync:
     TIMEOUT = 3.0
     
     @staticmethod
+    def has_internet_connectivity() -> bool:
+        """
+        Check if LAN has internet connectivity.
+        Returns True if internet is available, False otherwise.
+        """
+        try:
+            test_hosts = ["8.8.8.8", "1.1.1.1", "it.pool.ntp.org"]
+            for host in test_hosts:
+                try:
+                    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    sock.settimeout(2)
+                    result = sock.connect_ex((host, 53 if host in ["8.8.8.8", "1.1.1.1"] else 123))
+                    sock.close()
+                    if result == 0:
+                        logger.info(f"Internet connectivity confirmed via {host}")
+                        return True
+                except Exception:
+                    continue
+            logger.warning("No internet connectivity detected")
+            return False
+        except Exception as e:
+            logger.warning(f"Error checking internet connectivity: {e}")
+            return False
+    
+    @staticmethod
     def get_ntp_time(server: str = None) -> Optional[datetime]:
         """
         Get time from NTP server.
+        Only attempts NTP sync if internet connectivity is available.
         Returns datetime object or None if failed.
         """
+        if not NTPSync.has_internet_connectivity():
+            logger.warning("Skipping NTP sync - no internet connectivity detected")
+            return None
+        
         if server is None:
             server = NTPSync.NTP_SERVER
         
@@ -63,17 +93,23 @@ class NTPSync:
     def sync_controller_time(controller, use_ntp: bool = False) -> bool:
         """
         Sync controller time with PC or NTP.
+        NTP sync only works if LAN has internet connectivity.
         Returns True if successful.
         """
         try:
             if use_ntp:
-                # Get time from NTP server
-                ntp_time = NTPSync.get_ntp_time()
-                if ntp_time is None:
-                    logger.warning("NTP sync failed, falling back to PC time")
+                # Check internet connectivity before attempting NTP sync
+                if not NTPSync.has_internet_connectivity():
+                    logger.warning("NTP sync skipped - no internet connectivity, falling back to PC time")
                     sync_time = datetime.now()
                 else:
-                    sync_time = ntp_time
+                    # Get time from NTP server
+                    ntp_time = NTPSync.get_ntp_time()
+                    if ntp_time is None:
+                        logger.warning("NTP sync failed, falling back to PC time")
+                        sync_time = datetime.now()
+                    else:
+                        sync_time = ntp_time
             else:
                 # Use PC time
                 sync_time = datetime.now()

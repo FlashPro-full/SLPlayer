@@ -314,3 +314,105 @@ def adapt_element_for_controller(element: Dict, controller_type: str) -> Dict:
     
     return adapted
 
+
+def convert_play_control_to_sdk(play_control: Dict, controller_type: str) -> Optional[Any]:
+    """
+    Convert Program.play_control to SDK PlayControl format.
+    
+    Args:
+        play_control: Program play_control dict with specified_time, specify_week, specify_date
+        controller_type: "huidu" or "novastar"
+    
+    Returns:
+        SDK PlayControl object (for Huidu) or dict (for NovaStar)
+    """
+    if controller_type.lower() == "huidu":
+        try:
+            from controllers.huidu_sdk import SDK_AVAILABLE, PlayControl
+            if not SDK_AVAILABLE:
+                return None
+            
+            sdk_play_control = PlayControl()
+            
+            specified_time = play_control.get("specified_time", {})
+            if specified_time.get("enabled", False):
+                time_ranges = specified_time.get("ranges", [])
+                for time_range in time_ranges:
+                    start_str = time_range.get("start", "00:00:00")
+                    end_str = time_range.get("end", "23:59:59")
+                    try:
+                        from datetime import time
+                        start_time = time.fromisoformat(start_str) if ":" in start_str else None
+                        end_time = time.fromisoformat(end_str) if ":" in end_str else None
+                        if start_time and end_time:
+                            sdk_play_control.time.append(PlayControl.Time(start_time, end_time))
+                    except:
+                        pass
+            
+            specify_week = play_control.get("specify_week", {})
+            if specify_week.get("enabled", False):
+                days = specify_week.get("days", [])
+                weekday_map = {
+                    0: PlayControl.Weekday.Mon,
+                    1: PlayControl.Weekday.Tue,
+                    2: PlayControl.Weekday.Wed,
+                    3: PlayControl.Weekday.Thur,
+                    4: PlayControl.Weekday.Fri,
+                    5: PlayControl.Weekday.Sat,
+                    6: PlayControl.Weekday.Sun
+                }
+                enabled_weekdays = [weekday_map[day] for day in days if day in weekday_map]
+                sdk_play_control.week.enable_weekdays = enabled_weekdays
+            
+            specify_date = play_control.get("specify_date", {})
+            if specify_date.get("enabled", False):
+                date_ranges = specify_date.get("ranges", [])
+                for date_range in date_ranges:
+                    start_str = date_range.get("start", "")
+                    end_str = date_range.get("end", "")
+                    try:
+                        from datetime import date
+                        start_date = date.fromisoformat(start_str) if start_str else None
+                        end_date = date.fromisoformat(end_str) if end_str else None
+                        if start_date and end_date:
+                            sdk_play_control.date.append(PlayControl.Date(start_date, end_date))
+                    except:
+                        pass
+            
+            if sdk_play_control.time or sdk_play_control.date or (sdk_play_control.week.enable_weekdays and len(sdk_play_control.week.enable_weekdays) > 0):
+                return sdk_play_control
+            
+            return None
+        except Exception as e:
+            from utils.logger import get_logger
+            logger = get_logger(__name__)
+            logger.error(f"Error converting play_control to SDK format: {e}")
+            return None
+    
+    elif controller_type.lower() == "novastar":
+        schedule_data = {
+            "time_ranges": [],
+            "weekdays": [],
+            "date_ranges": []
+        }
+        
+        specified_time = play_control.get("specified_time", {})
+        if specified_time.get("enabled", False):
+            time_ranges = specified_time.get("ranges", [])
+            schedule_data["time_ranges"] = time_ranges
+        
+        specify_week = play_control.get("specify_week", {})
+        if specify_week.get("enabled", False):
+            schedule_data["weekdays"] = specify_week.get("days", [])
+        
+        specify_date = play_control.get("specify_date", {})
+        if specify_date.get("enabled", False):
+            date_ranges = specify_date.get("ranges", [])
+            schedule_data["date_ranges"] = date_ranges
+        
+        if schedule_data["time_ranges"] or schedule_data["weekdays"] or schedule_data["date_ranges"]:
+            return schedule_data
+        
+        return None
+    
+    return None

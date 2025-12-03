@@ -162,10 +162,17 @@ class NetworkConfigDialog(QDialog):
             if hasattr(self.controller, 'get_network_config'):
                 config = self.controller.get_network_config()
                 if config:
-                    self.ip_address_edit.setText(config.get("ip_address", ""))
-                    self.subnet_mask_edit.setText(config.get("subnet_mask", ""))
-                    self.gateway_edit.setText(config.get("gateway", ""))
-                    self.dhcp_check.setChecked(config.get("dhcp", False))
+                    # Handle different field name variations
+                    ip = config.get("ip") or config.get("ip_address") or config.get("ipAddress") or ""
+                    subnet = config.get("subnet") or config.get("subnet_mask") or config.get("subnetMask") or config.get("netmask") or ""
+                    gateway = config.get("gateway") or config.get("gateway_ip") or config.get("gatewayIp") or ""
+                    dhcp = config.get("dhcp") or config.get("dhcp_enabled") or False
+                    
+                    self.ip_address_edit.setText(ip)
+                    self.subnet_mask_edit.setText(subnet)
+                    self.gateway_edit.setText(gateway)
+                    self.dhcp_check.setChecked(dhcp)
+                    self.on_dhcp_toggled(dhcp)
             
 
             if hasattr(self.controller, 'get_wifi_config'):
@@ -173,8 +180,9 @@ class NetworkConfigDialog(QDialog):
                 if wifi_config:
                     self.enable_wifi_check.setChecked(wifi_config.get("enabled", False))
                     self.ssid_edit.setText(wifi_config.get("ssid", ""))
-
-
+                    # Note: Password is typically not returned for security reasons
+            else:
+                logger.debug("Controller does not support Wi-Fi configuration")
             
             QMessageBox.information(self, "Success", "Network settings read from controller.")
             
@@ -223,26 +231,66 @@ class NetworkConfigDialog(QDialog):
             
 
             if hasattr(self.controller, 'set_network_config'):
-                if not self.controller.set_network_config(settings["ip_config"]):
+                # Prepare network config in format expected by controller
+                ip_config = {}
+                if not self.dhcp_check.isChecked():
+                    ip_config["ip"] = self.ip_address_edit.text().strip()
+                    ip_config["subnet"] = self.subnet_mask_edit.text().strip()
+                    ip_config["gateway"] = self.gateway_edit.text().strip()
+                ip_config["dhcp"] = self.dhcp_check.isChecked()
+                
+                # Also include alternative field names for compatibility
+                ip_config["ip_address"] = ip_config.get("ip", "")
+                ip_config["subnet_mask"] = ip_config.get("subnet", "")
+                ip_config["netmask"] = ip_config.get("subnet", "")
+                
+                if not self.controller.set_network_config(ip_config):
                     QMessageBox.warning(self, "Failed", "Failed to apply IP settings.")
                     return
+                
+                # Check if reboot is needed and prompt
+                reply = QMessageBox.question(
+                    self, "Network Changes Applied",
+                    "Network settings have been saved.\n\n"
+                    "Would you like to reboot the controller now for changes to take effect?\n\n"
+                    "Note: You can reboot later using the 'Reboot Controller' button.",
+                    QMessageBox.Yes | QMessageBox.No,
+                    QMessageBox.No
+                )
+                
+                if reply == QMessageBox.Yes:
+                    self.reboot_controller_silent()
             
 
-            if hasattr(self.controller, 'set_wifi_config'):
-                if not self.controller.set_wifi_config(settings["wifi_config"]):
+            if hasattr(self.controller, 'set_wifi_config') and self.enable_wifi_check.isChecked():
+                wifi_config = {
+                    "enabled": self.enable_wifi_check.isChecked(),
+                    "ssid": self.ssid_edit.text().strip(),
+                    "password": self.password_edit.text()
+                }
+                if not self.controller.set_wifi_config(wifi_config):
                     QMessageBox.warning(self, "Failed", "Failed to apply Wi-Fi settings.")
                     return
+            elif hasattr(self.controller, 'set_wifi_config') and not self.enable_wifi_check.isChecked():
+                wifi_config = {"enabled": False}
+                self.controller.set_wifi_config(wifi_config)
             
-            QMessageBox.information(self, "Success", 
-                                  "Network settings saved. Controller may need to be rebooted for changes to take effect.")
-            self.settings_changed.emit(settings)
-            self.accept()
+            # Don't show this message if reboot was already triggered
+            if hasattr(self, '_reboot_triggered') and self._reboot_triggered:
+                self.settings_changed.emit(settings)
+                self.accept()
+            else:
+                QMessageBox.information(self, "Success", 
+                                      "Network settings saved. Controller may need to be rebooted for changes to take effect.")
+                self.settings_changed.emit(settings)
+                self.accept()
             
         except Exception as e:
             logger.error(f"Error saving network config: {e}", exc_info=True)
             QMessageBox.critical(self, "Error", f"Error saving network settings: {str(e)}")
     
     def reboot_controller(self):
+        """Reboot controller with confirmation dialog"""
         try:
             if not self.controller:
                 QMessageBox.warning(self, "No Controller", "No controller connected.")
@@ -257,15 +305,29 @@ class NetworkConfigDialog(QDialog):
             )
             
             if reply == QMessageBox.Yes:
-                if hasattr(self.controller, 'reboot'):
-                    if self.controller.reboot():
-                        QMessageBox.information(self, "Success", 
-                                              "Reboot command sent to controller. It will restart shortly.")
-                        self.accept()
-                    else:
-                        QMessageBox.warning(self, "Failed", "Failed to send reboot command.")
+                self.reboot_controller_silent()
+                    
+        except Exception as e:
+            logger.error(f"Error rebooting controller: {e}", exc_info=True)
+            QMessageBox.critical(self, "Error", f"Error rebooting controller: {str(e)}")
+    
+    def reboot_controller_silent(self):
+        """Reboot controller without confirmation (called after network changes)"""
+        try:
+            if not self.controller:
+                return
+            
+            if hasattr(self.controller, 'reboot'):
+                if self.controller.reboot():
+                    QMessageBox.information(self, "Success", 
+                                          "Reboot command sent to controller. It will restart shortly.\n\n"
+                                          "You will be disconnected from the controller.")
+                    self._reboot_triggered = True
+                    self.accept()
                 else:
-                    QMessageBox.warning(self, "Not Supported", "Controller does not support reboot command.")
+                    QMessageBox.warning(self, "Failed", "Failed to send reboot command.")
+            else:
+                QMessageBox.warning(self, "Not Supported", "Controller does not support reboot command.")
                     
         except Exception as e:
             logger.error(f"Error rebooting controller: {e}", exc_info=True)

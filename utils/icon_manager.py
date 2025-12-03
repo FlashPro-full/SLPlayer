@@ -11,21 +11,12 @@ logger = get_logger(__name__)
 
 
 class IconManager:
-    """Manages application icon setup"""
     
     @staticmethod
     def setup_application_icon(app, base_path: Path) -> bool:
-        """
-        Set application icon for the QApplication.
-        
-        Args:
-            app: QApplication instance
-            base_path: Base path of the application
-            
-        Returns:
-            True if icon was set successfully, False otherwise
-        """
         icon_path = base_path / "resources" / "app.ico"
+        if not icon_path.exists():
+            icon_path = base_path / "_internal" / "resources" / "app.ico"
         if icon_path.exists():
             icon = QIcon(str(icon_path.absolute()))
             app.setWindowIcon(icon)

@@ -38,7 +38,10 @@ def main():
         app.setApplicationName("SLPlayer")
         app.setOrganizationName("SLPlayer")
         
-        base_path = Path(__file__).parent
+        if getattr(sys, 'frozen', False):
+            base_path = Path(sys.executable).parent
+        else:
+            base_path = Path(__file__).parent
         IconManager.setup_application_icon(app, base_path)
         
         window_width = settings.get("window.width", 1400)
@@ -60,31 +63,6 @@ def main():
             logger.info("Controller database populated with research data")
         except Exception as e:
             logger.warning(f"Could not populate controller database at startup: {e}")
-        
-        startup_service = StartupService()
-        controller_id, valid_license_found = startup_service.verify_license_at_startup()
-        
-        if not skip_license and not valid_license_found:
-            from ui.login_dialog import LoginDialog
-            login_dialog = LoginDialog(controller_id=controller_id)
-            
-            if not controller_id:
-                logger.info("No valid license found - showing license activation dialog for online activation")
-            
-            dialog_result = login_dialog.exec()
-            
-            if not dialog_result:
-                logger.info("User cancelled license activation - application exit required")
-                sys.exit(0)
-            
-            controller_id = login_dialog.controller_id or controller_id
-            
-            if not login_dialog.is_license_valid() or (controller_id and not startup_service.check_license_after_activation(controller_id)):
-                sys.exit(1)
-        elif valid_license_found:
-            logger.info(f"Valid license found for controller: {controller_id} - skipping activation dialog")
-        else:
-            logger.info("License dialog skipped via command-line argument")
         
         window = MainWindow()
         window.resize(window_width, window_height)

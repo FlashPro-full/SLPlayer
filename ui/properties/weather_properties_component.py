@@ -21,21 +21,8 @@ class WeatherPropertiesComponent(BasePropertiesComponent):
     
     def _load_city_list(self):
         """Load city list from file"""
-        try:
-            city_file = Path(__file__).parent.parent.parent / "resources" / "Reference" / "resources" / "weather" / "china-city-list.txt"
-            if city_file.exists():
-                with open(city_file, 'r', encoding='utf-8') as f:
-                    lines = f.readlines()
-                    # Skip header lines
-                    for line in lines[2:]:  # Skip first 2 lines (header)
-                        parts = line.strip().split(',')
-                        if len(parts) >= 3:
-                            city_name = parts[2]  # Chinese city name
-                            if city_name:
-                                self.city_list.append(city_name)
-        except Exception:
-            # If file not found, use empty list
-            self.city_list = []
+        # City list loading removed - Reference folder no longer used
+        self.city_list = []
     
     def init_ui(self):
         main_layout = QVBoxLayout(self)

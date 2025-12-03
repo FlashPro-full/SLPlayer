@@ -17,10 +17,18 @@ class TimePowerBrightnessDialog(QDialog):
     
     settings_changed = pyqtSignal(dict)
     
-    def __init__(self, parent=None, controller=None):
+    def __init__(self, parent=None, controller=None, screen_name: Optional[str] = None):
         super().__init__(parent)
         self.controller = controller
-        self.setWindowTitle("Time / Power / Brightness Settings")
+        self.screen_name = screen_name
+        self.controller_id = None
+        if controller:
+            try:
+                self.controller_id = controller.get_controller_id()
+            except:
+                pass
+        
+        self.setWindowTitle(f"Time / Power / Brightness Settings" + (f" - {screen_name}" if screen_name else ""))
         self.setMinimumWidth(700)
         self.setMinimumHeight(600)
         
@@ -250,6 +258,41 @@ class TimePowerBrightnessDialog(QDialog):
         
         control_layout.addWidget(time_range_group)
         
+        sensor_group = QGroupBox("Brightness by Sensor")
+        sensor_layout = QVBoxLayout(sensor_group)
+        
+        self.enable_sensor_brightness_check = QCheckBox("Enable Sensor-Based Brightness")
+        sensor_layout.addWidget(self.enable_sensor_brightness_check)
+        
+        sensor_info_layout = QHBoxLayout()
+        sensor_info_layout.addWidget(QLabel("Sensor Value:"))
+        self.sensor_value_label = QLabel("--")
+        sensor_info_layout.addWidget(self.sensor_value_label)
+        
+        read_sensor_btn = QPushButton("📥 Read Sensor")
+        read_sensor_btn.clicked.connect(self.read_sensor_value)
+        sensor_info_layout.addWidget(read_sensor_btn)
+        sensor_info_layout.addStretch()
+        sensor_layout.addLayout(sensor_info_layout)
+        
+        sensor_config_layout = QFormLayout()
+        self.sensor_min_brightness = QSpinBox()
+        self.sensor_min_brightness.setMinimum(0)
+        self.sensor_min_brightness.setMaximum(100)
+        self.sensor_min_brightness.setValue(20)
+        self.sensor_min_brightness.setSuffix("%")
+        sensor_config_layout.addRow("Min Brightness:", self.sensor_min_brightness)
+        
+        self.sensor_max_brightness = QSpinBox()
+        self.sensor_max_brightness.setMinimum(0)
+        self.sensor_max_brightness.setMaximum(100)
+        self.sensor_max_brightness.setValue(100)
+        self.sensor_max_brightness.setSuffix("%")
+        sensor_config_layout.addRow("Max Brightness:", self.sensor_max_brightness)
+        
+        sensor_layout.addLayout(sensor_config_layout)
+        control_layout.addWidget(sensor_group)
+        
         layout.addWidget(control_group)
         layout.addStretch()
         
@@ -314,16 +357,22 @@ class TimePowerBrightnessDialog(QDialog):
             use_ntp = self.sync_method_combo.currentIndex() == 1
             
             if use_ntp:
-
-                ntp_time = NTPSync.get_ntp_time()
-                if ntp_time is None:
-                    QMessageBox.warning(self, "NTP Sync Failed", 
-                                       "Failed to sync with NTP server. Falling back to PC time.")
+                # Check internet connectivity before attempting NTP sync
+                if not NTPSync.has_internet_connectivity():
+                    QMessageBox.warning(self, "No Internet", 
+                                       "No internet connectivity detected. NTP sync requires internet connection.\nFalling back to PC time.")
                     sync_time = datetime.now()
                 else:
-                    sync_time = ntp_time
-                    QMessageBox.information(self, "NTP Sync Success", 
-                                          f"Time synchronized from NTP: {sync_time.strftime('%Y-%m-%d %H:%M:%S')}")
+                    # Get time from NTP server
+                    ntp_time = NTPSync.get_ntp_time()
+                    if ntp_time is None:
+                        QMessageBox.warning(self, "NTP Sync Failed", 
+                                           "Failed to sync with NTP server. Falling back to PC time.")
+                        sync_time = datetime.now()
+                    else:
+                        sync_time = ntp_time
+                        QMessageBox.information(self, "NTP Sync Success", 
+                                              f"Time synchronized from NTP: {sync_time.strftime('%Y-%m-%d %H:%M:%S')}")
             else:
                 sync_time = datetime.now()
             
@@ -353,7 +402,11 @@ class TimePowerBrightnessDialog(QDialog):
                     self.brightness_slider.setValue(brightness)
                     self.brightness_value_label.setText(f"{brightness}%")
                     self.current_brightness_label.setText(f"{brightness}%")
-                    QMessageBox.information(self, "Success", f"Brightness read from controller: {brightness}%")
+                    
+                    if hasattr(self.controller, 'set_brightness'):
+                        self.controller.set_brightness(brightness)
+                    
+                    QMessageBox.information(self, "Success", f"Brightness read from controller and applied: {brightness}%")
                 else:
                     QMessageBox.warning(self, "Failed", "Could not read brightness from controller.")
             else:
@@ -362,6 +415,27 @@ class TimePowerBrightnessDialog(QDialog):
         except Exception as e:
             logger.error(f"Error reading brightness: {e}", exc_info=True)
             QMessageBox.critical(self, "Error", f"Error reading brightness: {str(e)}")
+    
+    def read_sensor_value(self):
+        try:
+            if not self.controller:
+                QMessageBox.warning(self, "No Controller", "No controller connected.")
+                return
+            
+            device_info = self.controller.get_device_info() if hasattr(self.controller, 'get_device_info') else None
+            if device_info:
+                sensor_value = device_info.get("sensor_value") or device_info.get("brightness_sensor") or device_info.get("light_sensor")
+                if sensor_value is not None:
+                    self.sensor_value_label.setText(str(sensor_value))
+                    QMessageBox.information(self, "Success", f"Sensor value read: {sensor_value}")
+                else:
+                    QMessageBox.warning(self, "No Sensor", "No sensor value available from controller.")
+            else:
+                QMessageBox.warning(self, "Failed", "Could not read device info.")
+                
+        except Exception as e:
+            logger.error(f"Error reading sensor value: {e}", exc_info=True)
+            QMessageBox.critical(self, "Error", f"Error reading sensor value: {str(e)}")
     
     def on_brightness_changed(self, value: int):
         self.brightness_value_label.setText(f"{value}%")
@@ -387,14 +461,65 @@ class TimePowerBrightnessDialog(QDialog):
             logger.error(f"Error reading from controller: {e}", exc_info=True)
             QMessageBox.critical(self, "Error", f"Error reading from controller: {str(e)}")
     
-    def load_power_schedule(self, schedule: Dict):
-
-
-        pass
+    def load_power_schedule(self, schedule):
+        """Load power schedule into the UI table"""
+        try:
+            if not schedule:
+                return
+            
+            days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+            day_map = {day.lower(): day for day in days}
+            
+            if isinstance(schedule, list):
+                for day_schedule in schedule:
+                    day_name = day_schedule.get("day", "")
+                    day_key = day_name.lower()
+                    
+                    if day_key in day_map:
+                        day_index = days.index(day_map[day_key])
+                        if day_index < self.schedule_table.rowCount():
+                            on_time_str = day_schedule.get("on_time", "08:00")
+                            off_time_str = day_schedule.get("off_time", "22:00")
+                            enabled = day_schedule.get("enabled", True)
+                            
+                            on_hour, on_min = map(int, on_time_str.split(':'))
+                            off_hour, off_min = map(int, off_time_str.split(':'))
+                            
+                            on_time_widget = self.schedule_table.cellWidget(day_index, 1)
+                            off_time_widget = self.schedule_table.cellWidget(day_index, 2)
+                            enabled_widget = self.schedule_table.cellWidget(day_index, 3)
+                            
+                            if on_time_widget:
+                                on_time_widget.setTime(QTime(on_hour, on_min))
+                            if off_time_widget:
+                                off_time_widget.setTime(QTime(off_hour, off_min))
+                            if enabled_widget:
+                                enabled_widget.setChecked(enabled)
+            elif isinstance(schedule, dict):
+                on_time_str = schedule.get("on_time", "08:00")
+                off_time_str = schedule.get("off_time", "22:00")
+                enabled = schedule.get("enabled", True)
+                
+                on_hour, on_min = map(int, on_time_str.split(':'))
+                off_hour, off_min = map(int, off_time_str.split(':'))
+                
+                for i in range(self.schedule_table.rowCount()):
+                    on_time_widget = self.schedule_table.cellWidget(i, 1)
+                    off_time_widget = self.schedule_table.cellWidget(i, 2)
+                    enabled_widget = self.schedule_table.cellWidget(i, 3)
+                    
+                    if on_time_widget:
+                        on_time_widget.setTime(QTime(on_hour, on_min))
+                    if off_time_widget:
+                        off_time_widget.setTime(QTime(off_hour, off_min))
+                    if enabled_widget:
+                        enabled_widget.setChecked(enabled)
+        except Exception as e:
+            logger.error(f"Error loading power schedule: {e}", exc_info=True)
     
     def save_and_send(self):
         try:
-            if not self.controller:
+            if not self.controller or not self.controller_id:
                 QMessageBox.warning(self, "No Controller", "No controller connected.")
                 return
             
@@ -404,7 +529,9 @@ class TimePowerBrightnessDialog(QDialog):
                     "method": "ntp" if self.sync_method_combo.currentIndex() == 1 else "pc"
                 },
                 "power_schedule": self.get_power_schedule(),
-                "brightness": self.get_brightness_settings()
+                "brightness": self.brightness_slider.value(),
+                "brightness_settings": self.get_brightness_settings(),
+                "time_last_synced": datetime.now().isoformat() if self.sync_method_combo.currentIndex() == 1 else None
             }
             
 
@@ -413,14 +540,21 @@ class TimePowerBrightnessDialog(QDialog):
 
             if hasattr(self.controller, 'set_brightness'):
                 brightness = self.brightness_slider.value()
-                if not self.controller.set_brightness(brightness):
+                brightness_settings = self.get_brightness_settings()
+                if not self.controller.set_brightness(brightness, brightness_settings):
                     success = False
             
 
             if hasattr(self.controller, 'set_power_schedule'):
                 schedule = self.get_power_schedule()
-                if not self.controller.set_power_schedule(schedule):
-                    success = False
+                if schedule:
+                    if not self.controller.set_power_schedule(schedule):
+                        success = False
+            
+            # Save settings to database per controller/screen
+            from core.controller_database import get_controller_database
+            db = get_controller_database()
+            db.save_controller_settings(self.controller_id, settings, self.screen_name)
             
             if success:
                 QMessageBox.information(self, "Success", "Settings saved and sent to controller.")
@@ -462,7 +596,12 @@ class TimePowerBrightnessDialog(QDialog):
     def get_brightness_settings(self) -> Dict:
         settings = {
             "current": self.brightness_slider.value(),
-            "time_ranges": []
+            "time_ranges": [],
+            "sensor": {
+                "enabled": self.enable_sensor_brightness_check.isChecked(),
+                "min_brightness": self.sensor_min_brightness.value(),
+                "max_brightness": self.sensor_max_brightness.value()
+            }
         }
         
         if self.enable_time_brightness_check.isChecked():
@@ -483,9 +622,64 @@ class TimePowerBrightnessDialog(QDialog):
         return settings
     
     def load_settings(self):
-
-
-        pass
+        """Load settings from database first, then from controller if not in database"""
+        from core.controller_database import get_controller_database
+        
+        if not self.controller_id:
+            return
+        
+        db = get_controller_database()
+        
+        # Try to load from database first
+        saved_settings = db.get_controller_settings(self.controller_id, self.screen_name)
+        
+        if saved_settings:
+            brightness = saved_settings.get("brightness")
+            if brightness is not None:
+                self.brightness_slider.setValue(brightness)
+                self.brightness_value_label.setText(f"{brightness}%")
+                self.current_brightness_label.setText(f"{brightness}%")
+            
+            brightness_settings = saved_settings.get("brightness_settings", {})
+            if brightness_settings.get("time_ranges"):
+                self.enable_time_brightness_check.setChecked(True)
+                time_ranges = brightness_settings.get("time_ranges", [])
+                self.brightness_table.setRowCount(0)
+                for time_range in time_ranges:
+                    row = self.brightness_table.rowCount()
+                    self.brightness_table.insertRow(row)
+                    from_time = QTime.fromString(time_range.get("from", "00:00"), "HH:mm")
+                    to_time = QTime.fromString(time_range.get("to", "23:59"), "HH:mm")
+                    brightness_val = time_range.get("brightness", 100)
+                    self.add_brightness_row(row, from_time, to_time, brightness_val)
+            
+            power_schedule = saved_settings.get("power_schedule")
+            if power_schedule:
+                self.load_power_schedule(power_schedule)
+            
+            time_sync_method = saved_settings.get("time_sync", {}).get("method", "pc")
+            if time_sync_method == "ntp":
+                self.sync_method_combo.setCurrentIndex(1)
+            
+            logger.info(f"Loaded settings from database for controller {self.controller_id}")
+            return
+        
+        # Fallback: load from controller if not in database
+        if self.controller:
+            try:
+                if hasattr(self.controller, 'get_brightness'):
+                    brightness = self.controller.get_brightness()
+                    if brightness is not None:
+                        self.brightness_slider.setValue(brightness)
+                        self.brightness_value_label.setText(f"{brightness}%")
+                        self.current_brightness_label.setText(f"{brightness}%")
+                
+                if hasattr(self.controller, 'get_power_schedule'):
+                    schedule = self.controller.get_power_schedule()
+                    if schedule:
+                        self.load_power_schedule(schedule)
+            except Exception as e:
+                logger.debug(f"Error loading settings from controller: {e}")
     
     def closeEvent(self, event):
         if hasattr(self, 'time_timer'):

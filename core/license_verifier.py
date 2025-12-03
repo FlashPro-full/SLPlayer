@@ -23,11 +23,18 @@ class LicenseVerifier:
         If no path provided, tries to load from resources.
         """
         if public_key_path is None:
+            import sys
+            # Get base path (works for both script and executable)
+            if getattr(sys, 'frozen', False):
+                base_path = Path(sys.executable).parent
+            else:
+                base_path = Path(__file__).parent.parent
+            
             # Try to find public key in resources
             # First try public.key, then public.key.example as fallback
-            public_key_path = Path(__file__).parent.parent / "resources" / "public.key"
+            public_key_path = base_path / "resources" / "public.key"
             if not public_key_path.exists():
-                public_key_path = Path(__file__).parent.parent / "resources" / "public.key.example"
+                public_key_path = base_path / "resources" / "public.key.example"
         
         self.public_key_path = public_key_path
         self.public_key = None

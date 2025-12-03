@@ -50,10 +50,6 @@ class BasePropertiesComponent(QWidget):
     
     @staticmethod
     def get_available_borders():
-        from pathlib import Path
-        border_dir = Path(__file__).parent.parent.parent / "resources" / "Reference" / "images" / "Border"
-        if border_dir.exists():
-            borders = sorted([f.stem for f in border_dir.glob("*.png")])
-            return borders
+        # Border images removed - Reference folder no longer used
         return []
 

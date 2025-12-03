@@ -106,7 +106,24 @@ class ControllerDatabase:
                 )
             """)
             
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS controller_settings (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    controller_id TEXT NOT NULL,
+                    screen_name TEXT,
+                    time_sync_method TEXT,
+                    time_last_synced TEXT,
+                    brightness INTEGER,
+                    brightness_settings TEXT,
+                    power_schedule TEXT,
+                    last_updated TEXT NOT NULL,
+                    UNIQUE(controller_id, screen_name)
+                )
+            """)
+            
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_controller_id ON controllers(controller_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_settings_controller_id ON controller_settings(controller_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_settings_screen ON controller_settings(controller_id, screen_name)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_ip_address ON controllers(ip_address)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_last_connected ON controllers(last_connected)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_is_active ON controllers(is_active)")
@@ -517,6 +534,102 @@ class ControllerDatabase:
         except Exception as e:
             logger.exception(f"Error saving screen parameters: {e}")
             return False
+    
+    def save_controller_settings(self, controller_id: str, settings: Dict, screen_name: Optional[str] = None) -> bool:
+        """Save time/power/brightness settings for a specific controller/screen"""
+        try:
+            import json
+            conn = sqlite3.connect(str(self.db_path))
+            cursor = conn.cursor()
+            now = datetime.now().isoformat()
+            
+            brightness = settings.get("brightness")
+            brightness_settings = settings.get("brightness_settings")
+            power_schedule = settings.get("power_schedule")
+            time_sync_method = settings.get("time_sync", {}).get("method")
+            time_last_synced = settings.get("time_last_synced")
+            
+            cursor.execute("""
+                INSERT INTO controller_settings 
+                (controller_id, screen_name, time_sync_method, time_last_synced, 
+                 brightness, brightness_settings, power_schedule, last_updated)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(controller_id, screen_name) DO UPDATE SET
+                    time_sync_method = excluded.time_sync_method,
+                    time_last_synced = excluded.time_last_synced,
+                    brightness = excluded.brightness,
+                    brightness_settings = excluded.brightness_settings,
+                    power_schedule = excluded.power_schedule,
+                    last_updated = excluded.last_updated
+            """, (
+                controller_id,
+                screen_name,
+                time_sync_method,
+                time_last_synced,
+                brightness,
+                json.dumps(brightness_settings) if brightness_settings else None,
+                json.dumps(power_schedule) if power_schedule else None,
+                now
+            ))
+            
+            conn.commit()
+            conn.close()
+            logger.info(f"Saved settings for controller {controller_id}" + (f" screen {screen_name}" if screen_name else ""))
+            return True
+        except Exception as e:
+            logger.exception(f"Error saving controller settings: {e}")
+            return False
+    
+    def get_controller_settings(self, controller_id: str, screen_name: Optional[str] = None) -> Optional[Dict]:
+        """Get time/power/brightness settings for a specific controller/screen"""
+        try:
+            import json
+            conn = sqlite3.connect(str(self.db_path))
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            
+            if screen_name:
+                cursor.execute("""
+                    SELECT * FROM controller_settings 
+                    WHERE controller_id = ? AND screen_name = ?
+                    ORDER BY last_updated DESC LIMIT 1
+                """, (controller_id, screen_name))
+            else:
+                cursor.execute("""
+                    SELECT * FROM controller_settings 
+                    WHERE controller_id = ? AND screen_name IS NULL
+                    ORDER BY last_updated DESC LIMIT 1
+                """, (controller_id,))
+            
+            row = cursor.fetchone()
+            conn.close()
+            
+            if row:
+                result = dict(row)
+                if result.get("brightness_settings"):
+                    try:
+                        result["brightness_settings"] = json.loads(result["brightness_settings"])
+                    except:
+                        result["brightness_settings"] = {}
+                if result.get("power_schedule"):
+                    try:
+                        result["power_schedule"] = json.loads(result["power_schedule"])
+                    except:
+                        result["power_schedule"] = []
+                
+                return {
+                    "brightness": result.get("brightness"),
+                    "brightness_settings": result.get("brightness_settings", {}),
+                    "power_schedule": result.get("power_schedule", []),
+                    "time_sync": {
+                        "method": result.get("time_sync_method", "pc")
+                    },
+                    "time_last_synced": result.get("time_last_synced")
+                }
+            return None
+        except Exception as e:
+            logger.exception(f"Error getting controller settings: {e}")
+            return None
 
 
 _controller_db_instance: Optional[ControllerDatabase] = None

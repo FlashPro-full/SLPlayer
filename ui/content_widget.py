@@ -113,6 +113,7 @@ class ContentWidget(QtWidgets.QWidget):
                 "speed": "---"
             }
             element["properties"]["video_shot"] = {
+                "enabled": False,
                 "width": default_width,
                 "height": default_height,
                 "start_time": "00:00:00",

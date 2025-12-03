@@ -1,8 +1,9 @@
-from PyQt5.QtWidgets import QStatusBar, QLabel
+from PyQt5.QtWidgets import QStatusBar, QLabel, QHBoxLayout, QWidget
 from PyQt5.QtCore import Qt
 
 from controllers.base_controller import ConnectionStatus
 from config.i18n import tr
+from ui.widgets.loading_spinner import LoadingSpinner
 
 
 class StatusBarWidget(QStatusBar):
@@ -16,6 +17,21 @@ class StatusBarWidget(QStatusBar):
         self.connection_label = QLabel(tr("status.no_device"))
         self.connection_label.setStyleSheet("color: red;")
         self.addWidget(self.connection_label)
+        
+        self.scanning_widget = QWidget()
+        scanning_layout = QHBoxLayout(self.scanning_widget)
+        scanning_layout.setContentsMargins(0, 0, 0, 0)
+        scanning_layout.setSpacing(6)
+        
+        self.scanning_spinner = LoadingSpinner(self.scanning_widget, size=16, color="#2196F3")
+        self.scanning_label = QLabel("Scanning for controllers...")
+        self.scanning_label.setStyleSheet("color: #666; font-size: 11px;")
+        
+        scanning_layout.addWidget(self.scanning_spinner)
+        scanning_layout.addWidget(self.scanning_label)
+        
+        self.scanning_widget.setVisible(False)
+        self.addPermanentWidget(self.scanning_widget)
         
         self.program_label = QLabel("")
         self.addPermanentWidget(self.program_label)
@@ -53,3 +69,12 @@ class StatusBarWidget(QStatusBar):
     
     def clear_progress(self):
         self.progress_label.setText("")
+    
+    def show_scanning(self, message: str = "Scanning for controllers..."):
+        self.scanning_label.setText(message)
+        self.scanning_spinner.start()
+        self.scanning_widget.setVisible(True)
+    
+    def hide_scanning(self):
+        self.scanning_spinner.stop()
+        self.scanning_widget.setVisible(False)

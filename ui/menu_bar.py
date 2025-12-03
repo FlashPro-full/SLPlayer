@@ -18,7 +18,6 @@ class MenuBar(QMenuBar):
     screen_settings_requested = pyqtSignal()
     sync_settings_requested = pyqtSignal()
     
-    device_info_requested = pyqtSignal()
     clear_program_requested = pyqtSignal()
     connect_requested = pyqtSignal()
     disconnect_requested = pyqtSignal()
@@ -29,11 +28,13 @@ class MenuBar(QMenuBar):
     diagnostics_requested = pyqtSignal()
     import_requested = pyqtSignal()
     export_requested = pyqtSignal()
+    login_requested = pyqtSignal()
     
     language_changed = pyqtSignal(str)
     about_requested = pyqtSignal()
     dashboard_requested = pyqtSignal()
     discover_controllers_requested = pyqtSignal()
+    export_logs_requested = pyqtSignal()
     
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -100,6 +101,13 @@ class MenuBar(QMenuBar):
         setting_menu.addAction(sync_action)
         self.actions["setting.sync"] = sync_action
         
+        setting_menu.addSeparator()
+        
+        license_action = QAction("License", self)
+        license_action.triggered.connect(self.login_requested.emit)
+        setting_menu.addAction(license_action)
+        self.actions["setting.license"] = license_action
+        
         control_menu = self.addMenu(tr("menu.control"))
         self.menus["control"] = control_menu
         
@@ -107,6 +115,13 @@ class MenuBar(QMenuBar):
         discover_action.triggered.connect(self.discover_controllers_requested.emit)
         control_menu.addAction(discover_action)
         self.actions["control.discover"] = discover_action
+        
+        control_menu.addSeparator()
+        
+        clear_controller_action = QAction("Clear Controller", self)
+        clear_controller_action.triggered.connect(self.disconnect_requested.emit)
+        control_menu.addAction(clear_controller_action)
+        self.actions["control.clear_controller"] = clear_controller_action
         
         dashboard_action = QAction(tr("action.dashboard"), self)
         dashboard_action.triggered.connect(self.dashboard_requested.emit)
@@ -129,13 +144,6 @@ class MenuBar(QMenuBar):
         diagnostics_action.triggered.connect(self.diagnostics_requested.emit)
         control_menu.addAction(diagnostics_action)
         self.actions["control.diagnostics"] = diagnostics_action
-        
-        control_menu.addSeparator()
-        
-        device_info_action = QAction(tr("action.device_info"), self)
-        device_info_action.triggered.connect(self.device_info_requested.emit)
-        control_menu.addAction(device_info_action)
-        self.actions["control.device_info"] = device_info_action
         
         clear_action = QAction(tr("action.clear_program"), self)
         clear_action.triggered.connect(self.clear_program_requested.emit)
@@ -182,6 +190,14 @@ class MenuBar(QMenuBar):
         
         help_menu = self.addMenu(tr("menu.help"))
         self.menus["help"] = help_menu
+        
+        export_logs_action = QAction("Export Logs", self)
+        export_logs_action.triggered.connect(self.export_logs_requested.emit)
+        help_menu.addAction(export_logs_action)
+        self.actions["help.export_logs"] = export_logs_action
+        
+        help_menu.addSeparator()
+        
         about_action = QAction(tr("action.about"), self)
         about_action.triggered.connect(self.on_about)
         help_menu.addAction(about_action)
@@ -225,7 +241,6 @@ class MenuBar(QMenuBar):
         if "file.exit" in a: a["file.exit"].setText(tr("action.exit"))
         if "setting.screen" in a: a["setting.screen"].setText(tr("action.screen_setting"))
         if "setting.sync" in a: a["setting.sync"].setText(tr("action.sync_setting"))
-        if "control.device_info" in a: a["control.device_info"].setText("📱 Controller Information")
         if "control.clear" in a: a["control.clear"].setText(tr("action.clear_program"))
         if "control.send" in a: a["control.send"].setText(tr("action.send"))
         if "control.export_to_usb" in a: a["control.export_to_usb"].setText(tr("action.export_to_usb"))
@@ -238,7 +253,7 @@ class MenuBar(QMenuBar):
             self.actions["setting.screen"].setEnabled(True)
         if "setting.sync" in self.actions:
             self.actions["setting.sync"].setEnabled(has_screen)
-        for key in ["control.device_info", "control.clear", "control.send", "control.export_to_usb"]:
+        for key in ["control.clear", "control.send", "control.export_to_usb"]:
             if key in self.actions:
                 self.actions[key].setEnabled(has_screen)
     

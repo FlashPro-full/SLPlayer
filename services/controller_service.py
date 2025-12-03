@@ -1,10 +1,13 @@
 from typing import Optional, List, Dict, Any
-from PyQt5.QtCore import QObject, pyqtSignal
+from PyQt5.QtCore import QObject, pyqtSignal, QEventLoop, QTimer, QThread
+import threading
 
 from controllers.base_controller import BaseController, ConnectionStatus, ControllerType
 from controllers.novastar import NovaStarController
 from controllers.huidu import HuiduController
 from core.controller_discovery import ControllerDiscovery, ControllerInfo
+from core.controller_database import get_controller_database
+from core.sync_manager import SyncManager
 from core.event_bus import event_bus
 from utils.logger import get_logger
 
@@ -18,10 +21,73 @@ class ControllerService(QObject):
         self.current_controller: Optional[BaseController] = None
         self.discovered_controllers: List[ControllerInfo] = []
         self.discovery = ControllerDiscovery()
+        self._discovery_loop: Optional[QEventLoop] = None
+        self._discovery_timer: Optional[QTimer] = None
+        self.sync_manager = SyncManager()
+        self.controller_db = get_controller_database()
     
-    def discover_controllers(self, timeout: int = 5) -> List[ControllerInfo]:
+    def discover_controllers(self, timeout: int = 5, 
+                            ip_range: Optional[List[str]] = None,
+                            mobile_network_ranges: Optional[List[Dict[str, str]]] = None) -> List[ControllerInfo]:
+        """
+        Discover controllers on the network.
+        
+        Supports multiple connection types:
+        - Wi-Fi/Ethernet: Automatic local network discovery
+        - USB/Serial: Automatic serial port scanning (Huidu)
+        - 3G/4G/5G Mobile: Use mobile_network_ranges parameter
+        - Remote IPs: Use ip_range parameter for specific IPs
+        
+        Args:
+            timeout: Maximum time to wait for discovery (seconds)
+            ip_range: Optional list of specific IP addresses to search (for remote/mobile controllers)
+            mobile_network_ranges: Optional list of dicts with 'ipStart' and 'ipEnd' for mobile network IP ranges
+            
+        Returns:
+            List of discovered ControllerInfo objects
+        """
         try:
-            self.discovered_controllers = self.discovery.discover_all(timeout=timeout)
+            # Clear previous results
+            self.discovered_controllers = []
+            
+            # Start the scan with optional parameters
+            self.discovery.start_scan(ip_range=ip_range, mobile_network_ranges=mobile_network_ranges)
+            
+            # Wait for discovery to complete or timeout
+            # Use QEventLoop to wait for the signal without blocking the main thread
+            loop = QEventLoop()
+            timer = QTimer()
+            timer.setSingleShot(True)
+            finished = False
+            
+            def on_timeout():
+                nonlocal finished
+                if not finished and self.discovery.is_scanning:
+                    self.discovery.stop_scan()
+                finished = True
+                loop.quit()
+            
+            def on_finished():
+                nonlocal finished
+                if not finished:
+                    timer.stop()
+                    finished = True
+                    loop.quit()
+            
+            timer.timeout.connect(on_timeout)
+            self.discovery.discovery_finished.connect(on_finished)
+            
+            # Set timeout
+            timer.start(timeout * 1000)  # Convert to milliseconds
+            
+            # Wait for either completion or timeout
+            loop.exec()
+            
+            # Disconnect the temporary handler
+            self.discovery.discovery_finished.disconnect(on_finished)
+            
+            # Get the discovered controllers
+            self.discovered_controllers = self.discovery.get_discovered_controllers()
             event_bus.controller_discovered.emit(self.discovered_controllers)
             logger.info(f"Discovered {len(self.discovered_controllers)} controllers")
             return self.discovered_controllers
@@ -31,13 +97,27 @@ class ControllerService(QObject):
             return []
     
     def connect_to_controller(self, ip: str, port: int, 
-                            controller_type: str) -> bool:
+                            controller_type: str, controller_info: Optional['ControllerInfo'] = None) -> bool:
+        """
+        Connect to a controller.
+        
+        Args:
+            ip: Controller IP address
+            port: Controller port
+            controller_type: 'novastar' or 'huidu'
+            controller_info: Optional ControllerInfo from discovery (contains SN, model, etc.)
+        """
         try:
             if self.current_controller:
                 self.disconnect()
             
             if controller_type.lower() == 'novastar':
                 self.current_controller = NovaStarController(ip, port)
+                # If we have discovery info with SN, use it
+                if controller_info and hasattr(controller_info, 'mac_address') and controller_info.mac_address:
+                    # For NovaStar, mac_address is actually the SN (serial number)
+                    self.current_controller._device_sn = controller_info.mac_address
+                    logger.info(f"Using discovered SN for NovaStar: {controller_info.mac_address}")
             elif controller_type.lower() == 'huidu':
                 self.current_controller = HuiduController(ip, port)
             else:
@@ -46,6 +126,33 @@ class ControllerService(QObject):
             
             result = self.current_controller.connect()
             if result:
+                controller_id = self.current_controller.get_controller_id()
+                
+                device_info = self.current_controller.get_device_info()
+                
+                # Read brightness from controller at startup
+                if hasattr(self.current_controller, 'get_brightness'):
+                    try:
+                        brightness = self.current_controller.get_brightness()
+                        if brightness is not None:
+                            if not device_info:
+                                device_info = {}
+                            device_info['brightness'] = brightness
+                            logger.info(f"Read brightness from controller at startup: {brightness}%")
+                    except Exception as e:
+                        logger.debug(f"Could not read brightness at startup: {e}")
+                
+                self.controller_db.add_or_update_controller(
+                    controller_id, ip, port, controller_type, device_info
+                )
+                
+                db_record = self.controller_db.get_controller(controller_id)
+                is_first_connection = db_record and db_record.get("connection_count", 0) == 1
+                
+                if is_first_connection:
+                    logger.info(f"First connection to controller {controller_id}, starting full data import...")
+                    self._import_controller_data_async()
+                
                 event_bus.controller_connected.emit(self.current_controller)
                 logger.info(f"Connected to {controller_type} controller at {ip}:{port}")
             else:
@@ -81,7 +188,7 @@ class ControllerService(QObject):
             logger.error(f"Error getting device info: {e}", exc_info=True)
             return None
     
-    def send_program(self, program: 'Program') -> bool:
+    def send_program(self, program: 'Program', program_manager=None, screen_manager=None) -> bool:
         try:
             if not self.current_controller:
                 logger.warning("No controller connected")
@@ -93,8 +200,34 @@ class ControllerService(QObject):
                 event_bus.controller_error.emit("Controller not connected")
                 return False
             
+            # Step 1: Save current working state as *.soo file
+            from core.file_manager import FileManager
+            from utils.app_data import get_app_data_dir
+            from pathlib import Path
+            
+            if not screen_manager:
+                logger.warning("ScreenManager not available, cannot save *.soo file")
+            else:
+                file_manager = FileManager(screen_manager)
+                work_dir = get_app_data_dir() / "work"
+                work_dir.mkdir(parents=True, exist_ok=True)
+                
+                current_screen = screen_manager.current_screen
+                if current_screen:
+                    safe_name = current_screen.name.replace(' ', '_').replace('/', '_')
+                    soo_file_path = str(work_dir / f"{safe_name}.soo")
+                    if file_manager.save_screen_to_file(current_screen, soo_file_path):
+                        logger.info(f"Saved current state to {soo_file_path} before upload")
+            
+            # Step 2: Convert *.soo format to SDK format
             program_dict = program.to_dict() if hasattr(program, 'to_dict') else program
-            result = self.current_controller.upload_program(program_dict)
+            controller_type = "novastar" if isinstance(self.current_controller, NovaStarController) else "huidu"
+            
+            from core.program_converter import ProgramConverter
+            sdk_program_dict = ProgramConverter.soo_to_sdk(program_dict, controller_type)
+            
+            # Step 3: Upload to controller
+            result = self.current_controller.upload_program(sdk_program_dict)
             
             if result:
                 event_bus.program_sent.emit(program)
@@ -153,4 +286,56 @@ class ControllerService(QObject):
     def is_connected(self) -> bool:
         return (self.current_controller is not None and 
                 self.get_connection_status() == ConnectionStatus.CONNECTED)
+    
+    def _import_controller_data_async(self):
+        """Import all controller data in background thread"""
+        def import_data():
+            try:
+                if not self.current_controller:
+                    return
+                
+                logger.info("Starting full import from controller...")
+                
+                # Get screen_manager and program_manager from UI if available
+                screen_manager = None
+                program_manager = None
+                
+                try:
+                    from PyQt5.QtWidgets import QApplication
+                    app = QApplication.instance()
+                    if app:
+                        for widget in app.allWidgets():
+                            if hasattr(widget, 'screen_manager') and widget.screen_manager:
+                                screen_manager = widget.screen_manager
+                            if hasattr(widget, 'program_manager') and widget.program_manager:
+                                program_manager = widget.program_manager
+                            if screen_manager and program_manager:
+                                break
+                except:
+                    pass
+                
+                if not screen_manager or not program_manager:
+                    logger.warning("Could not get screen_manager/program_manager from UI, using new instances")
+                    from core.screen_manager import ScreenManager
+                    from core.program_manager import ProgramManager
+                    screen_manager = ScreenManager()
+                    program_manager = ProgramManager()
+                
+                imported = self.sync_manager.import_from_controller(
+                    self.current_controller, 
+                    screen_manager, 
+                    program_manager
+                )
+                
+                if imported:
+                    logger.info(f"Successfully imported controller data: {len(imported.get('programs', {}))} programs, {len(imported.get('media', {}))} media files")
+                    event_bus.controller_data_imported.emit(imported)
+                else:
+                    logger.warning("No data imported from controller")
+                    
+            except Exception as e:
+                logger.exception(f"Error importing controller data: {e}")
+        
+        thread = threading.Thread(target=import_data, daemon=True)
+        thread.start()
 

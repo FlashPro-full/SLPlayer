@@ -59,8 +59,8 @@ class ScreenSettingsDialog(QDialog):
 
     def _is_first_screen(self) -> bool:
         try:
-            pm = getattr(self.parent(), "program_manager", None)
-            return bool(pm is not None and not getattr(pm, "programs", []))
+            sm = getattr(self.parent(), "screen_manager", None)
+            return bool(sm is None or not getattr(sm, "screens", []))
         except Exception:
             return False
 
@@ -264,18 +264,6 @@ class ScreenSettingsDialog(QDialog):
         root.addLayout(mid_row, stretch=1)
 
         self.buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, parent=self)
-        try:
-            if self._is_first_screen():
-                cancel_btn = self.buttons.button(self.buttons.StandardButton.Cancel)
-                if cancel_btn:
-                    cancel_btn.setEnabled(False)
-                try:
-                    self.setWindowFlag(Qt.WindowCloseButtonHint, False)
-                    self.setWindowFlags(self.windowFlags())
-                except Exception:
-                    pass
-        except Exception:
-            pass
         self.buttons.accepted.connect(self.accept)
         self.buttons.rejected.connect(self.reject)
         root.addWidget(self.buttons, alignment=Qt.AlignRight)
@@ -672,8 +660,6 @@ class ScreenSettingsDialog(QDialog):
             pass
 
     def reject(self):
-        if self._is_first_screen():
-            return
         return super().reject()
 
     def selected_size(self):

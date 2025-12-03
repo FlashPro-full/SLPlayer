@@ -28,6 +28,7 @@ class EventBus(QObject):
     controller_disconnected = pyqtSignal()
     controller_discovered = pyqtSignal(list)
     controller_error = pyqtSignal(str)
+    controller_data_imported = pyqtSignal(dict)
     
     ui_refresh_needed = pyqtSignal()
     ui_program_list_refresh = pyqtSignal()

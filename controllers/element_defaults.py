@@ -68,6 +68,10 @@ def ensure_element_defaults(element: Dict) -> Dict:
             properties["video"] = {}
         if "file_path" not in properties["video"]:
             properties["video"]["file_path"] = ""
+        if "video_shot" not in properties:
+            properties["video_shot"] = {}
+        if "enabled" not in properties["video_shot"]:
+            properties["video_shot"]["enabled"] = False
     
     elif element_type == "clock":
         if "clock" not in properties:

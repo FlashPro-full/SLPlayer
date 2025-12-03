@@ -18,12 +18,38 @@ class ProgramActionService:
         self.controller_service = controller_service
         self.screen_manager = screen_manager
     
+    def _has_license_for_controller(self) -> bool:
+        if not self.controller_service.is_connected():
+            return False
+        controller = self.controller_service.current_controller
+        if not controller:
+            return False
+        controller_id = controller.get_controller_id()
+        if not controller_id:
+            return False
+        try:
+            from core.license_manager import LicenseManager
+            license_manager = LicenseManager()
+            license_file = license_manager.get_license_file_path(controller_id)
+            return license_file.exists()
+        except Exception as e:
+            logger.error(f"Error checking license: {e}", exc_info=True)
+            return False
+    
     def send_program(self, parent_widget=None) -> bool:
         if not self.controller_service.is_connected():
             UIService.show_warning(
                 parent_widget,
                 tr("action.send"),
                 tr("toolbar.send") + "\n\n" + tr("message.no_controller_connected")
+            )
+            return False
+        
+        if not self._has_license_for_controller():
+            UIService.show_warning(
+                parent_widget,
+                tr("action.send"),
+                "License required. Please activate a license for this controller first."
             )
             return False
         
@@ -40,7 +66,7 @@ class ProgramActionService:
             return False
         
         try:
-            result = self.controller_service.send_program(current_program)
+            result = self.controller_service.send_program(current_program, self.program_manager, self.screen_manager)
             if result:
                 program_name = current_program.name if hasattr(current_program, 'name') else "Program"
                 UIService.show_information(
@@ -66,6 +92,22 @@ class ProgramActionService:
             return False
     
     def export_to_usb(self, parent_widget=None) -> bool:
+        if not self.controller_service.is_connected():
+            UIService.show_warning(
+                parent_widget,
+                tr("action.export_to_usb"),
+                tr("message.no_controller_connected")
+            )
+            return False
+        
+        if not self._has_license_for_controller():
+            UIService.show_warning(
+                parent_widget,
+                tr("action.export_to_usb"),
+                "License required. Please activate a license for this controller first."
+            )
+            return False
+        
         current_program = self.program_manager.current_program
         if not current_program and self.screen_manager:
             if self.screen_manager.current_screen and self.screen_manager.current_screen.programs:
@@ -115,6 +157,22 @@ class ProgramActionService:
             return False
     
     def show_insert_instructions(self, parent_widget=None):
+        if not self.controller_service.is_connected():
+            UIService.show_warning(
+                parent_widget,
+                tr("toolbar.insert"),
+                tr("message.no_controller_connected")
+            )
+            return
+        
+        if not self._has_license_for_controller():
+            UIService.show_warning(
+                parent_widget,
+                tr("toolbar.insert"),
+                "License required. Please activate a license for this controller first."
+            )
+            return
+        
         UIService.show_information(
             parent_widget,
             tr("toolbar.insert"),

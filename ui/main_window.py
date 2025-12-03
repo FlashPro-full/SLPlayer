@@ -1,8 +1,8 @@
 import sys
 from datetime import datetime
 from PyQt5 import QtWidgets, QtGui, QtCore
-from PyQt5.QtCore import Qt, QSize
-from PyQt5.QtWidgets import QSplitter, QProgressDialog, QMessageBox
+from PyQt5.QtCore import Qt, QSize, QTimer
+from PyQt5.QtWidgets import QSplitter, QProgressDialog, QMessageBox, QFileDialog
 from PyQt5.QtGui import QCloseEvent
 
 from core.program_manager import ProgramManager
@@ -42,6 +42,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self._setup_toolbar()
         self._setup_main_content()
         self._connect_signals()
+        
+        # Schedule automatic controller discovery on startup
+        # Use QTimer to delay slightly so UI is fully rendered
+        QTimer.singleShot(1000, self._startup_controller_discovery)
     
     def _setup_menu_bar(self):
         self.menu_bar = MenuBar(self)
@@ -49,13 +53,17 @@ class MainWindow(QtWidgets.QMainWindow):
         
     def _setup_toolbar(self):
         self.program_toolbar = ProgramToolbar(self)
-        self.addToolBar(Qt.TopToolBarArea, self.program_toolbar)
+        self.addToolBar(Qt.LeftToolBarArea, self.program_toolbar)
+        self.program_toolbar.setOrientation(Qt.Vertical)
         self.content_types_toolbar = ContentTypesToolbar(self)
-        self.addToolBar(Qt.TopToolBarArea, self.content_types_toolbar)
+        self.addToolBar(Qt.LeftToolBarArea, self.content_types_toolbar)
+        self.content_types_toolbar.setOrientation(Qt.Vertical)
         self.control_toolbar = ControlToolbar(self)
-        self.addToolBar(Qt.TopToolBarArea, self.control_toolbar)
+        self.addToolBar(Qt.LeftToolBarArea, self.control_toolbar)
+        self.control_toolbar.setOrientation(Qt.Vertical)
         self.playback_toolbar = PlaybackToolbar(self)
-        self.addToolBar(Qt.TopToolBarArea, self.playback_toolbar)
+        self.addToolBar(Qt.LeftToolBarArea, self.playback_toolbar)
+        self.playback_toolbar.setOrientation(Qt.Vertical)
     
     def _setup_main_content(self):
         main_splitter = QSplitter(Qt.Vertical, self)
@@ -87,6 +95,11 @@ class MainWindow(QtWidgets.QMainWindow):
         
         self.setCentralWidget(main_splitter)
         
+        # Setup status bar
+        from ui.status_bar import StatusBarWidget
+        self.status_bar = StatusBarWidget(self)
+        self.setStatusBar(self.status_bar)
+        
     def _setup_chessboard_background(self):
         central_widget = ContentWidget(self)
         self.setCentralWidget(central_widget)
@@ -103,6 +116,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self.menu_bar.new_screen_requested.connect(self._on_new_screen_from_menu)
         self.menu_bar.screen_settings_requested.connect(self._on_screen_settings_requested)
         self.menu_bar.sync_settings_requested.connect(self._on_sync_settings_requested)
+        self.menu_bar.discover_controllers_requested.connect(self._on_discover_controllers_requested)
+        self.menu_bar.login_requested.connect(self._on_login_requested)
+        self.menu_bar.disconnect_requested.connect(self._on_disconnect_controller_requested)
+        self.menu_bar.export_logs_requested.connect(self._on_export_logs_requested)
+        self.menu_bar.time_power_brightness_requested.connect(self._on_time_power_brightness_requested)
+        self.menu_bar.network_config_requested.connect(self._on_network_config_requested)
         self.control_toolbar.action_triggered.connect(self.on_toolbar_action)
         self.playback_toolbar.action_triggered.connect(self.on_playback_action)
         self.program_toolbar.new_program_requested.connect(self._on_new_program_from_toolbar)
@@ -126,6 +145,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self.screen_list_panel.content_copy_requested.connect(self._on_content_copy)
         self.content_types_toolbar.content_type_selected.connect(self._on_content_type_selected)
         self.menu_bar.save_program_requested.connect(self._on_save_requested)
+        
+        # Connect controller service events to status bar
+        from core.event_bus import event_bus
+        event_bus.controller_connected.connect(self._on_controller_connected)
+        event_bus.controller_disconnected.connect(self._on_controller_disconnected)
+        event_bus.controller_error.connect(self._on_controller_error)
     
     def on_send_program(self):
         self.program_action_service.send_program(self)
@@ -529,6 +554,387 @@ class MainWindow(QtWidgets.QMainWindow):
         
         self.open_screen_settings_dialog(load_current_screen=True)
     
+    def _startup_controller_discovery(self):
+        """Automatically discover and connect to controllers on application startup"""
+        try:
+            logger.info("Starting automatic controller discovery on startup")
+            
+            if hasattr(self, 'status_bar'):
+                self.status_bar.show_scanning("Scanning for controllers...")
+            
+            discovered = self.controller_service.discover_controllers(timeout=20)
+            
+            if hasattr(self, 'status_bar'):
+                self.status_bar.hide_scanning()
+            
+            if discovered:
+                logger.info(f"Found {len(discovered)} controller(s) on startup")
+                first_controller = discovered[0]
+                logger.info(f"Auto-connecting to first controller: {first_controller.ip}:{first_controller.port} ({first_controller.controller_type})")
+                
+                success = self.controller_service.connect_to_controller(
+                    first_controller.ip,
+                    first_controller.port,
+                    first_controller.controller_type,
+                    first_controller
+                )
+                
+                if success:
+                    logger.info(f"Successfully auto-connected to {first_controller.controller_type} controller at {first_controller.ip}:{first_controller.port}")
+                    self._read_brightness_on_connection()
+                else:
+                    logger.warning(f"Failed to auto-connect to controller at {first_controller.ip}:{first_controller.port}")
+                    if hasattr(self, 'status_bar'):
+                        from controllers.base_controller import ConnectionStatus
+                        self.status_bar.set_connection_status(
+                            ConnectionStatus.DISCONNECTED,
+                            f"{len(discovered)} controller(s) found (not connected)"
+                        )
+            else:
+                logger.info("No controllers found on startup")
+                if hasattr(self, 'status_bar'):
+                    from controllers.base_controller import ConnectionStatus
+                    self.status_bar.set_connection_status(ConnectionStatus.DISCONNECTED, "")
+        except Exception as e:
+            logger.warning(f"Error during startup controller discovery: {e}", exc_info=True)
+            if hasattr(self, 'status_bar'):
+                self.status_bar.hide_scanning()
+                from controllers.base_controller import ConnectionStatus
+                self.status_bar.set_connection_status(ConnectionStatus.DISCONNECTED, "")
+    
+    def _on_discover_controllers_requested(self):
+        """Handle discover controllers menu action"""
+        try:
+            from ui.dashboard_dialog import DashboardDialog
+            from PyQt5.QtWidgets import QProgressDialog
+            
+            # Show progress dialog while discovering
+            progress = QProgressDialog("Searching for controllers on network...", "Cancel", 0, 0, self)
+            progress.setWindowModality(Qt.WindowModal)
+            progress.setCancelButton(None)
+            progress.show()
+            
+            # Start discovery in background
+            discovered = self.controller_service.discover_controllers(timeout=20)
+            
+            progress.close()
+            
+            # Open dashboard dialog with discovered controllers
+            dialog = DashboardDialog(self, self.controller_service)
+            dialog.controller_selected.connect(self._on_controller_selected_from_discovery)
+            dialog.exec()
+            
+            # After dialog closes, check if controller was selected and connect
+            if hasattr(dialog, '_selected_controller_info') and dialog._selected_controller_info:
+                controller_info = dialog._selected_controller_info
+                try:
+                    success = self.controller_service.connect_to_controller(
+                        controller_info.ip,
+                        controller_info.port,
+                        controller_info.controller_type,
+                        controller_info  # Pass controller info to use SN for NovaStar
+                    )
+                    if success:
+                        logger.info(f"Successfully connected to {controller_info.controller_type} controller at {controller_info.ip}:{controller_info.port}")
+                        # Read brightness automatically on connection
+                        self._read_brightness_on_connection()
+                        QMessageBox.information(self, "Connected", f"Successfully connected to {controller_info.controller_type} controller at {controller_info.ip}:{controller_info.port}")
+                    else:
+                        QMessageBox.warning(self, "Connection Failed", f"Failed to connect to controller at {controller_info.ip}:{controller_info.port}")
+                except Exception as e:
+                    logger.exception(f"Error connecting to controller: {e}")
+                    QMessageBox.critical(self, "Connection Error", f"An error occurred while connecting:\n{str(e)}")
+            
+        except Exception as e:
+            logger.exception(f"Error discovering controllers: {e}")
+            QMessageBox.critical(self, "Discovery Error", f"An error occurred while discovering controllers:\n{str(e)}")
+    
+    def _on_login_requested(self):
+        """Handle login/license menu action"""
+        try:
+            from ui.login_dialog import LoginDialog
+            from core.startup_service import StartupService
+            
+            startup_service = StartupService()
+            controller_id, _ = startup_service.verify_license_at_startup()
+            
+            if self.controller_service.is_connected() and self.controller_service.current_controller:
+                controller_id = self.controller_service.current_controller.get_controller_id() or controller_id
+            
+            login_dialog = LoginDialog(controller_id=controller_id, parent=self)
+            dialog_result = login_dialog.exec()
+            
+            if dialog_result:
+                controller_id = login_dialog.controller_id or controller_id
+                if controller_id and login_dialog.is_license_valid():
+                    if startup_service.check_license_after_activation(controller_id):
+                        logger.info(f"License activated for controller: {controller_id}")
+                        QMessageBox.information(self, "License Activated", f"License successfully activated for controller: {controller_id}")
+                        self._update_license_dependent_actions()
+                    else:
+                        logger.warning(f"License validation failed for controller: {controller_id}")
+                        QMessageBox.warning(self, "License Validation Failed", f"License validation failed for controller: {controller_id}")
+                else:
+                    logger.info("License activation cancelled or invalid")
+        except Exception as e:
+            logger.exception(f"Error showing login dialog: {e}")
+            QMessageBox.critical(self, "Error", f"An error occurred while opening login dialog:\n{str(e)}")
+    
+    def _on_controller_selected_from_discovery(self, ip: str, port: int, controller_type: str):
+        """Handle controller selection from discovery dialog (signal handler)"""
+        # The actual connection is handled after dialog closes to get controller_info
+        pass
+    
+    def _on_network_config_requested(self):
+        """Handle network config menu action"""
+        try:
+            from ui.network_config_dialog import NetworkConfigDialog
+            
+            controller = None
+            if self.controller_service and self.controller_service.is_connected():
+                controller = self.controller_service.current_controller
+            
+            if not controller:
+                QMessageBox.warning(self, "No Controller", "Please connect to a controller first.")
+                return
+            
+            dialog = NetworkConfigDialog(parent=self, controller=controller)
+            dialog.exec()
+        except Exception as e:
+            logger.exception(f"Error opening network config dialog: {e}")
+            QMessageBox.critical(self, "Error", f"An error occurred while opening the dialog:\n{str(e)}")
+    
+    def _on_time_power_brightness_requested(self):
+        """Handle time/power/brightness menu action"""
+        try:
+            from ui.time_power_brightness_dialog import TimePowerBrightnessDialog
+            
+            controller = None
+            if self.controller_service and self.controller_service.is_connected():
+                controller = self.controller_service.current_controller
+            
+            if not controller:
+                QMessageBox.warning(self, "No Controller", "Please connect to a controller first.")
+                return
+            
+            # Get current screen name if available
+            screen_name = None
+            if self.screen_manager and self.screen_manager.current_screen:
+                screen_name = self.screen_manager.current_screen.name
+            
+            dialog = TimePowerBrightnessDialog(parent=self, controller=controller, screen_name=screen_name)
+            dialog.exec()
+        except Exception as e:
+            logger.exception(f"Error opening time/power/brightness dialog: {e}")
+            QMessageBox.critical(self, "Error", f"An error occurred while opening the dialog:\n{str(e)}")
+    
+    def _on_controller_connected(self, controller):
+        """Handle controller connected event"""
+        try:
+            if hasattr(self, 'status_bar') and controller:
+                device_info = controller.get_device_info()
+                device_name = ""
+                if device_info:
+                    device_name = device_info.get("name", "") or device_info.get("controller_id", "")
+                    if not device_name:
+                        device_name = f"{controller.controller_type.value} ({controller.ip_address})"
+                else:
+                    device_name = f"{controller.controller_type.value} ({controller.ip_address})"
+                
+                self.status_bar.set_connection_status(
+                    controller.get_connection_status(),
+                    device_name
+                )
+                logger.info(f"Status bar updated: Connected to {device_name}")
+            
+            self._update_license_dependent_actions()
+        except Exception as e:
+            logger.error(f"Error updating status bar on connection: {e}", exc_info=True)
+    
+    def _on_controller_disconnected(self):
+        """Handle controller disconnected event"""
+        try:
+            if hasattr(self, 'status_bar'):
+                from controllers.base_controller import ConnectionStatus
+                self.status_bar.set_connection_status(ConnectionStatus.DISCONNECTED, "")
+                logger.info("Status bar updated: Disconnected")
+            
+            self._update_license_dependent_actions()
+        except Exception as e:
+            logger.error(f"Error updating status bar on disconnection: {e}", exc_info=True)
+    
+    def _on_controller_error(self, error_message: str):
+        """Handle controller error event"""
+        try:
+            logger.warning(f"Controller error: {error_message}")
+            if hasattr(self, 'status_bar'):
+                from controllers.base_controller import ConnectionStatus
+                self.status_bar.set_connection_status(ConnectionStatus.ERROR, "")
+        except Exception as e:
+            logger.error(f"Error handling controller error: {e}", exc_info=True)
+    
+    def _update_license_dependent_actions(self):
+        """Update action states based on license availability"""
+        try:
+            has_license = False
+            is_connected = self.controller_service.is_connected()
+            
+            if is_connected:
+                controller = self.controller_service.current_controller
+                if controller:
+                    controller_id = controller.get_controller_id()
+                    if controller_id:
+                        try:
+                            from core.license_manager import LicenseManager
+                            license_manager = LicenseManager()
+                            license_file = license_manager.get_license_file_path(controller_id)
+                            has_license = license_file.exists()
+                        except Exception as e:
+                            logger.error(f"Error checking license: {e}", exc_info=True)
+            
+            send_enabled = is_connected and has_license
+            insert_enabled = is_connected and has_license
+            export_usb_enabled = is_connected and has_license
+            import_enabled = is_connected and has_license
+            export_enabled = is_connected and has_license
+            
+            if hasattr(self.menu_bar, 'actions'):
+                if "control.send" in self.menu_bar.actions:
+                    self.menu_bar.actions["control.send"].setEnabled(send_enabled)
+                if "control.export_to_usb" in self.menu_bar.actions:
+                    self.menu_bar.actions["control.export_to_usb"].setEnabled(export_usb_enabled)
+                if "control.import" in self.menu_bar.actions:
+                    self.menu_bar.actions["control.import"].setEnabled(import_enabled)
+                if "control.export" in self.menu_bar.actions:
+                    self.menu_bar.actions["control.export"].setEnabled(export_enabled)
+            
+            if hasattr(self, 'control_toolbar'):
+                for action in self.control_toolbar.actions():
+                    action_text = action.text()
+                    if action_text:
+                        if "⬆️" in action_text or "Send" in action_text:
+                            action.setEnabled(send_enabled)
+                        elif "📲" in action_text or "Insert" in action_text:
+                            action.setEnabled(insert_enabled)
+                        elif "💾" in action_text or "U-Disk" in action_text:
+                            action.setEnabled(export_usb_enabled)
+        except Exception as e:
+            logger.error(f"Error updating license-dependent actions: {e}", exc_info=True)
+    
+    def _read_brightness_on_connection(self):
+        """Automatically read brightness from controller when connected"""
+        try:
+            if not self.controller_service or not self.controller_service.current_controller:
+                return
+            
+            controller = self.controller_service.current_controller
+            if hasattr(controller, 'get_brightness'):
+                brightness = controller.get_brightness()
+                if brightness is not None:
+                    logger.info(f"Brightness read from controller: {brightness}%")
+                else:
+                    logger.warning("Could not read brightness from controller")
+        except Exception as e:
+            logger.warning(f"Error reading brightness on connection: {e}", exc_info=True)
+    
+    def _on_disconnect_controller_requested(self):
+        """Handle disconnect/clear controller menu action"""
+        try:
+            if self.controller_service and self.controller_service.current_controller:
+                reply = QMessageBox.question(
+                    self,
+                    "Disconnect Controller",
+                    "Are you sure you want to disconnect and clear the current controller?",
+                    QMessageBox.Yes | QMessageBox.No,
+                    QMessageBox.No
+                )
+                if reply == QMessageBox.Yes:
+                    self.controller_service.disconnect()
+                    logger.info("Current controller cleared/disconnected")
+                    QMessageBox.information(self, "Disconnected", "Controller has been disconnected and cleared.")
+                    # Status bar will be updated via event bus
+            else:
+                QMessageBox.information(self, "No Controller", "No controller is currently connected.")
+        except Exception as e:
+            logger.exception(f"Error disconnecting controller: {e}")
+            QMessageBox.critical(self, "Error", f"An error occurred while disconnecting:\n{str(e)}")
+    
+    def _clear_current_controller(self):
+        """Clear/disconnect the current controller (internal method)"""
+        try:
+            if self.controller_service and self.controller_service.current_controller:
+                self.controller_service.disconnect()
+                logger.info("Current controller cleared/disconnected")
+                # Update status bar if available
+                if hasattr(self, 'status_bar'):
+                    from controllers.base_controller import ConnectionStatus
+                    self.status_bar.set_connection_status(ConnectionStatus.DISCONNECTED, "")
+                return True
+            return False
+        except Exception as e:
+            logger.exception(f"Error clearing controller: {e}")
+            return False
+    
+    def _on_export_logs_requested(self):
+        """Handle export logs menu action"""
+        try:
+            from utils.logger import export_all_logs, get_log_directory
+            from datetime import datetime
+            
+            # Suggest a default filename with timestamp
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            default_filename = f"SLPlayer_Logs_{timestamp}.txt"
+            
+            # Open file dialog to choose save location
+            file_path, _ = QFileDialog.getSaveFileName(
+                self,
+                "Export Logs",
+                default_filename,
+                "Text Files (*.txt);;All Files (*.*)"
+            )
+            
+            if not file_path:
+                return  # User cancelled
+            
+            from pathlib import Path
+            output_path = Path(file_path)
+            
+            # Export the logs
+            success = export_all_logs(output_path)
+            
+            if success:
+                QMessageBox.information(
+                    self,
+                    "Export Successful",
+                    f"All logs have been exported to:\n{output_path}\n\n"
+                    f"Log directory: {get_log_directory()}"
+                )
+                logger.info(f"Logs exported to: {output_path}")
+            else:
+                log_dir = get_log_directory()
+                if not log_dir.exists():
+                    QMessageBox.warning(
+                        self,
+                        "No Logs Found",
+                        f"No log directory found at:\n{log_dir}\n\n"
+                        "Logs will be created when the application runs."
+                    )
+                else:
+                    QMessageBox.warning(
+                        self,
+                        "Export Failed",
+                        f"Failed to export logs.\n\n"
+                        f"Log directory: {log_dir}\n"
+                        "Check if log files exist and you have write permissions."
+                    )
+        except Exception as e:
+            logger.exception(f"Error exporting logs: {e}")
+            QMessageBox.critical(
+                self,
+                "Export Error",
+                f"An error occurred while exporting logs:\n{str(e)}"
+            )
+    
     def _on_sync_settings_requested(self):
         from PyQt5.QtWidgets import QMessageBox, QDialogButtonBox
         from core.sync_manager import SyncManager
@@ -547,6 +953,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 QMessageBox.Yes
             )
             if reply == QMessageBox.Yes:
+                self._on_discover_controllers_requested()
                 return
             else:
                 QMessageBox.information(self, "Information", "Please connect to a controller to use sync settings.")

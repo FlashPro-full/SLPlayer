@@ -73,18 +73,57 @@ class SyncManager:
                 program_list = controller.get_program_list()
                 logger.info(f"Found {len(program_list)} programs on controller")
                 
+                controller_type = "novastar" if hasattr(controller, '_device_sn') or str(type(controller)).lower().find('novastar') >= 0 else "huidu"
+                
                 for program_info in program_list:
                     program_id = program_info.get("id") or program_info.get("name")
                     if program_id:
-                        program_data = controller.download_program(program_id)
-                        if program_data:
+                        sdk_program_data = controller.download_program(program_id)
+                        if sdk_program_data:
+                            # Convert SDK format to *.soo format
+                            from core.program_converter import ProgramConverter
+                            soo_program_data = ProgramConverter.sdk_to_soo(sdk_program_data, controller_type)
+                            
                             imported_data["programs"][program_id] = {
-                                "data": program_data,
-                                "hash": self.calculate_hash(program_data),
+                                "data": soo_program_data,
+                                "hash": self.calculate_hash(soo_program_data),
                                 "modified": datetime.now().isoformat()
                             }
                             
-                            media_files = self._extract_media_from_program(program_data)
+                            # Save as *.soo file
+                            if screen_manager:
+                                from core.file_manager import FileManager
+                                from utils.app_data import get_app_data_dir
+                                from core.screen_manager import Screen
+                                from core.program_manager import Program
+                                
+                                file_manager = FileManager(screen_manager)
+                                work_dir = get_app_data_dir() / "work"
+                                work_dir.mkdir(parents=True, exist_ok=True)
+                                
+                                program_name = soo_program_data.get("name", f"Imported_{program_id}")
+                                safe_name = program_name.replace(' ', '_').replace('/', '_')
+                                soo_file_path = str(work_dir / f"{safe_name}_{program_id}.soo")
+                                
+                                # Create screen for imported program if needed
+                                screen_name = f"Imported_{controller_id}"
+                                existing_screen = screen_manager.get_screen_by_name(screen_name)
+                                if not existing_screen:
+                                    screen_resolution = imported_data.get("screen_resolution", {})
+                                    screen_width = screen_resolution.get("width", 640) if screen_resolution else 640
+                                    screen_height = screen_resolution.get("height", 480) if screen_resolution else 480
+                                    existing_screen = screen_manager.create_screen(screen_name, screen_width, screen_height)
+                                
+                                # Create and add program
+                                program = Program()
+                                program.from_dict(soo_program_data)
+                                existing_screen.add_program(program)
+                                
+                                # Save to *.soo file
+                                file_manager.save_screen_to_file(existing_screen, soo_file_path)
+                                logger.info(f"Saved downloaded program to {soo_file_path}")
+                            
+                            media_files = self._extract_media_from_program(soo_program_data)
                             for media_path in media_files:
                                 if media_path and Path(media_path).exists():
                                     media_hash = self._download_media_file(media_path)
@@ -209,8 +248,34 @@ class SyncManager:
             if not existing_screen:
                 existing_screen = screen_manager.create_screen(screen_name, screen_width, screen_height)
             
+            from core.file_manager import FileManager
+            from utils.app_data import get_app_data_dir
+            file_manager = FileManager(screen_manager)
+            work_dir = get_app_data_dir() / "work"
+            work_dir.mkdir(parents=True, exist_ok=True)
+            
             for program_id, program_info in programs.items():
                 program_data = program_info.get("data", {})
+                
+                # Program data is already in *.soo format (converted during download)
+                from core.program_manager import Program
+                program = Program()
+                program.from_dict(program_data)
+                
+                existing_screen.add_program(program)
+                if program_manager:
+                    program_manager.programs.append(program)
+                    program_manager._programs_by_id[program.id] = program
+                
+                # Save to *.soo file for persistence
+                program_name = program_data.get("name", f"Program_{program_id}")
+                safe_name = program_name.replace(' ', '_').replace('/', '_')
+                soo_file_path = str(work_dir / f"{safe_name}_{program_id}.soo")
+                file_manager.save_screen_to_file(existing_screen, soo_file_path)
+                
+                # Load the *.soo file so it appears in UI
+                if screen_manager:
+                    screen_manager.current_screen = existing_screen
                 from core.program_manager import Program
                 program = Program()
                 program.from_dict(program_data)
@@ -307,13 +372,34 @@ class SyncManager:
     
     def export_to_controller(self, controller, program_manager, screen_manager=None) -> bool:
         try:
+            # Step 1: Save current working state as *.soo files
+            if screen_manager:
+                from core.file_manager import FileManager
+                file_manager = FileManager(screen_manager)
+                for screen in screen_manager.screens:
+                    if screen.file_path:
+                        file_manager.save_screen_to_file(screen, screen.file_path)
+                    else:
+                        from utils.app_data import get_app_data_dir
+                        work_dir = get_app_data_dir() / "work"
+                        work_dir.mkdir(parents=True, exist_ok=True)
+                        safe_name = screen.name.replace(' ', '_').replace('/', '_')
+                        soo_file_path = str(work_dir / f"{safe_name}.soo")
+                        file_manager.save_screen_to_file(screen, soo_file_path)
+                        screen.file_path = soo_file_path
+            
             changes = self.compare_and_sync(controller, program_manager, screen_manager)
             
+            controller_type = "novastar" if hasattr(controller, '_device_sn') or str(type(controller)).lower().find('novastar') >= 0 else "huidu"
             success_count = 0
             fail_count = 0
             
             for program_data in changes["programs_to_upload"]:
-                if controller.upload_program(program_data):
+                # Convert *.soo format to SDK format
+                from core.program_converter import ProgramConverter
+                sdk_program_data = ProgramConverter.soo_to_sdk(program_data, controller_type)
+                
+                if controller.upload_program(sdk_program_data):
                     success_count += 1
                     program_id = program_data.get("id", "")
                     if program_id:

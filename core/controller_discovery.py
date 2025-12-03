@@ -4,9 +4,13 @@ Controller auto-discovery module for finding LED display controllers on the netw
 import socket
 import threading
 import time
+import json
+import ctypes
 from typing import List, Dict, Optional, Callable
 from PyQt5.QtCore import QObject, pyqtSignal
 from utils.logger import get_logger
+from utils.app_data import get_app_data_dir
+
 
 logger = get_logger(__name__)
 
@@ -22,7 +26,13 @@ class ControllerInfo:
         self.mac_address = ""
         self.firmware_version = ""
         self.display_resolution = ""
+        self.model = ""
+        self.display_name = ""
         self.last_seen = time.time()
+        self.program_count = 0
+        self.media_count = 0
+        self.programs: List[Dict] = []
+        self.media_files: List[str] = []
     
     def to_dict(self) -> Dict:
         """Convert to dictionary"""
@@ -33,7 +43,13 @@ class ControllerInfo:
             "name": self.name,
             "mac_address": self.mac_address,
             "firmware_version": self.firmware_version,
-            "display_resolution": self.display_resolution
+            "display_resolution": self.display_resolution,
+            "model": self.model,
+            "display_name": self.display_name,
+            "program_count": self.program_count,
+            "media_count": self.media_count,
+            "programs": self.programs,
+            "media_files": self.media_files
         }
     
     @classmethod
@@ -44,18 +60,21 @@ class ControllerInfo:
         info.mac_address = data.get("mac_address", "")
         info.firmware_version = data.get("firmware_version", "")
         info.display_resolution = data.get("display_resolution", "")
+        info.model = data.get("model", "")
+        info.display_name = data.get("display_name", "")
+        info.program_count = data.get("program_count", 0)
+        info.media_count = data.get("media_count", 0)
+        info.programs = data.get("programs", [])
+        info.media_files = data.get("media_files", [])
         return info
 
 
 class ControllerDiscovery(QObject):
-    """Auto-discovery service for LED display controllers"""
-    
-    controller_found = pyqtSignal(object)  # Emits ControllerInfo
+    controller_found = pyqtSignal(object)
     discovery_finished = pyqtSignal()
     
-    # Common controller ports
-    NOVASTAR_PORTS = [5200, 5201, 5202]
-    HUIDU_PORTS = [5000, 5001, 8080]
+    NOVASTAR_PORTS = [5200]
+    HUIDU_PORTS = [30080]
     COMMON_PORTS = NOVASTAR_PORTS + HUIDU_PORTS
     
     def __init__(self, parent=None):
@@ -64,24 +83,790 @@ class ControllerDiscovery(QObject):
         self.is_scanning = False
         self.scan_thread: Optional[threading.Thread] = None
         self.stop_event = threading.Event()
+        self._novastar_sdk = None
+        self._huidu_sdk = None
+        self._novastar_initialized = False
+        self._callback_refs = []
+    
+    def _init_novastar_sdk(self) -> bool:
+        if self._novastar_initialized:
+            return True
+        try:
+            from controllers.novastar_sdk import ViplexCoreSDK
+            if self._novastar_sdk is None:
+                try:
+                    self._novastar_sdk = ViplexCoreSDK()
+                except RuntimeError as e:
+                    logger.error(f"NovaStar SDK DLL load failed: {e}")
+                    return False
+                except Exception as e:
+                    logger.error(f"NovaStar SDK creation failed: {e}", exc_info=True)
+                    return False
+            
+            import os
+            sdk_root = get_app_data_dir() / "viplexcore"
+            sdk_root.mkdir(parents=True, exist_ok=True)
+            sdk_root_str = str(sdk_root.resolve()).replace('\\', '/')
+            credentials = {
+                "company": "Starled Italia",
+                "phone": "+39 095 328 6309",
+                "email": "info@starled-italia.com"
+            }
+            # Save current working directory and temporarily change to SDK root
+            # to prevent SDK from creating files in project directory
+            original_cwd = os.getcwd()
+            try:
+                os.chdir(str(sdk_root))
+                result = self._novastar_sdk.init(sdk_root_str, credentials)
+            finally:
+                os.chdir(original_cwd)
+            if result == 0:
+                self._novastar_initialized = True
+                logger.info("NovaStar SDK initialized successfully for discovery")
+                return True
+            else:
+                logger.warning(f"NovaStar SDK init returned error code {result} (checkParamvalid warning may appear - this is often non-fatal)")
+                logger.info(f"SDK root: {sdk_root_str}")
+                logger.debug(f"Credentials: {credentials}")
+                # Mark as initialized anyway - search can often work even if init shows warning
+                self._novastar_initialized = True
+                logger.info("Attempting NovaStar discovery (search may work despite init warning)")
+                return True
+        except Exception as e:
+            error_msg = str(e).split(chr(10))[0] if chr(10) in str(e) else str(e)
+            logger.error(f"NovaStar SDK initialization exception: {error_msg}", exc_info=True)
+            return False
+    
+    def _init_huidu_sdk(self) -> bool:
+        try:
+            from controllers.huidu_sdk import HuiduSDK
+            if self._huidu_sdk is None:
+                    self._huidu_sdk = HuiduSDK()
+            return True
+        except Exception as e:
+            logger.warning(f"Could not initialize Huidu SDK: {e}. Huidu discovery will be skipped.")
+            return False
+    
+    def _discover_novastar_controllers(self) -> List[ControllerInfo]:
+        discovered: List[ControllerInfo] = []
+        if not self._init_novastar_sdk():
+            logger.warning("NovaStar SDK initialization failed - skipping NovaStar discovery")
+            return discovered
+        
+        # Verify SDK is actually ready
+        if not self._novastar_sdk or not self._novastar_sdk.dll:
+            logger.error("NovaStar: SDK object or DLL is None - cannot perform search")
+            return discovered
+        
+        try:
+            all_terminals = []
+            seen_terminals = set()  # Track by sn+ip to avoid duplicates
+            callback_lock = threading.Lock()
+            callback_received = threading.Event()
+            
+            def search_callback(code: int, data: bytes):
+                logger.debug(f"NovaStar callback received: code={code}, data_length={len(data) if data else 0}")
+                if code == 0 and data:
+                    try:
+                        data_str = data.decode('utf-8', errors='ignore')
+                        if not data_str or data_str.strip() == '':
+                            logger.debug("NovaStar callback: Empty data string")
+                            return
+                        
+                        try:
+                            terminal_data = json.loads(data_str)
+                        except json.JSONDecodeError:
+                            for line in data_str.split('\n'):
+                                line = line.strip()
+                                if line:
+                                    try:
+                                        terminal_data = json.loads(line)
+                                        with callback_lock:
+                                            if isinstance(terminal_data, list):
+                                                all_terminals.extend(terminal_data)
+                                            elif isinstance(terminal_data, dict):
+                                                all_terminals.append(terminal_data)
+                                    except:
+                                        pass
+                            return
+                        
+                        with callback_lock:
+                            if isinstance(terminal_data, list):
+                                all_terminals.extend(terminal_data)
+                            elif isinstance(terminal_data, dict):
+                                all_terminals.append(terminal_data)
+                            callback_received.set()
+                    except Exception as e:
+                        logger.debug(f"Error parsing NovaStar callback data: {e}")
+                elif code == 65535:
+                    # Timeout - no controllers found in 4 seconds
+                    logger.info("NovaStar search timeout - no controllers found on network")
+                    callback_received.set()
+                else:
+                    logger.warning(f"NovaStar search error code: {code}")
+                    callback_received.set()
+            
+            import ctypes
+            from ctypes import WINFUNCTYPE
+            ExportViplexCallback = WINFUNCTYPE(None, ctypes.c_uint16, ctypes.c_char_p)
+            cb = ExportViplexCallback(search_callback)
+            # Keep callback reference to prevent garbage collection
+            self._callback_refs.append(cb)
+            
+            logger.info("NovaStar: Starting UDP broadcast search (nvSearchTerminalAsync)")
+            # Clear any previous callback results
+            callback_received.clear()
+            all_terminals.clear()
+            
+            # Verify SDK is initialized
+            if not self._novastar_sdk or not self._novastar_sdk.dll:
+                logger.error("NovaStar: SDK not properly initialized")
+                return discovered
+            
+            # Call the SDK search function - use W version for Unicode support
+            try:
+                logger.debug(f"NovaStar: Calling nvSearchTerminalAsyncW with callback {cb}")
+                self._novastar_sdk.dll.nvSearchTerminalAsyncW(cb)
+                logger.debug("NovaStar: Search command sent successfully, waiting for callbacks...")
+            except Exception as e:
+                logger.error(f"NovaStar: Failed to call search function: {e}", exc_info=True)
+                return discovered
+            
+            # Wait for callback or timeout (SDK timeout is 4 seconds, wait 5.5 to be safe)
+            # The callback can be called multiple times (once per controller found)
+            if not callback_received.wait(timeout=5.5):
+                logger.warning("NovaStar: Search timeout - no callback received within 5.5 seconds")
+            
+            # Give a small additional time for any late callbacks
+            time.sleep(0.5)
+            
+            logger.info(f"NovaStar: Search completed. Found {len(all_terminals)} terminal(s) in callback data")
+            
+            # Process all discovered terminals
+            for terminal in all_terminals:
+                try:
+                    sn = terminal.get("sn", "")
+                    if not sn:
+                        continue
+                    
+                    ip = terminal.get("ip", "")
+                    if not ip:
+                        continue
+                    
+                    # Avoid duplicates
+                    terminal_key = f"{sn}_{ip}"
+                    if terminal_key in seen_terminals:
+                        continue
+                    seen_terminals.add(terminal_key)
+                    
+                    port = terminal.get("tcpPort", 5200)
+                    if isinstance(port, str):
+                        try:
+                            port = int(port)
+                        except:
+                            port = 5200
+                    if not port or port <= 0:
+                        port = 5200
+                    
+                    name = terminal.get("aliasName") or terminal.get("productName", "NovaStar")
+                    controller_info = ControllerInfo(ip, port, "novastar", name)
+                    controller_info.mac_address = sn
+                    controller_info.firmware_version = terminal.get("version", "") or terminal.get("firmware", "")
+                    controller_info.model = terminal.get("productName", "") or terminal.get("model", "")
+                    controller_info.display_name = terminal.get("aliasName", "")
+                    
+                    width = terminal.get("width", 0)
+                    height = terminal.get("height", 0)
+                    if width and height:
+                        controller_info.display_resolution = f"{width}x{height}"
+                    
+                    discovered.append(controller_info)
+                    logger.info(f"Found NovaStar controller: {ip}:{port} ({name}) - SN: {sn}")
+                    
+                    # Read programs and media in background thread
+                    threading.Thread(target=self._read_controller_data, args=(controller_info,), daemon=True).start()
+                except Exception as e:
+                    logger.debug(f"Error processing NovaStar terminal: {e}")
+            
+            if discovered:
+                logger.info(f"NovaStar discovery complete: Found {len(discovered)} controller(s)")
+            else:
+                logger.info("NovaStar discovery complete: No controllers found")
+                
+        except Exception as e:
+            logger.error(f"Error discovering NovaStar controllers: {e}", exc_info=True)
+        return discovered
+    
+    def _discover_novastar_mobile_ranges(self, ranges: List[Dict[str, str]]) -> List[ControllerInfo]:
+        """Discover NovaStar controllers in mobile network IP ranges (3G/4G/5G)"""
+        discovered: List[ControllerInfo] = []
+        if not self._init_novastar_sdk():
+            return discovered
+        
+        for ip_range in ranges:
+            if self.stop_event.is_set():
+                break
+            try:
+                ip_start = ip_range.get("ipStart", "")
+                ip_end = ip_range.get("ipEnd", "")
+                if not ip_start or not ip_end:
+                    continue
+                
+                all_terminals = []
+                callback_lock = threading.Lock()
+                
+                def custom_callback(code: int, data: bytes):
+                    if code == 0 and data:
+                        try:
+                            data_str = data.decode('utf-8')
+                            terminal_data = json.loads(data_str)
+                            with callback_lock:
+                                if isinstance(terminal_data, list):
+                                    all_terminals.extend(terminal_data)
+                                elif isinstance(terminal_data, dict):
+                                    all_terminals.append(terminal_data)
+                        except Exception:
+                            pass
+                
+                from ctypes import WINFUNCTYPE
+                ExportViplexCallback = WINFUNCTYPE(None, ctypes.c_uint16, ctypes.c_char_p)
+                cb = ExportViplexCallback(custom_callback)
+                
+                range_params = json.dumps({"ipStart": ip_start, "ipEnd": ip_end})
+                self._novastar_sdk.dll.nvSearchRangeIpAsyncW(ctypes.c_wchar_p(range_params), cb)
+                
+                time.sleep(4)
+                
+                for terminal in all_terminals:
+                    try:
+                        sn = terminal.get("sn", "")
+                        if not sn:
+                            continue
+                        
+                        ip = terminal.get("ip", "")
+                        if not ip:
+                            continue
+                        
+                        port = terminal.get("tcpPort", 5200)
+                        if isinstance(port, str):
+                            try:
+                                port = int(port)
+                            except:
+                                port = 5200
+                        if not port or port <= 0:
+                            port = 5200
+                        
+                        name = terminal.get("aliasName") or terminal.get("productName", "NovaStar")
+                        controller_info = ControllerInfo(ip, port, "novastar", name)
+                        controller_info.mac_address = sn
+                        width = terminal.get("width", 0)
+                        height = terminal.get("height", 0)
+                        if width and height:
+                            controller_info.display_resolution = f"{width}x{height}"
+                        discovered.append(controller_info)
+                        logger.info(f"Found NovaStar controller (Mobile): {ip}:{port} ({name})")
+                    except Exception:
+                        pass
+            except Exception as e:
+                logger.warning(f"Error scanning mobile network range: {e}")
+        
+        return discovered
+    
+    def _discover_novastar_specific_ips(self, ip_list: List[str]) -> List[ControllerInfo]:
+        """Discover NovaStar controllers at specific IP addresses"""
+        discovered: List[ControllerInfo] = []
+        if not self._init_novastar_sdk():
+            return discovered
+        
+        for ip in ip_list:
+            if self.stop_event.is_set():
+                break
+            try:
+                all_terminals = []
+                callback_lock = threading.Lock()
+                
+                def custom_callback(code: int, data: bytes):
+                    if code == 0 and data:
+                        try:
+                            data_str = data.decode('utf-8')
+                            terminal_data = json.loads(data_str)
+                            with callback_lock:
+                                if isinstance(terminal_data, list):
+                                    all_terminals.extend(terminal_data)
+                                elif isinstance(terminal_data, dict):
+                                    all_terminals.append(terminal_data)
+                        except Exception:
+                            pass
+                
+                from ctypes import WINFUNCTYPE
+                ExportViplexCallback = WINFUNCTYPE(None, ctypes.c_uint16, ctypes.c_char_p)
+                cb = ExportViplexCallback(custom_callback)
+                
+                self._novastar_sdk.dll.nvSearchAppointIpAsyncW(ctypes.c_wchar_p(ip), cb)
+                
+                time.sleep(4)
+                
+                for terminal in all_terminals:
+                    try:
+                        sn = terminal.get("sn", "")
+                        if not sn:
+                            continue
+                        
+                        terminal_ip = terminal.get("ip", ip)
+                        port = terminal.get("tcpPort", 5200)
+                        if isinstance(port, str):
+                            try:
+                                port = int(port)
+                            except:
+                                port = 5200
+                        if not port or port <= 0:
+                            port = 5200
+                        
+                        name = terminal.get("aliasName") or terminal.get("productName", "NovaStar")
+                        controller_info = ControllerInfo(terminal_ip, port, "novastar", name)
+                        controller_info.mac_address = sn
+                        width = terminal.get("width", 0)
+                        height = terminal.get("height", 0)
+                        if width and height:
+                            controller_info.display_resolution = f"{width}x{height}"
+                        discovered.append(controller_info)
+                        logger.info(f"Found NovaStar controller: {terminal_ip}:{port} ({name})")
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+        
+        return discovered
+    
+    def _discover_huidu_controllers(self) -> List[ControllerInfo]:
+        discovered: List[ControllerInfo] = []
+        self._init_huidu_sdk()
+        
+        network_discovered = self._discover_huidu_network()
+        serial_discovered = self._discover_huidu_serial()
+        
+        discovered.extend(network_discovered)
+        discovered.extend(serial_discovered)
+        return discovered
+    
+    def _discover_huidu_network(self) -> List[ControllerInfo]:
+        discovered: List[ControllerInfo] = []
+        
+        try:
+            from controllers.huidu_sdk import HuiduSDK, SDK_AVAILABLE
+            
+            if not SDK_AVAILABLE:
+                logger.debug("Huidu SDK not available - skipping network discovery")
+                return discovered
+            
+            # Get all network ranges (from all interfaces)
+            all_network_ranges = self._get_all_network_ranges()
+            if not all_network_ranges:
+                logger.warning("Could not determine network ranges for Huidu discovery")
+                return discovered
+            
+            default_port = 30080
+            total_ips = sum(len(r) for r in all_network_ranges)
+            logger.info(f"Huidu network discovery: Found {len(all_network_ranges)} network interface(s), total {total_ips} IP addresses to scan on port {default_port}")
+            
+            try:
+                sdk = HuiduSDK()
+            except RuntimeError as e:
+                logger.debug(f"Could not create HuiduSDK instance: {e}")
+                return discovered
+            
+            import time
+            start_time = time.time()
+            checked_count = 0
+            
+            # Scan each network range separately (only gateway IP .1)
+            for network_idx, ip_range in enumerate(all_network_ranges, 1):
+                if self.stop_event.is_set():
+                    break
+                
+                if not ip_range or len(ip_range) == 0:
+                    continue
+                
+                gateway_ip = ip_range[0]
+                
+                # Validate gateway IP format before scanning
+                if not gateway_ip or '.' not in gateway_ip:
+                    logger.warning(f"Invalid gateway IP format: {gateway_ip}, skipping")
+                    continue
+                
+                try:
+                    ip_parts = gateway_ip.split('.')
+                    if len(ip_parts) != 4 or not all(0 <= int(p) <= 255 for p in ip_parts):
+                        logger.warning(f"Invalid gateway IP format: {gateway_ip}, skipping")
+                        continue
+                except (ValueError, AttributeError):
+                    logger.warning(f"Invalid gateway IP format: {gateway_ip}, skipping")
+                    continue
+                
+                network_prefix = gateway_ip.rsplit('.', 1)[0] if '.' in gateway_ip else "unknown"
+                logger.info(f"Huidu network {network_idx}/{len(all_network_ranges)}: Checking gateway {gateway_ip}:{default_port}")
+                
+                checked_count += 1
+                try:
+                    if sdk.is_card_online(gateway_ip):
+                        controller_info = ControllerInfo(gateway_ip, default_port, "huidu", f"Huidu_{gateway_ip}")
+                        controller_info.name = f"Huidu_Network_{gateway_ip}"
+                        discovered.append(controller_info)
+                        logger.info(f"Found Huidu controller: {gateway_ip}:{default_port}")
+                        
+                        # Read programs and media in background thread
+                        threading.Thread(target=self._read_controller_data, args=(controller_info,), daemon=True).start()
+                except Exception:
+                    pass
+            
+            if discovered:
+                logger.info(f"Huidu network discovery complete: Found {len(discovered)} controller(s) across {len(all_network_ranges)} network(s)")
+            else:
+                logger.info(f"Huidu network discovery complete: No controllers found across {len(all_network_ranges)} network(s)")
+            
+        except Exception as e:
+            logger.error(f"Error discovering Huidu network controllers: {e}", exc_info=True)
+        
+        return discovered
+    
+    def _get_all_network_ranges(self) -> List[List[str]]:
+        """Get all network IP ranges from all active interfaces (returns list of lists, one per network)"""
+        try:
+            import platform
+            all_ranges = []
+            seen_networks = set()
+            
+            if platform.system().lower() == "windows":
+                import subprocess
+                result = subprocess.run(
+                    ["ipconfig"],
+                    capture_output=True,
+                    text=True,
+                    timeout=5
+                )
+                
+                ip_mask_pairs = []
+                current_ip = None
+                current_mask = None
+                
+                for line in result.stdout.split('\n'):
+                    line = line.strip()
+                    if 'IPv4' in line or 'IP Address' in line:
+                        parts = line.split(':')
+                        if len(parts) >= 2:
+                            ip_str = parts[-1].strip()
+                            if ip_str and not ip_str.startswith('(') and not ip_str.startswith('::'):
+                                try:
+                                    ip_parts = ip_str.split('.')
+                                    if len(ip_parts) == 4 and all(0 <= int(p) <= 255 for p in ip_parts):
+                                        if current_ip and current_mask:
+                                            ip_mask_pairs.append((current_ip, current_mask))
+                                        current_ip = ip_str
+                                        current_mask = None
+                                except:
+                                    pass
+                    elif ('Subnet Mask' in line or 'Subnet' in line) and current_ip:
+                        parts = line.split(':')
+                        if len(parts) >= 2:
+                            mask_str = parts[-1].strip()
+                            try:
+                                mask_parts = mask_str.split('.')
+                                if len(mask_parts) == 4 and all(0 <= int(p) <= 255 for p in mask_parts):
+                                    current_mask = mask_str
+                            except:
+                                pass
+                
+                if current_ip and current_mask:
+                    ip_mask_pairs.append((current_ip, current_mask))
+                
+                for ip_str, mask_str in ip_mask_pairs:
+                    try:
+                        ip_parts = ip_str.split('.')
+                        mask_parts = mask_str.split('.')
+                        if len(ip_parts) == 4 and len(mask_parts) == 4:
+                            network_prefix_parts = []
+                            for i in range(4):
+                                network_prefix_parts.append(str(int(ip_parts[i]) & int(mask_parts[i])))
+                            network_prefix = '.'.join(network_prefix_parts)
+                            
+                            if network_prefix not in seen_networks:
+                                seen_networks.add(network_prefix)
+                                network_base = '.'.join(network_prefix_parts[:3])
+                                gateway_ip = f"{network_base}.1"
+                                ip_range = [gateway_ip]
+                                all_ranges.append(ip_range)
+                                logger.info(f"Detected network: {network_prefix} (gateway: {gateway_ip})")
+                    except:
+                        pass
+            
+            if not all_ranges:
+                # Fallback: try netifaces
+                try:
+                    import netifaces  # type: ignore
+                    seen_networks_netifaces = set()
+                    for interface in netifaces.interfaces():
+                        addrs = netifaces.ifaddresses(interface)
+                        if netifaces.AF_INET in addrs:
+                            for addr_info in addrs[netifaces.AF_INET]:
+                                ip = addr_info.get('addr')
+                                netmask = addr_info.get('netmask')
+                                if ip and netmask and not ip.startswith('127.'):
+                                    try:
+                                        ip_parts = ip.split('.')
+                                        mask_parts = netmask.split('.')
+                                        if len(ip_parts) == 4 and len(mask_parts) == 4:
+                                            network_prefix_parts = []
+                                            for i in range(4):
+                                                network_prefix_parts.append(str(int(ip_parts[i]) & int(mask_parts[i])))
+                                            network_prefix = '.'.join(network_prefix_parts)
+                                            
+                                            if network_prefix not in seen_networks_netifaces:
+                                                seen_networks_netifaces.add(network_prefix)
+                                                network_base = '.'.join(network_prefix_parts[:3])
+                                                gateway_ip = f"{network_base}.1"
+                                                ip_range = [gateway_ip]
+                                                all_ranges.append(ip_range)
+                                                logger.info(f"Detected network: {network_prefix} (gateway: {gateway_ip})")
+                                    except:
+                                        pass
+                except ImportError:
+                    pass
+            
+            if not all_ranges:
+                # Final fallback: assume single network (gateway only)
+                all_ranges.append(["192.168.1.1"])
+            
+            return all_ranges
+            
+        except Exception as e:
+            logger.exception(f"Error getting network ranges: {e}")
+            return [["192.168.1.1"]]
+    
+    def _discover_huidu_serial(self) -> List[ControllerInfo]:
+        """Discover Huidu controllers via serial/USB ports"""
+        discovered: List[ControllerInfo] = []
+        try:
+            import serial.tools.list_ports
+            available_ports = serial.tools.list_ports.comports()
+            
+            for port_info in available_ports:
+                if self.stop_event.is_set():
+                    break
+                try:
+                    port_name = port_info.device
+                    port_num = None
+                    
+                    if port_name.upper().startswith('COM'):
+                        try:
+                            port_num = int(port_name.replace('COM', '').replace('com', ''))
+                        except ValueError:
+                            continue
+                    elif port_name.startswith('/dev/tty'):
+                        try:
+                            port_num_str = port_name.replace('/dev/ttyUSB', '').replace('/dev/ttyS', '').replace('/dev/ttyACM', '')
+                            port_num = int(port_num_str) if port_num_str.isdigit() else None
+                        except (ValueError, AttributeError):
+                            continue
+                    
+                    if port_num is None:
+                        continue
+                    
+                    serial_params = f"{port_num}:9600"
+                    try:
+                        if self._huidu_sdk.is_card_online(serial_params, 1):
+                            controller_info = ControllerInfo(serial_params, port_num, "huidu", f"Huidu_Serial_{port_name}")
+                            controller_info.name = f"Huidu_Serial_{port_name}"
+                            params = self._huidu_sdk.get_screen_params(serial_params, 1)
+                            if params:
+                                width = params.get("width", 0)
+                                height = params.get("height", 0)
+                                if width and height:
+                                    controller_info.display_resolution = f"{width}x{height}"
+                            discovered.append(controller_info)
+                            logger.info(f"Found Huidu controller (Serial/USB): {port_name}")
+                            
+                            # Read programs and media in background thread
+                            threading.Thread(target=self._read_controller_data, args=(controller_info,), daemon=True).start()
+                    except Exception as e:
+                        logger.debug(f"Error checking serial port {port_name}: {e}")
+                except (ValueError, AttributeError) as e:
+                    logger.debug(f"Error parsing port name {port_info.device}: {e}")
+                    continue
+        except ImportError:
+            logger.debug("pyserial not available, skipping serial port discovery")
+        except Exception as e:
+            logger.warning(f"Error discovering Huidu serial controllers: {e}")
+        return discovered
+    
+    def _discover_huidu_mobile_ranges(self, ranges: List[Dict[str, str]]) -> List[ControllerInfo]:
+        discovered: List[ControllerInfo] = []
+        
+        try:
+            from controllers.huidu_sdk import HuiduSDK, SDK_AVAILABLE
+            
+            if not SDK_AVAILABLE:
+                logger.debug("Huidu SDK not available - skipping mobile range discovery")
+                return discovered
+            
+            default_port = 30080
+            try:
+                sdk = HuiduSDK()
+            except RuntimeError as e:
+                logger.debug(f"Could not create HuiduSDK instance: {e}")
+                return discovered
+            
+            for ip_range in ranges:
+                if self.stop_event.is_set():
+                    break
+                try:
+                    ip_start = ip_range.get("ipStart", "")
+                    ip_end = ip_range.get("ipEnd", "")
+                    if not ip_start or not ip_end:
+                        continue
+                    
+                    logger.info(f"Scanning Huidu mobile network range: {ip_start} - {ip_end} using SDK")
+                    
+                    start_parts = ip_start.split('.')
+                    end_parts = ip_end.split('.')
+                    
+                    if len(start_parts) != 4 or len(end_parts) != 4:
+                        continue
+                    
+                    start_last = int(start_parts[3])
+                    end_last = int(end_parts[3])
+                    network_prefix = '.'.join(start_parts[:3])
+                    
+                    scan_range = min(100, abs(end_last - start_last) + 1)
+                    
+                    for i in range(scan_range):
+                        if self.stop_event.is_set():
+                            break
+                        ip = f"{network_prefix}.{start_last + i}"
+                        if start_last + i > 254:
+                            break
+                        
+                        try:
+                            if sdk.is_card_online(ip):
+                                controller_info = ControllerInfo(ip, default_port, "huidu", f"Huidu_Mobile_{ip}")
+                                controller_info.name = f"Huidu_Mobile_{ip}"
+                                discovered.append(controller_info)
+                                logger.info(f"Found Huidu controller (Mobile Network): {ip}:{default_port}")
+                        except Exception:
+                            pass
+                except Exception as e:
+                    logger.warning(f"Error scanning Huidu mobile network range {ip_range}: {e}")
+        except Exception as e:
+            logger.warning(f"Error in mobile network discovery: {e}")
+        
+        return discovered
     
     def get_local_network_range(self) -> List[str]:
-        """Get local network IP range"""
+        """Get local network IP ranges from all active interfaces"""
         try:
-            # Get local IP address
-            hostname = socket.gethostname()
-            local_ip = socket.gethostbyname(hostname)
+            import platform
+            all_ranges = []
             
-            # Extract network prefix (assumes /24 subnet)
-            ip_parts = local_ip.split('.')
-            if len(ip_parts) == 4:
-                network_prefix = '.'.join(ip_parts[:3])
-                return [f"{network_prefix}.{i}" for i in range(1, 255)]
+            if platform.system().lower() == "windows":
+                import subprocess
+                result = subprocess.run(
+                    ["ipconfig"],
+                    capture_output=True,
+                    text=True,
+                    timeout=5
+                )
+                
+                current_ip = None
+                for line in result.stdout.split('\n'):
+                    line = line.strip()
+                    if 'IPv4' in line or 'IP Address' in line:
+                        parts = line.split(':')
+                        if len(parts) >= 2:
+                            ip_str = parts[-1].strip()
+                            if ip_str and not ip_str.startswith('('):
+                                try:
+                                    ip_parts = ip_str.split('.')
+                                    if len(ip_parts) == 4 and all(0 <= int(p) <= 255 for p in ip_parts):
+                                        current_ip = ip_str
+                                        network_prefix = '.'.join(ip_parts[:3])
+                                        ip_range = [f"{network_prefix}.{i}" for i in range(1, 255)]
+                                        if ip_range not in all_ranges:
+                                            all_ranges.append(ip_range)
+                                except (ValueError, IndexError):
+                                    pass
+            else:
+                import netifaces
+                interfaces = netifaces.interfaces()
+                for interface in interfaces:
+                    try:
+                        addrs = netifaces.ifaddresses(interface)
+                        if netifaces.AF_INET in addrs:
+                            for addr_info in addrs[netifaces.AF_INET]:
+                                ip = addr_info.get('addr')
+                                if ip and not ip.startswith('127.'):
+                                    ip_parts = ip.split('.')
+                                    if len(ip_parts) == 4:
+                                        network_prefix = '.'.join(ip_parts[:3])
+                                        ip_range = [f"{network_prefix}.{i}" for i in range(1, 255)]
+                                        if ip_range not in all_ranges:
+                                            all_ranges.append(ip_range)
+                    except Exception:
+                        continue
+            
+            if not all_ranges:
+                s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                s.connect(("8.8.8.8", 80))
+                local_ip = s.getsockname()[0]
+                s.close()
+                
+                ip_parts = local_ip.split('.')
+                if len(ip_parts) == 4:
+                    network_prefix = '.'.join(ip_parts[:3])
+                    all_ranges.append([f"{network_prefix}.{i}" for i in range(1, 255)])
+            
+            if all_ranges:
+                combined_range = []
+                for ip_range in all_ranges:
+                    combined_range.extend(ip_range)
+                logger.info(f"Found {len(all_ranges)} network interface(s), total {len(combined_range)} IPs to scan")
+                return combined_range
             
             return []
         except Exception as e:
             logger.exception(f"Error getting local network range: {e}")
+            try:
+                s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                s.connect(("8.8.8.8", 80))
+                local_ip = s.getsockname()[0]
+                s.close()
+                
+                ip_parts = local_ip.split('.')
+                if len(ip_parts) == 4:
+                    network_prefix = '.'.join(ip_parts[:3])
+                    return [f"{network_prefix}.{i}" for i in range(1, 255)]
+            except Exception:
+                pass
             return []
+    
+    def is_mobile_network_ip(self, ip: str) -> bool:
+        """Check if an IP address appears to be from a mobile network"""
+        try:
+            parts = ip.split('.')
+            if len(parts) != 4:
+                return False
+            
+            first_octet = int(parts[0])
+            second_octet = int(parts[1])
+            
+            if first_octet == 10:
+                return False
+            elif first_octet == 172 and 16 <= second_octet <= 31:
+                return False
+            elif first_octet == 192 and second_octet == 168:
+                return False
+            else:
+                return True
+        except (ValueError, IndexError):
+            return False
     
     def scan_port(self, ip: str, port: int, timeout: float = 0.5) -> bool:
         """Check if a port is open on an IP address"""
@@ -96,7 +881,7 @@ class ControllerDiscovery(QObject):
     
     def identify_controller_type(self, ip: str, port: int) -> str:
         """Try to identify controller type by port and response"""
-        # NovaStar controllers typically use ports 5200-5202
+        # NovaStar controllers use port 5200 (from SDK tcpPort response)
         if port in self.NOVASTAR_PORTS:
             # Try to connect and check response
             try:
@@ -109,7 +894,7 @@ class ControllerDiscovery(QObject):
             except (OSError, ConnectionError, TimeoutError):
                 pass
         
-        # Huidu controllers typically use port 5000 or 8080
+        # Huidu controllers use port 30080 for HTTP API (from SDK documentation)
         if port in self.HUIDU_PORTS:
             try:
                 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -143,8 +928,30 @@ class ControllerDiscovery(QObject):
                     logger.info(f"Found controller: {ip}:{port} ({controller_type})")
                     self.controller_found.emit(controller_info)
     
-    def start_scan(self, ip_range: Optional[List[str]] = None):
-        """Start scanning for controllers"""
+    def start_scan(self, ip_range: Optional[List[str]] = None, 
+                   mobile_network_ranges: Optional[List[Dict[str, str]]] = None):
+        """
+        Start comprehensive scanning for controllers across all connection types.
+        
+        Supports multiple connection types:
+        - Wi-Fi: Uses UDP broadcast (NovaStar) or network scanning (Huidu)
+        - Ethernet: Uses UDP broadcast (NovaStar) or network scanning (Huidu)
+        - USB/Serial: Scans serial ports (Huidu only, requires pyserial)
+        - 3G/4G/5G Mobile: Uses IP range search for known mobile network ranges (both NovaStar and Huidu)
+        - Remote IPs: Can search specific IP addresses or ranges
+        
+        Discovery Process:
+        1. NovaStar Wi-Fi/Ethernet (UDP broadcast on local network)
+        2. Huidu Wi-Fi/Ethernet (Network port scanning)
+        3. Huidu USB/Serial (Serial port scanning)
+        4. NovaStar Mobile Networks (3G/4G/5G IP ranges)
+        5. Huidu Mobile Networks (3G/4G/5G IP ranges)
+        6. Specific IP addresses (if provided)
+        
+        Args:
+            ip_range: Optional list of specific IPs to scan (for remote/mobile controllers)
+            mobile_network_ranges: Optional list of dicts with 'ipStart' and 'ipEnd' for mobile network ranges
+        """
         if self.is_scanning:
             logger.warning("Discovery scan already in progress")
             return
@@ -153,16 +960,119 @@ class ControllerDiscovery(QObject):
         self.stop_event.clear()
         self.discovered_controllers.clear()
         
-        if ip_range is None:
-            ip_range = self.get_local_network_range()
-        
         def scan_thread():
             try:
-                logger.info(f"Starting controller discovery scan ({len(ip_range)} IPs)")
-                for ip in ip_range:
+                logger.info("=" * 60)
+                logger.info("Starting comprehensive controller discovery")
+                logger.info("Connection types: Wi-Fi, Ethernet, USB/Serial, 3G/4G/5G")
+                logger.info("=" * 60)
+                
+                # Step 1: NovaStar Wi-Fi/Ethernet (UDP broadcast)
+                try:
+                    logger.info("Step 1: Scanning NovaStar controllers (Wi-Fi/Ethernet)")
+                    novastar_controllers = self._discover_novastar_controllers()
+                except Exception as e:
+                    logger.debug(f"NovaStar discovery skipped: {e}")
+                    novastar_controllers = []
+                for controller in novastar_controllers:
                     if self.stop_event.is_set():
                         break
-                    self.scan_ip(ip)
+                    existing = next((c for c in self.discovered_controllers 
+                                   if c.ip == controller.ip and c.port == controller.port), None)
+                    if not existing:
+                        self.discovered_controllers.append(controller)
+                        self.controller_found.emit(controller)
+                        try:
+                            self._read_controller_data(controller)
+                        except Exception as e:
+                            logger.debug(f"Error reading data from NovaStar controller {controller.ip}: {e}")
+                
+                # Step 2: Huidu Wi-Fi/Ethernet and USB/Serial
+                if not self.stop_event.is_set():
+                    logger.info("Step 2: Scanning Huidu controllers (Wi-Fi/Ethernet/USB/Serial)")
+                    try:
+                        if self._init_huidu_sdk():
+                            huidu_controllers = self._discover_huidu_controllers()
+                            for controller in huidu_controllers:
+                                if self.stop_event.is_set():
+                                    break
+                                existing = next((c for c in self.discovered_controllers 
+                                               if c.ip == controller.ip and c.port == controller.port), None)
+                                if not existing:
+                                    self.discovered_controllers.append(controller)
+                                    self.controller_found.emit(controller)
+                                    try:
+                                        self._read_controller_data(controller)
+                                    except Exception as e:
+                                        logger.debug(f"Error reading data from Huidu controller {controller.ip}: {e}")
+                        else:
+                            logger.info("Huidu SDK not available - skipping Huidu discovery")
+                    except Exception as e:
+                        logger.warning(f"Error during Huidu discovery: {e}. Continuing with other discovery methods...")
+                
+                # Mobile network ranges (3G/4G/5G)
+                if not self.stop_event.is_set() and mobile_network_ranges:
+                    logger.info(f"Step 3: Scanning mobile network ranges (3G/4G/5G) - {len(mobile_network_ranges)} ranges")
+                    try:
+                        # NovaStar mobile network discovery
+                        novastar_mobile = self._discover_novastar_mobile_ranges(mobile_network_ranges)
+                        for controller in novastar_mobile:
+                            if self.stop_event.is_set():
+                                break
+                            existing = next((c for c in self.discovered_controllers 
+                                           if c.ip == controller.ip and c.port == controller.port), None)
+                            if not existing:
+                                self.discovered_controllers.append(controller)
+                                self.controller_found.emit(controller)
+                                try:
+                                    self._read_controller_data(controller)
+                                except Exception as e:
+                                    logger.debug(f"Error reading data from NovaStar mobile controller {controller.ip}: {e}")
+                    except Exception as e:
+                        logger.warning(f"Error during NovaStar mobile network discovery: {e}")
+                    
+                    try:
+                        # Huidu mobile network discovery
+                        huidu_mobile = self._discover_huidu_mobile_ranges(mobile_network_ranges)
+                        for controller in huidu_mobile:
+                            if self.stop_event.is_set():
+                                break
+                            existing = next((c for c in self.discovered_controllers 
+                                           if c.ip == controller.ip and c.port == controller.port), None)
+                            if not existing:
+                                self.discovered_controllers.append(controller)
+                                self.controller_found.emit(controller)
+                                try:
+                                    self._read_controller_data(controller)
+                                except Exception as e:
+                                    logger.debug(f"Error reading data from Huidu mobile controller {controller.ip}: {e}")
+                    except Exception as e:
+                        logger.warning(f"Error during Huidu mobile network discovery: {e}")
+                
+                # Step 4: Specific IP addresses (if provided)
+                if not self.stop_event.is_set() and ip_range:
+                    logger.info(f"Step 4: Scanning specific IP addresses ({len(ip_range)} IPs)")
+                    try:
+                        for ip in ip_range:
+                            if self.stop_event.is_set():
+                                break
+                            self.scan_ip(ip)
+                        
+                        specific_controllers = self._discover_novastar_specific_ips(ip_range)
+                        for controller in specific_controllers:
+                            if self.stop_event.is_set():
+                                break
+                            existing = next((c for c in self.discovered_controllers 
+                                           if c.ip == controller.ip and c.port == controller.port), None)
+                            if not existing:
+                                self.discovered_controllers.append(controller)
+                                self.controller_found.emit(controller)
+                                try:
+                                    self._read_controller_data(controller)
+                                except Exception as e:
+                                    logger.debug(f"Error reading data from specific IP controller {controller.ip}: {e}")
+                    except Exception as e:
+                        logger.warning(f"Error during specific IP discovery: {e}")
                 
                 logger.info(f"Discovery scan finished. Found {len(self.discovered_controllers)} controllers")
             except Exception as e:
@@ -193,4 +1103,94 @@ class ControllerDiscovery(QObject):
         
         thread = threading.Thread(target=scan, daemon=True)
         thread.start()
+    
+    def _read_controller_data(self, controller_info: ControllerInfo):
+        """Read programs and media from discovered controller and update database"""
+        try:
+            from controllers.novastar import NovaStarController
+            from controllers.huidu import HuiduController
+            from controllers.base_controller import BaseController
+            from core.controller_database import get_controller_database
+            from core.sync_manager import SyncManager
+            
+            controller: Optional[BaseController] = None
+            try:
+                if controller_info.controller_type == "novastar":
+                    controller = NovaStarController(controller_info.ip, controller_info.port)  # type: ignore
+                    if controller_info.mac_address and hasattr(controller, '_device_sn'):
+                        controller._device_sn = controller_info.mac_address  # type: ignore
+                elif controller_info.controller_type == "huidu":
+                    controller = HuiduController(controller_info.ip, controller_info.port)  # type: ignore
+                else:
+                    return
+                
+                if not controller or not controller.connect():
+                    logger.debug(f"Could not connect to {controller_info.ip}:{controller_info.port} for data reading")
+                    return
+                
+                device_info = controller.get_device_info()  # type: ignore
+                if not device_info:
+                    device_info = {}
+                
+                device_info.update({
+                    "name": controller_info.name,
+                    "display_name": controller_info.display_name,
+                    "mac_address": controller_info.mac_address,
+                    "firmware_version": controller_info.firmware_version,
+                    "display_resolution": controller_info.display_resolution,
+                    "model": controller_info.model
+                })
+                
+                programs: List[Dict] = []
+                media_files: List[str] = []
+                
+                if hasattr(controller, 'get_program_list'):
+                    try:
+                        program_list = controller.get_program_list()  # type: ignore
+                        controller_info.program_count = len(program_list) if program_list else 0
+                        programs = program_list or []
+                        
+                        for program_info in programs:
+                            program_id = program_info.get("id") or program_info.get("name") or program_info.get("program_id")
+                            if program_id and hasattr(controller, 'download_program'):
+                                try:
+                                    program_data = controller.download_program(program_id)  # type: ignore
+                                    if program_data:
+                                        sync_manager = SyncManager()
+                                        media_from_program = sync_manager._extract_media_from_program(program_data)
+                                        media_files.extend(media_from_program)
+                                except Exception as e:
+                                    logger.debug(f"Error downloading program {program_id}: {e}")
+                    except Exception as e:
+                        logger.debug(f"Error reading programs from {controller_info.ip}: {e}")
+                
+                media_files = list(set(media_files))
+                controller_info.media_count = len(media_files)
+                controller_info.programs = programs
+                controller_info.media_files = media_files
+                
+                if controller:
+                    controller_id = controller.get_controller_id()  # type: ignore
+                    if controller_id:
+                        db = get_controller_database()
+                        db.add_or_update_controller(
+                            controller_id,
+                            controller_info.ip,
+                            controller_info.port,
+                            controller_info.controller_type.capitalize(),
+                            device_info
+                        )
+                        logger.info(f"Updated database for controller {controller_id}: {controller_info.program_count} programs, {controller_info.media_count} media files")
+                    
+                    controller.disconnect()  # type: ignore
+                
+            except Exception as e:
+                logger.debug(f"Error reading data from controller {controller_info.ip}:{controller_info.port}: {e}")
+                if controller:
+                    try:
+                        controller.disconnect()
+                    except:
+                        pass
+        except Exception as e:
+            logger.debug(f"Error in _read_controller_data: {e}")
 

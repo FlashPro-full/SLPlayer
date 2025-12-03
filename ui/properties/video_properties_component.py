@@ -347,7 +347,7 @@ class VideoPropertiesComponent(BasePropertiesComponent):
         self.video_list.set_videos(video_list)
         
         video_shot = element_props.get("video_shot", {})
-        video_shot_enabled = video_shot.get("enabled", True) if isinstance(video_shot, dict) else True
+        video_shot_enabled = video_shot.get("enabled", False) if isinstance(video_shot, dict) else False
         
         self.video_shot_enabled_checkbox.blockSignals(True)
         self.video_shot_enabled_checkbox.setChecked(video_shot_enabled)
