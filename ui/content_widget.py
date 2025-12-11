@@ -22,9 +22,14 @@ class ContentWidget(QtWidgets.QWidget):
     def __init__(self, parent=None, screen_manager: Optional['ScreenManager'] = None):
         super().__init__(parent)
         self.screen_manager = screen_manager
+        self.setStyleSheet("""
+            ContentWidget {
+                border-left: 1px solid #555555;
+            }
+        """)
         self.checker_size = 10
-        self.color1 = QtGui.QColor(240, 240, 240)
-        self.color2 = QtGui.QColor(255, 255, 255)
+        self.color1 = QtGui.QColor(43, 43, 43)  # #2B2B2B
+        self.color2 = QtGui.QColor(35, 35, 35)  # #232323 (slightly darker for checkerboard)
         self._cached_pixmap = None
         self._cached_size = QSize()
         self.scale_factor = 1.0
@@ -130,7 +135,7 @@ class ContentWidget(QtWidgets.QWidget):
             }
         elif content_type == "text":
             element["properties"]["text"] = {
-                "content": "Text Content",
+                "content": "",
                 "format": {
                     "font_family": "MS Shell Dlg 2",
                     "font_size": 16,
@@ -139,7 +144,7 @@ class ContentWidget(QtWidgets.QWidget):
                     "bold": False,
                     "italic": False,
                     "underline": False,
-                    "alignment": "left",
+                    "alignment": "center",
                     "outline": False
                 },
                 "background_color": "#55ffff",
@@ -1068,28 +1073,27 @@ class ContentWidget(QtWidgets.QWidget):
             text_color_str = text_format.get("font_color")
         text_color = QtGui.QColor(text_color_str)
         
-        # Default alignment: left for both single-line and multi-line
+        # Default alignment: center for both single-line and multi-line
+        # Always use alignment from format if present, otherwise default to center
+        align_str = text_format.get("alignment", "center")
         if is_singleline:
-            alignment = Qt.AlignLeft
-        else:
-            alignment = Qt.AlignLeft | Qt.TextWordWrap
-        
-        if text_format.get("alignment"):
-            align_str = text_format.get("alignment")
-            if is_singleline:
-                if align_str == "left":
-                    alignment = Qt.AlignLeft
-                elif align_str == "center":
-                    alignment = Qt.AlignHCenter
-                elif align_str == "right":
-                    alignment = Qt.AlignRight
+            if align_str == "left":
+                alignment = Qt.AlignLeft
+            elif align_str == "center":
+                alignment = Qt.AlignHCenter
+            elif align_str == "right":
+                alignment = Qt.AlignRight
             else:
-                if align_str == "left":
-                    alignment = Qt.AlignLeft | Qt.TextWordWrap
-                elif align_str == "center":
-                    alignment = Qt.AlignHCenter | Qt.TextWordWrap
-                elif align_str == "right":
-                    alignment = Qt.AlignRight | Qt.TextWordWrap
+                alignment = Qt.AlignHCenter  # Default to center
+        else:
+            if align_str == "left":
+                alignment = Qt.AlignLeft | Qt.TextWordWrap
+            elif align_str == "center":
+                alignment = Qt.AlignHCenter | Qt.TextWordWrap
+            elif align_str == "right":
+                alignment = Qt.AlignRight | Qt.TextWordWrap
+            else:
+                alignment = Qt.AlignHCenter | Qt.TextWordWrap  # Default to center
         
         element_bounds = QtCore.QRect(x, y, width, height)
         text_rect = QtCore.QRect(x, y, width, height)
@@ -1101,7 +1105,7 @@ class ContentWidget(QtWidgets.QWidget):
         text_bounding_rect = font_metrics.boundingRect(temp_rect, alignment, text_content)
         actual_text_height = text_bounding_rect.height()
         
-        vertical_align = text_format.get("vertical_alignment", "top")
+        vertical_align = text_format.get("vertical_alignment", "middle")
         if vertical_align == "top":
             text_rect = QtCore.QRect(x, y, width, min(height, actual_text_height))
         elif vertical_align == "middle":
@@ -2248,7 +2252,7 @@ class ContentWidget(QtWidgets.QWidget):
         
         if is_continuous_scroll:
             if style_index == 0 or style_index == 1:
-                vertical_align = text_format.get("vertical_alignment", "top")
+                vertical_align = text_format.get("vertical_alignment", "middle")
                 line_height = font_metrics.height()
                 ascent = font_metrics.ascent()
                 descent = font_metrics.descent()
@@ -2917,11 +2921,21 @@ class ContentWidget(QtWidgets.QWidget):
         rect = self.rect()
         current_size = rect.size()
         
+        # Validate size before creating pixmap
+        if current_size.width() <= 0 or current_size.height() <= 0:
+            return
+        
         if self._cached_pixmap is None or self._cached_size != current_size:
             self._cached_pixmap = QtGui.QPixmap(current_size)
+            if self._cached_pixmap.isNull():
+                return
+            
             self._cached_pixmap.fill(self.color2)
             
             painter = QtGui.QPainter(self._cached_pixmap)
+            if not painter.isActive():
+                return
+            
             painter.setRenderHint(QtGui.QPainter.Antialiasing, False)
             
             size = self.checker_size
@@ -2933,6 +2947,9 @@ class ContentWidget(QtWidgets.QWidget):
             
             painter.end()
             self._cached_size = current_size
+        
+        if self._cached_pixmap is None or self._cached_pixmap.isNull():
+            return
         
         painter = QtGui.QPainter(self)
         if not painter.isActive():

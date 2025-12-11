@@ -16,53 +16,56 @@ class TextPropertiesComponent(BasePropertiesComponent):
         self.init_ui()
     
     def init_ui(self):
-        main_layout = QHBoxLayout(self)
+        main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(8, 8, 8, 8)
         main_layout.setSpacing(12)
-        main_layout.setAlignment(Qt.AlignLeft | Qt.AlignTop)
+        main_layout.setAlignment(Qt.AlignTop)
         
         self.setStyleSheet("""
             QGroupBox {
                 font-weight: 600;
                 font-size: 13px;
-                border: 1px solid #D0D0D0;
+                border: 1px solid #555555;
                 border-radius: 4px;
                 margin-top: 8px;
                 padding-top: 12px;
-                background-color: #FAFAFA;
+                background-color: #2B2B2B;
+                color: #FFFFFF;
             }
             QGroupBox::title {
                 subcontrol-origin: margin;
                 left: 8px;
                 padding: 0 4px;
-                color: #333333;
+                color: #FFFFFF;
             }
             QLineEdit {
-                border: 1px solid #CCCCCC;
+                border: 1px solid #555555;
                 border-radius: 3px;
                 padding: 4px 6px;
-                background-color: #FFFFFF;
+                background-color: #3B3B3B;
+                color: #FFFFFF;
                 font-size: 12px;
                 selection-background-color: #4A90E2;
                 selection-color: #FFFFFF;
             }
             QLineEdit:focus {
                 border: 1px solid #4A90E2;
-                background-color: #FFFFFF;
+                background-color: #3B3B3B;
             }
             QLineEdit:hover {
-                border: 1px solid #999999;
+                border: 1px solid #666666;
             }
             QComboBox {
-                border: 1px solid #CCCCCC;
+                border: 1px solid #555555;
                 border-radius: 3px;
                 padding: 4px 6px;
-                background-color: #FFFFFF;
+                background-color: #3B3B3B;
+                color: #FFFFFF;
                 font-size: 12px;
                 min-width: 80px;
             }
             QComboBox:hover {
-                border: 1px solid #999999;
+                border: 1px solid #666666;
             }
             QComboBox:focus {
                 border: 1px solid #4A90E2;
@@ -75,20 +78,21 @@ class TextPropertiesComponent(BasePropertiesComponent):
                 image: none;
                 border-left: 4px solid transparent;
                 border-right: 4px solid transparent;
-                border-top: 5px solid #666666;
+                border-top: 5px solid #CCCCCC;
                 width: 0;
                 height: 0;
             }
             QComboBox QAbstractItemView {
-                border: 1px solid #CCCCCC;
+                border: 1px solid #555555;
                 border-radius: 3px;
-                background-color: #FFFFFF;
-                selection-background-color: #4A90E2;
+                background-color: #2B2B2B;
+                color: #FFFFFF;
+                selection-background-color: #3B3B3B;
                 selection-color: #FFFFFF;
                 padding: 2px;
             }
             QTextEdit {
-                border: 1px solid #CCCCCC;
+                border: 1px solid #555555;
                 border-radius: 3px;
                 padding: 6px;
                 background-color: #000000;
@@ -101,13 +105,14 @@ class TextPropertiesComponent(BasePropertiesComponent):
                 border: 1px solid #4A90E2;
             }
             QTextEdit:hover {
-                border: 1px solid #999999;
+                border: 1px solid #666666;
             }
             QDoubleSpinBox {
-                border: 1px solid #CCCCCC;
+                border: 1px solid #555555;
                 border-radius: 3px;
                 padding: 4px 6px;
-                background-color: #FFFFFF;
+                background-color: #3B3B3B;
+                color: #FFFFFF;
                 font-size: 12px;
                 selection-background-color: #4A90E2;
                 selection-color: #FFFFFF;
@@ -116,7 +121,7 @@ class TextPropertiesComponent(BasePropertiesComponent):
                 border: 1px solid #4A90E2;
             }
             QDoubleSpinBox:hover {
-                border: 1px solid #999999;
+                border: 1px solid #666666;
             }
             QDoubleSpinBox::up-button, QDoubleSpinBox::down-button {
                 border: none;
@@ -124,16 +129,15 @@ class TextPropertiesComponent(BasePropertiesComponent):
                 width: 16px;
             }
             QDoubleSpinBox::up-button:hover, QDoubleSpinBox::down-button:hover {
-                background-color: #F0F0F0;
+                background-color: #4B4B4B;
             }
             QLabel {
-                color: #333333;
+                color: #FFFFFF;
                 font-size: 12px;
             }
         """)
         
         area_group = QGroupBox("Area attribute")
-        area_group.setMaximumWidth(200)
         area_layout = QVBoxLayout(area_group)
         area_layout.setContentsMargins(10, 16, 10, 10)
         area_layout.setSpacing(8)
@@ -149,7 +153,7 @@ class TextPropertiesComponent(BasePropertiesComponent):
         self.text_coords_x.setText("0")
         self.text_coords_x.textChanged.connect(self._on_text_coords_changed)
         coords_comma = QLabel(",")
-        coords_comma.setStyleSheet("color: #666666; font-weight: bold;")
+        coords_comma.setStyleSheet("color: #CCCCCC; font-weight: bold;")
         self.text_coords_y = QLineEdit()
         self.text_coords_y.setPlaceholderText("0")
         self.text_coords_y.setMinimumWidth(70)
@@ -183,11 +187,9 @@ class TextPropertiesComponent(BasePropertiesComponent):
         dims_row.addWidget(self.text_dims_height)
         area_layout.addLayout(dims_row)
         
-        area_layout.addStretch()
         main_layout.addWidget(area_group)
         
         text_edit_group = QGroupBox("Text Content")
-        text_edit_group.setMinimumWidth(350)
         text_edit_layout = QVBoxLayout(text_edit_group)
         text_edit_layout.setContentsMargins(10, 16, 10, 10)
         text_edit_layout.setSpacing(8)
@@ -203,18 +205,18 @@ class TextPropertiesComponent(BasePropertiesComponent):
         text_edit_layout.addWidget(self.text_editor_toolbar)
         text_edit_layout.addWidget(self.text_content_edit, stretch=1)
         
-        main_layout.addWidget(text_edit_group, stretch=1)
+        main_layout.addWidget(text_edit_group)
         
         display_group = QGroupBox("Display")
-        display_group.setMinimumWidth(350)
-        display_layout = QHBoxLayout(display_group)
-        display_layout.setContentsMargins(10, 16, 10, 10)
-        display_layout.setSpacing(12)
+        display_group.setMinimumWidth(250)
+        display_main_layout = QHBoxLayout(display_group)
+        display_main_layout.setContentsMargins(10, 16, 10, 10)
+        display_main_layout.setSpacing(12)
         
-        buttons_column = QVBoxLayout()
-        buttons_column.setSpacing(8)
-        buttons_column.setAlignment(Qt.AlignTop)
-        buttons_column.setContentsMargins(0, 0, 0, 0)
+        buttons_row = QVBoxLayout()
+        buttons_row.setSpacing(8)
+        buttons_row.setAlignment(Qt.AlignLeft)
+        buttons_row.setContentsMargins(0, 0, 0, 0)
         
         self.text_fixed_animation_btn = QPushButton("🚫")
         self.text_fixed_animation_btn.setFixedSize(44, 44)
@@ -224,21 +226,21 @@ class TextPropertiesComponent(BasePropertiesComponent):
         self.text_fixed_animation_btn.setFont(font)
         self.text_fixed_animation_btn.setStyleSheet("""
             QPushButton {
-                background-color: #F5F5F5;
-                border: 1px solid #CCCCCC;
+                background-color: #3B3B3B;
+                border: 1px solid #555555;
                 border-radius: 4px;
             }
             QPushButton:hover {
-                background-color: #E8F4F8;
+                background-color: #4B4B4B;
                 border: 1px solid #4A90E2;
             }
             QPushButton:pressed {
-                background-color: #D0E8F2;
+                background-color: #2B2B2B;
                 border: 1px solid #2E5C8A;
             }
         """)
         self.text_fixed_animation_btn.clicked.connect(self._on_fixed_animation_clicked)
-        buttons_column.addWidget(self.text_fixed_animation_btn)
+        buttons_row.addWidget(self.text_fixed_animation_btn)
         
         self.text_random_animation_btn = QPushButton("🔀")
         self.text_random_animation_btn.setFixedSize(44, 44)
@@ -248,32 +250,36 @@ class TextPropertiesComponent(BasePropertiesComponent):
         self.text_random_animation_btn.setFont(font)
         self.text_random_animation_btn.setStyleSheet("""
             QPushButton {
-                background-color: #F5F5F5;
-                border: 1px solid #CCCCCC;
+                background-color: #3B3B3B;
+                border: 1px solid #555555;
                 border-radius: 4px;
             }
             QPushButton:hover {
-                background-color: #E8F4F8;
+                background-color: #4B4B4B;
                 border: 1px solid #4A90E2;
             }
             QPushButton:pressed {
-                background-color: #D0E8F2;
+                background-color: #2B2B2B;
                 border: 1px solid #2E5C8A;
             }
         """)
         self.text_random_animation_btn.clicked.connect(self._on_random_animation_clicked)
-        buttons_column.addWidget(self.text_random_animation_btn)
+        buttons_row.addWidget(self.text_random_animation_btn)
         
-        buttons_column.addStretch()
-        display_layout.addLayout(buttons_column, stretch=1)
+        buttons_row.addStretch()
+        display_main_layout.addLayout(buttons_row)
         
-        content_column = QVBoxLayout()
+        content_column = QHBoxLayout()
         content_column.setSpacing(8)
         content_column.setContentsMargins(0, 0, 0, 0)
         
-        entrance_row = QHBoxLayout()
-        entrance_row.setSpacing(8)
-        entrance_row.setContentsMargins(0, 0, 0, 12)
+        animation_layout = QVBoxLayout()
+        animation_layout.setContentsMargins(0, 0, 0, 0)
+        animation_layout.setSpacing(8)
+        
+        entrance_layout = QHBoxLayout()
+        entrance_layout.setSpacing(8)
+        entrance_layout.setContentsMargins(0, 0, 0, 0)
         self.text_entrance_animation_combo = QComboBox()
         self.text_entrance_animation_combo.addItems([
             "Random", "Immediate Show", "Move Left", "Move Right", "Move Up", "Move Down",
@@ -284,21 +290,20 @@ class TextPropertiesComponent(BasePropertiesComponent):
         ])
         self.text_entrance_animation_combo.setCurrentText("Random")
         self.text_entrance_animation_combo.currentTextChanged.connect(self._on_entrance_animation_changed)
-        entrance_row.addWidget(self.text_entrance_animation_combo, stretch=1)
-        
+        entrance_layout.addWidget(self.text_entrance_animation_combo)
+        entrance_layout.addStretch()
         self.text_entrance_speed_combo = QComboBox()
         self.text_entrance_speed_combo.addItem("1 fast")
         self.text_entrance_speed_combo.addItems([f"{i}" for i in range(2, 9)])
         self.text_entrance_speed_combo.addItem("9 slow")
         self.text_entrance_speed_combo.setCurrentText("1 fast")
-        self.text_entrance_speed_combo.setMinimumWidth(80)
         self.text_entrance_speed_combo.currentTextChanged.connect(self._on_entrance_speed_changed)
-        entrance_row.addWidget(self.text_entrance_speed_combo)
-        content_column.addLayout(entrance_row)
+        entrance_layout.addWidget(self.text_entrance_speed_combo)
+        animation_layout.addLayout(entrance_layout)
         
-        exit_row = QHBoxLayout()
-        exit_row.setSpacing(8)
-        exit_row.setContentsMargins(0, 0, 0, 12)
+        exit_layout = QHBoxLayout()
+        exit_layout.setSpacing(8)
+        exit_layout.setContentsMargins(0, 0, 0, 0)
         self.text_exit_animation_combo = QComboBox()
         self.text_exit_animation_combo.addItems([
             "Random", "Immediate Show", "Move Left", "Move Right", "Move Up", "Move Down",
@@ -309,35 +314,38 @@ class TextPropertiesComponent(BasePropertiesComponent):
         ])
         self.text_exit_animation_combo.setCurrentText("Random")
         self.text_exit_animation_combo.currentTextChanged.connect(self._on_exit_animation_changed)
-        exit_row.addWidget(self.text_exit_animation_combo, stretch=1)
-        
+        exit_layout.addWidget(self.text_exit_animation_combo)
+        exit_layout.addStretch()
         self.text_exit_speed_combo = QComboBox()
         self.text_exit_speed_combo.addItem("1 fast")
         self.text_exit_speed_combo.addItems([f"{i}" for i in range(2, 9)])
         self.text_exit_speed_combo.addItem("9 slow")
         self.text_exit_speed_combo.setCurrentText("1 fast")
-        self.text_exit_speed_combo.setMinimumWidth(80)
         self.text_exit_speed_combo.currentTextChanged.connect(self._on_exit_speed_changed)
-        exit_row.addWidget(self.text_exit_speed_combo)
-        content_column.addLayout(exit_row)
+        exit_layout.addWidget(self.text_exit_speed_combo)
+        animation_layout.addLayout(exit_layout)
         
-        hold_row = QHBoxLayout()
-        hold_row.setSpacing(8)
-        hold_label = QLabel("Hold")
-        hold_label.setStyleSheet("font-weight: 500; color: #333333; min-width: 40px;")
-        hold_row.addWidget(hold_label)
+        hold_layout = QHBoxLayout()
+        hold_layout.setSpacing(8)
+        hold_layout.setContentsMargins(0, 0, 0, 0)
+        hold_layout.setAlignment(Qt.AlignRight)
+        self.text_hold_time_label = QLabel("Hold Time:")
+        self.text_hold_time_label.setStyleSheet("font-size: 12px;")
+        hold_layout.addWidget(self.text_hold_time_label)
         self.text_hold_time = QDoubleSpinBox()
         self.text_hold_time.setMinimum(0.0)
-        self.text_hold_time.setMaximum(9999.9)
-        self.text_hold_time.setValue(5.0)
-        self.text_hold_time.setSuffix("S")
+        self.text_hold_time.setMaximum(999.9)
+        self.text_hold_time.setSingleStep(0.1)
         self.text_hold_time.setDecimals(1)
+        self.text_hold_time.setSuffix(" second")
+        self.text_hold_time.setValue(0.0)
         self.text_hold_time.valueChanged.connect(self._on_text_hold_time_changed)
-        hold_row.addWidget(self.text_hold_time, stretch=1)
-        content_column.addLayout(hold_row)
+        hold_layout.addWidget(self.text_hold_time)
+        animation_layout.addLayout(hold_layout)
         
+        content_column.addLayout(animation_layout)
         content_column.addStretch()
-        display_layout.addLayout(content_column, stretch=9)
+        display_main_layout.addLayout(content_column, stretch=9)
         
         main_layout.addWidget(display_group)
         
@@ -407,22 +415,27 @@ class TextPropertiesComponent(BasePropertiesComponent):
         if text_format:
             self._apply_format_to_text_edit(text_format)
         else:
-            cursor = self.text_content_edit.textCursor()
-            cursor.select(QTextCursor.Document)
-            char_format = cursor.charFormat()
-            char_format.setBackground(QBrush())
-            char_format.clearBackground()
-            cursor.setCharFormat(char_format)
-            self.text_editor_toolbar.text_bg_color = None
-            self.text_editor_toolbar._update_text_bg_color_button()
+            # Apply default format with white font color, size 12, and center alignment
+            default_format = {
+                "font_color": "#FFFFFF",
+                "font_size": 12,
+                "alignment": "center",
+                "vertical_alignment": "middle"
+            }
+            self._apply_format_to_text_edit(default_format)
+            # Save default format to element so it persists
+            if "properties" not in self.current_element:
+                self.current_element["properties"] = {}
+            if "text" not in self.current_element["properties"]:
+                self.current_element["properties"]["text"] = {}
+            self.current_element["properties"]["text"]["format"] = default_format
         
         self.text_content_edit.blockSignals(False)
         
         if text_format:
             self.text_editor_toolbar._update_format_buttons()
         else:
-            self.text_editor_toolbar.text_bg_color = None
-            self.text_editor_toolbar._update_text_bg_color_button()
+            self.text_editor_toolbar._update_format_buttons()
         
         animation = element_props.get("animation", {})
         
@@ -726,6 +739,12 @@ class TextPropertiesComponent(BasePropertiesComponent):
             font = char_format.font()
             font.setPointSize(format_data["font_size"])
             char_format.setFont(font)
+        else:
+            # Set default font size if not specified
+            font = char_format.font()
+            if font.pointSize() < 6:
+                font.setPointSize(12)
+                char_format.setFont(font)
         
         if format_data.get("bold") is not None:
             char_format.setFontWeight(QFont.Bold if format_data["bold"] else QFont.Normal)
@@ -738,6 +757,12 @@ class TextPropertiesComponent(BasePropertiesComponent):
         
         if format_data.get("font_color"):
             color = QColor(format_data["font_color"])
+            char_format.setForeground(color)
+            self.text_editor_toolbar.font_color = color
+            self.text_editor_toolbar._update_font_color_button()
+        else:
+            # Set default white color if not specified
+            color = QColor(Qt.white)
             char_format.setForeground(color)
             self.text_editor_toolbar.font_color = color
             self.text_editor_toolbar._update_font_color_button()
@@ -763,19 +788,23 @@ class TextPropertiesComponent(BasePropertiesComponent):
                 pen = QPen(Qt.NoPen)
                 char_format.setTextOutline(pen)
         
-        horizontal_align = Qt.AlignLeft
-        vertical_align = Qt.AlignTop
+        horizontal_align = Qt.AlignHCenter
+        vertical_align = Qt.AlignVCenter
         
         if format_data.get("alignment"):
             alignment_str = format_data["alignment"]
-            if alignment_str == "center":
+            if alignment_str == "left":
+                horizontal_align = Qt.AlignLeft
+            elif alignment_str == "center":
                 horizontal_align = Qt.AlignHCenter
             elif alignment_str == "right":
                 horizontal_align = Qt.AlignRight
         
         if format_data.get("vertical_alignment"):
             vertical_str = format_data["vertical_alignment"]
-            if vertical_str == "middle":
+            if vertical_str == "top":
+                vertical_align = Qt.AlignTop
+            elif vertical_str == "middle":
                 vertical_align = Qt.AlignVCenter
             elif vertical_str == "bottom":
                 vertical_align = Qt.AlignBottom
@@ -808,6 +837,12 @@ class TextPropertiesComponent(BasePropertiesComponent):
         if "format" not in self.current_element["properties"]["text"]:
             self.current_element["properties"]["text"]["format"] = {}
         
+        # Always ensure alignment is in format_data (default to center if not specified)
+        if "alignment" not in format_data:
+            format_data["alignment"] = "center"
+        if "vertical_alignment" not in format_data:
+            format_data["vertical_alignment"] = "middle"
+        
         self.current_element["properties"]["text"]["format"].update(format_data)
         
         # Map format properties to XML attributes
@@ -821,17 +856,17 @@ class TextPropertiesComponent(BasePropertiesComponent):
             self.current_element["properties"]["text"]["text_font_size"] = format_data["font_size"]
         if format_data.get("outline") is not None:
             self.current_element["properties"]["text"]["use_stroke"] = 1 if format_data["outline"] else 0
-        if format_data.get("alignment"):
-            align_str = format_data["alignment"]
-            if align_str == "left":
-                self.current_element["properties"]["text"]["content_align"] = 4
-                self.current_element["properties"]["text"]["content_h_align"] = 4
-            elif align_str == "center":
-                self.current_element["properties"]["text"]["content_align"] = 132
-                self.current_element["properties"]["text"]["content_h_align"] = 4
-            elif align_str == "right":
-                self.current_element["properties"]["text"]["content_align"] = 8
-                self.current_element["properties"]["text"]["content_h_align"] = 8
+        # Always save alignment (default to center if not specified)
+        align_str = format_data.get("alignment", "center")
+        if align_str == "left":
+            self.current_element["properties"]["text"]["content_align"] = 4
+            self.current_element["properties"]["text"]["content_h_align"] = 4
+        elif align_str == "center":
+            self.current_element["properties"]["text"]["content_align"] = 132
+            self.current_element["properties"]["text"]["content_h_align"] = 4
+        elif align_str == "right":
+            self.current_element["properties"]["text"]["content_align"] = 8
+            self.current_element["properties"]["text"]["content_h_align"] = 8
         
         self.current_program.modified = datetime.now().isoformat()
         self.property_changed.emit("text_format", format_data)

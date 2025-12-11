@@ -22,34 +22,39 @@ class BaseToolbar(QToolBar):
     def apply_style(self):
         self.setStyleSheet("""
             QToolBar {
-                background-color: #D6D6D6;
-                border: 1px solid #B0B0B0;
+                background-color: #2B2B2B;
+                border: 1px solid #555555;
+                border-right: 2px solid #555555;
                 spacing: 0px;
                 padding: 0px;
                 font-size: 14px;
+                color: #FFFFFF;
             }
             QToolBar::separator:vertical {
                 width: 1px;
-                background-color: #B0B0B0;
+                background-color: #555555;
                 margin: 2px 0px;
             }
             QToolBar::separator:horizontal {
                 height: 1px;
-                background-color: #B0B0B0;
+                background-color: #555555;
                 margin: 0px 2px;
             }
             QToolBar::extension {
-                background-color: #D6D6D6;
-                border: 1px solid #B0B0B0;
+                background-color: #2B2B2B;
+                border: 1px solid #555555;
                 border-radius: 4px;
                 padding: 6px 0px;
                 margin: 1px;
+                color: #FFFFFF;
             }
             QToolBar::extension:hover {
-                background-color: #E8F4F8;
+                background-color: #3B3B3B;
+                border: 1px solid #4A90E2;
+                margin: 2px;
             }
             QToolBar::extension:pressed {
-                background-color: #D0E8F2;
+                background-color: #4B4B4B;
             }
         """)
         self.update_vertical_alignment()
@@ -84,13 +89,14 @@ class BaseToolbar(QToolBar):
                             font-size: 14px;
                             font-weight: normal;
                             width: 120px;
+                            color: #FFFFFF;
                         }
                         QToolButton:hover {
-                            background-color: #E8F4F8;
+                            background-color: #3B3B3B;
                             border: 1px solid #4A90E2;
                         }
                         QToolButton:pressed {
-                            background-color: #D0E8F2;
+                            background-color: #4B4B4B;
                         }
                     """)
         else:
@@ -105,7 +111,25 @@ class BaseToolbar(QToolBar):
                     widget.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
                     widget.setLayoutDirection(Qt.LeftToRight)
                     widget.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
-                    widget.setStyleSheet("")
+                    widget.setStyleSheet("""
+                        QToolButton {
+                            background-color: transparent;
+                            border: none;
+                            border-radius: 4px;
+                            padding: 4px 8px;
+                            margin: 1px;
+                            font-size: 14px;
+                            font-weight: normal;
+                            color: #FFFFFF;
+                        }
+                        QToolButton:hover {
+                            background-color: #3B3B3B;
+                            border: 1px solid #4A90E2;
+                        }
+                        QToolButton:pressed {
+                            background-color: #4B4B4B;
+                        }
+                    """)
     
     def _on_top_level_changed(self, top_level):
         QTimer.singleShot(10, self._do_update_vertical_alignment)

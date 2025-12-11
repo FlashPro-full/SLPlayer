@@ -71,58 +71,77 @@ class ScreenSettingsDialog(QDialog):
 
         self.setStyleSheet("""
             QDialog {
-                background: #F5F7FA;
+                background: #2B2B2B;
             }
             QLabel#HeaderLabel {
                 font-size: 22px;
                 font-weight: 700;
-                color: #1F2937;
+                color: #FFFFFF;
             }
             QGroupBox {
-                background: #FFFFFF;
-                border: 1px solid #E5E7EB;
+                background: #2B2B2B;
+                border: 1px solid #555555;
                 border-radius: 8px;
                 margin-top: 10px;
+                color: #FFFFFF;
             }
             QGroupBox::title {
                 subcontrol-origin: margin;
                 left: 12px;
                 padding: 0px 4px;
-                color: #6B7280;
+                color: #FFFFFF;
                 font-weight: 600;
                 font-size: 18px;
             }
             QLabel {
-                color: #374151;
+                color: #FFFFFF;
                 font-size: 12px;
             }
             QComboBox, QSpinBox, QLineEdit {
-                background: #FFFFFF;
-                border: 1px solid #D1D5DB;
+                background: #3B3B3B;
+                color: #FFFFFF;
+                border: 1px solid #555555;
                 border-radius: 6px;
                 padding: 6px 8px;
                 font-size: 12px;
             }
             QComboBox::drop-down {
                 border: 0px;
+                border-left: 1px solid #555555;
+            }
+            QComboBox::down-arrow {
+                border-left: 4px solid transparent;
+                border-right: 4px solid transparent;
+                border-top: 5px solid #CCCCCC;
+            }
+            QComboBox QAbstractItemView {
+                background-color: #2B2B2B;
+                color: #FFFFFF;
+                border: 1px solid #555555;
+                selection-background-color: #3B3B3B;
+                selection-color: #FFFFFF;
             }
             QCheckBox {
                 font-size: 12px;
-                color: #111827;
+                color: #FFFFFF;
             }
             QTableWidget {
-                background: #FFFFFF;
-                border: 1px solid #E5E7EB;
+                background: #2B2B2B;
+                color: #FFFFFF;
+                border: 1px solid #555555;
                 border-radius: 8px;
-                gridline-color: #E5E7EB;
+                gridline-color: #555555;
                 font-size: 12px;
             }
+            QTableWidget::item {
+                color: #FFFFFF;
+            }
             QHeaderView::section {
-                background: #F3F4F6;
+                background: #3B3B3B;
                 padding: 8px 10px;
                 border: 0px;
-                border-bottom: 1px solid #E5E7EB;
-                color: #6B7280;
+                border-bottom: 1px solid #555555;
+                color: #FFFFFF;
                 font-weight: 600;
             }
             QDialogButtonBox QPushButton {

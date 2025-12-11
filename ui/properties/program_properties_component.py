@@ -16,9 +16,9 @@ class ProgramPropertiesComponent(BasePropertiesComponent):
         self.init_ui()
     
     def init_ui(self):
-        layout = QHBoxLayout(self)
+        layout = QVBoxLayout(self)
         layout.setContentsMargins(6, 6, 6, 6)
-        layout.setSpacing(4)
+        layout.setSpacing(8)
         layout.setAlignment(Qt.AlignTop)
         
         self.setMinimumHeight(100)
@@ -39,7 +39,7 @@ class ProgramPropertiesComponent(BasePropertiesComponent):
         
         specified_time_widget = QWidget()
         specified_time_widget.setLayout(specified_time_layout)
-        layout.addWidget(specified_time_widget, stretch=1, alignment=Qt.AlignTop)
+        layout.addWidget(specified_time_widget, alignment=Qt.AlignTop)
         
         specify_week_layout = QVBoxLayout()
         specify_week_layout.setContentsMargins(0, 0, 0, 0)
@@ -58,21 +58,22 @@ class ProgramPropertiesComponent(BasePropertiesComponent):
             QPushButton {
                 text-align: left;
                 padding: 8px 12px;
-                border: 1px solid #CCCCCC;
+                border: 1px solid #555555;
                 border-radius: 4px;
-                background-color: #FFFFFF;
+                background-color: #3B3B3B;
+                color: #FFFFFF;
                 min-height: 32px;
             }
             QPushButton:hover {
                 border: 1px solid #4A90E2;
-                background-color: #F5F5F5;
+                background-color: #4B4B4B;
             }
             QPushButton:pressed {
-                background-color: #E3F2FD;
+                background-color: #2B2B2B;
             }
             QPushButton:disabled {
-                background-color: #F5F5F5;
-                color: #999999;
+                background-color: #2B2B2B;
+                color: #666666;
             }
         """)
         self.week_days_selector.clicked.connect(self._show_week_days_menu)
@@ -86,7 +87,7 @@ class ProgramPropertiesComponent(BasePropertiesComponent):
         
         specify_week_widget = QWidget()
         specify_week_widget.setLayout(specify_week_layout)
-        layout.addWidget(specify_week_widget, stretch=1, alignment=Qt.AlignTop)
+        layout.addWidget(specify_week_widget, alignment=Qt.AlignTop)
         
         specify_date_layout = QVBoxLayout()
         specify_date_layout.setContentsMargins(0, 0, 0, 0)
@@ -103,7 +104,7 @@ class ProgramPropertiesComponent(BasePropertiesComponent):
         
         specify_date_widget = QWidget()
         specify_date_widget.setLayout(specify_date_layout)
-        layout.addWidget(specify_date_widget, stretch=1, alignment=Qt.AlignTop)
+        layout.addWidget(specify_date_widget, alignment=Qt.AlignTop)
     
     def set_program_data(self, program):
         self.current_program = program
@@ -228,16 +229,18 @@ class ProgramPropertiesComponent(BasePropertiesComponent):
         menu = QMenu(self)
         menu.setStyleSheet("""
             QMenu {
-                background-color: #FFFFFF;
-                border: 1px solid #CCCCCC;
+                background-color: #2B2B2B;
+                color: #FFFFFF;
+                border: 1px solid #555555;
                 border-radius: 4px;
                 padding: 4px;
             }
             QMenu::item {
                 padding: 6px 20px 6px 30px;
+                color: #FFFFFF;
             }
             QMenu::item:selected {
-                background-color: #E3F2FD;
+                background-color: #3B3B3B;
             }
         """)
         

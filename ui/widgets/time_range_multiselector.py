@@ -31,12 +31,14 @@ class TimeRangeMultiSelector(QWidget):
             QPushButton {
                 text-align: left;
                 padding: 14px;
-                border: 1px solid #CCCCCC;
+                border: 1px solid #555555;
+                color: #FFFFFF;
                 border-radius: 4px;
-                background-color: #FFFFFF;
+                background-color: #3B3B3B;
             }
             QPushButton:hover {
-                background-color: #F5F5F5;
+                background-color: #3B3B3B;
+                color: #FFFFFF;
             }
         """)
         
@@ -68,9 +70,10 @@ class TimeRangeMultiSelector(QWidget):
         self.time_table.setAlternatingRowColors(True)
         self.time_table.setStyleSheet("""
             QTableWidget {
-                border: 1px solid #CCCCCC;
+                border: 1px solid #555555;
+                color: #FFFFFF;
                 border-radius: 4px;
-                background-color: #FFFFFF;
+                background-color: #3B3B3B;
                 width: 100%;
             }
             QTableWidget::item {
@@ -88,12 +91,14 @@ class TimeRangeMultiSelector(QWidget):
         self.add_btn.setFixedSize(30, 30)
         self.add_btn.setStyleSheet("""
             QPushButton {
-                border: 1px solid #CCCCCC;
+                border: 1px solid #555555;
+                color: #FFFFFF;
                 border-radius: 4px;
-                background-color: #F5F5F5;
+                background-color: #3B3B3B;
+                color: #FFFFFF;
             }
             QPushButton:hover {
-                background-color: #E0E0E0;
+                background-color: #4B4B4B;
             }
         """)
         self.add_btn.clicked.connect(self._on_add_time_range)
@@ -104,16 +109,18 @@ class TimeRangeMultiSelector(QWidget):
         self.remove_btn.setEnabled(False)
         self.remove_btn.setStyleSheet("""
             QPushButton {
-                border: 1px solid #CCCCCC;
+                border: 1px solid #555555;
+                color: #FFFFFF;
                 border-radius: 4px;
-                background-color: #F5F5F5;
+                background-color: #3B3B3B;
+                color: #FFFFFF;
             }
             QPushButton:hover {
-                background-color: #E0E0E0;
+                background-color: #4B4B4B;
             }
             QPushButton:disabled {
-                background-color: #F0F0F0;
-                color: #999999;
+                background-color: #2B2B2B;
+                color: #666666;
             }
         """)
         self.remove_btn.clicked.connect(self._on_remove_selected)
@@ -123,12 +130,14 @@ class TimeRangeMultiSelector(QWidget):
         self.select_all_btn.setFixedSize(30, 30)
         self.select_all_btn.setStyleSheet("""
             QPushButton {
-                border: 1px solid #CCCCCC;
+                border: 1px solid #555555;
+                color: #FFFFFF;
                 border-radius: 4px;
-                background-color: #F5F5F5;
+                background-color: #3B3B3B;
+                color: #FFFFFF;
             }
             QPushButton:hover {
-                background-color: #E0E0E0;
+                background-color: #4B4B4B;
             }
         """)
         self.select_all_btn.clicked.connect(self._on_select_all)
@@ -138,12 +147,14 @@ class TimeRangeMultiSelector(QWidget):
         self.deselect_all_btn.setFixedSize(30, 30)
         self.deselect_all_btn.setStyleSheet("""
             QPushButton {
-                border: 1px solid #CCCCCC;
+                border: 1px solid #555555;
+                color: #FFFFFF;
                 border-radius: 4px;
-                background-color: #F5F5F5;
+                background-color: #3B3B3B;
+                color: #FFFFFF;
             }
             QPushButton:hover {
-                background-color: #E0E0E0;
+                background-color: #4B4B4B;
             }
         """)
         self.deselect_all_btn.clicked.connect(self._on_deselect_all)

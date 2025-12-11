@@ -13,13 +13,12 @@ class HtmlPropertiesComponent(BasePropertiesComponent):
         self.init_ui()
     
     def init_ui(self):
-        main_layout = QHBoxLayout(self)
+        main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(4, 4, 4, 4)
         main_layout.setSpacing(8)
-        main_layout.setAlignment(Qt.AlignLeft | Qt.AlignTop)
+        main_layout.setAlignment(Qt.AlignTop)
         
         area_group = QGroupBox("Area attribute")
-        area_group.setMaximumWidth(200)
         area_layout = QVBoxLayout(area_group)
         area_layout.setContentsMargins(10, 16, 10, 10)
         area_layout.setSpacing(8)
@@ -34,7 +33,7 @@ class HtmlPropertiesComponent(BasePropertiesComponent):
         self.html_coords_x.setMinimumWidth(70)
         self.html_coords_x.setText("0")
         coords_comma = QLabel(",")
-        coords_comma.setStyleSheet("color: #666666; font-weight: bold;")
+        coords_comma.setStyleSheet("color: #FFFFFF; font-weight: bold;")
         self.html_coords_y = QLineEdit()
         self.html_coords_y.setPlaceholderText("0")
         self.html_coords_y.setMinimumWidth(70)
@@ -54,7 +53,7 @@ class HtmlPropertiesComponent(BasePropertiesComponent):
         self.html_dims_width.setMinimumWidth(70)
         self.html_dims_width.setText("1920")
         dims_comma = QLabel(",")
-        dims_comma.setStyleSheet("color: #666666; font-weight: bold;")
+        dims_comma.setStyleSheet("color: #FFFFFF; font-weight: bold;")
         self.html_dims_height = QLineEdit()
         self.html_dims_height.setPlaceholderText("1080")
         self.html_dims_height.setMinimumWidth(70)
@@ -75,7 +74,6 @@ class HtmlPropertiesComponent(BasePropertiesComponent):
         main_layout.addWidget(area_group)
         
         html_group = QGroupBox("HTML attribute")
-        html_group.setMinimumWidth(350)
         html_layout = QVBoxLayout(html_group)
         html_layout.setContentsMargins(10, 16, 10, 10)
         html_layout.setSpacing(8)

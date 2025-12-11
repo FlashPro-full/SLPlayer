@@ -28,7 +28,7 @@ class VideoIconItem(QFrame):
         self.icon_label.setAlignment(Qt.AlignCenter)
         self.icon_label.setStyleSheet("""
             QLabel {
-                background-color: #FFFFFF;
+                background-color: #2B2B2B;
                 border: 1px solid #DDDDDD;
                 border-radius: 2px;
             }
@@ -254,7 +254,7 @@ class VideoIconView(QWidget):
         scroll_area.setStyleSheet("""
             QScrollArea {
                 border: 1px solid #CCCCCC;
-                background-color: #FFFFFF;
+                background-color: #2B2B2B;
             }
         """)
         

@@ -1,10 +1,15 @@
 import sys
 import os
+import subprocess
+import socket
+import time
 from pathlib import Path
 from typing import Optional, Dict, List, Tuple, Any
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+_api_server_process = None
 
 # Try multiple possible SDK paths (similar to NovaStar SDK path resolution)
 def _get_sdk_path():
@@ -88,6 +93,108 @@ except Exception as e:
 
 DEFAULT_SDK_KEY = "a718fbe8aaa8aeef"
 DEFAULT_SDK_SECRET = "8fd529ef3f88986d40e6ef8d4d7f2d0c"
+DEFAULT_HOST = "http://localhost:30080"
+
+def _get_api_server_path() -> Optional[Path]:
+    """Get path to the API server executable"""
+    if getattr(sys, 'frozen', False):
+        base_path = Path(sys.executable).parent
+    else:
+        base_path = Path(__file__).parent.parent
+    
+    possible_paths = [
+        base_path / "publish" / "huidu_sdk" / "cn.huidu.device.api.exe",
+        base_path / "_internal" / "publish" / "huidu_sdk" / "cn.huidu.device.api.exe",
+    ]
+    
+    for exe_path in possible_paths:
+        if exe_path.exists():
+            return exe_path
+    
+    return None
+
+def _is_port_open(host: str, port: int, timeout: float = 1.0) -> bool:
+    """Check if a port is open on a host"""
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(timeout)
+        result = sock.connect_ex((host, port))
+        sock.close()
+        return result == 0
+    except Exception:
+        return False
+
+def _start_api_server() -> bool:
+    """Start the Huidu API server executable"""
+    global _api_server_process
+    
+    if _api_server_process is not None:
+        if _api_server_process.poll() is None:
+            logger.debug("API server is already running")
+            return True
+    
+    exe_path = _get_api_server_path()
+    if not exe_path:
+        logger.warning("API server executable not found")
+        return False
+    
+    try:
+        _api_server_process = subprocess.Popen(
+            [str(exe_path)],
+            cwd=str(exe_path.parent),
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
+        )
+        logger.info(f"Started API server: {exe_path.name}")
+        
+        max_retries = 10
+        for i in range(max_retries):
+            if _is_port_open("localhost", 30080, timeout=0.5):
+                logger.info("API server is ready on localhost:30080")
+                return True
+            time.sleep(0.5)
+        
+        logger.warning("API server started but port 30080 not responding")
+        return False
+    except Exception as e:
+        logger.error(f"Failed to start API server: {e}")
+        _api_server_process = None
+        return False
+
+def _stop_api_server() -> bool:
+    """Stop the Huidu API server executable"""
+    global _api_server_process
+    
+    if _api_server_process is None:
+        return True
+    
+    try:
+        if _api_server_process.poll() is None:
+            logger.info("Stopping API server...")
+            _api_server_process.terminate()
+            
+            try:
+                _api_server_process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                logger.warning("API server did not terminate, forcing kill...")
+                _api_server_process.kill()
+                _api_server_process.wait()
+            
+            logger.info("API server stopped")
+        
+        _api_server_process = None
+        return True
+    except Exception as e:
+        logger.error(f"Error stopping API server: {e}")
+        try:
+            if _api_server_process and _api_server_process.poll() is None:
+                _api_server_process.kill()
+                _api_server_process.wait()
+        except Exception:
+            pass
+        _api_server_process = None
+        return False
 
 class HuiduSDK:
     DEFAULT_PORT = 30080
@@ -95,6 +202,10 @@ class HuiduSDK:
     def __init__(self, host: Optional[str] = None, sdk_key: str = DEFAULT_SDK_KEY, sdk_secret: str = DEFAULT_SDK_SECRET):
         if not SDK_AVAILABLE:
             raise RuntimeError("Huidu SDK is not available. Check SDK installation.")
+        
+        if not host:
+            host = DEFAULT_HOST
+            _start_api_server()
         
         self.host = host
         self.sdk_key = sdk_key or DEFAULT_SDK_KEY
@@ -115,6 +226,9 @@ class HuiduSDK:
             if not host.endswith("/"):
                 host = host.rstrip("/")
             
+            if "localhost" in host or "127.0.0.1" in host:
+                _start_api_server()
+            
             Config.init_sdk(host, sdk_key, sdk_secret)
             self.host = Config.host
             self.sdk_key = sdk_key
@@ -132,14 +246,11 @@ class HuiduSDK:
         return 0
     
     def is_card_online(self, ip_address: str, send_type: int = 0) -> bool:
-        # Validate and clean IP address
         if not ip_address or not isinstance(ip_address, str):
             return False
         
-        # Remove port if present (e.g., "192.168.1.1:30080" -> "192.168.1.1")
         ip_clean = ip_address.split(':')[0].strip()
         
-        # Validate IPv4 format (4 octets, each 0-255)
         try:
             ip_parts = ip_clean.split('.')
             if len(ip_parts) != 4 or not all(0 <= int(p) <= 255 for p in ip_parts):
@@ -150,7 +261,10 @@ class HuiduSDK:
             return False
         
         if not self._initialized:
-            host = f"http://{ip_clean}:{self.DEFAULT_PORT}"
+            if ip_clean == "localhost" or ip_clean == "127.0.0.1":
+                host = DEFAULT_HOST
+            else:
+                host = f"http://{ip_clean}:{self.DEFAULT_PORT}"
             try:
                 self.initialize(host, self.sdk_key, self.sdk_secret)
             except Exception as e:
@@ -190,7 +304,10 @@ class HuiduSDK:
                 except (ValueError, AttributeError):
                     return None
                 
-                host = f"http://{ip_clean}:{self.DEFAULT_PORT}"
+                if ip_clean == "localhost" or ip_clean == "127.0.0.1":
+                    host = DEFAULT_HOST
+                else:
+                    host = f"http://{ip_clean}:{self.DEFAULT_PORT}"
                 try:
                     self.initialize(host, self.sdk_key, self.sdk_secret)
                 except:

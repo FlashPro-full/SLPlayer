@@ -1,4 +1,5 @@
 import sys
+import atexit
 from pathlib import Path
 from PyQt5.QtWidgets import QApplication, QMessageBox
 
@@ -9,6 +10,16 @@ from utils.logger import get_logger
 from utils.icon_manager import IconManager
 
 logger = get_logger(__name__)
+
+def cleanup_api_server():
+    """Cleanup function to stop the API server on exit"""
+    try:
+        from controllers.huidu_sdk import _stop_api_server
+        _stop_api_server()
+    except Exception as e:
+        logger.error(f"Error stopping API server during cleanup: {e}")
+
+atexit.register(cleanup_api_server)
 
 
 def main():
@@ -64,9 +75,40 @@ def main():
         except Exception as e:
             logger.warning(f"Could not populate controller database at startup: {e}")
         
+        # Show device selection dialog first
+        from ui.device_selection_dialog import DeviceSelectionDialog
+        device_dialog = DeviceSelectionDialog()
+        
+        selected_ip = None
+        selected_port = None
+        selected_type = None
+        selected_device_id = None
+        
+        if device_dialog.exec() == device_dialog.Accepted:
+            selected_ip = device_dialog.selected_ip
+            selected_port = device_dialog.selected_port
+            selected_type = device_dialog.selected_type
+            selected_device_id = device_dialog.selected_controller_id
+        
         window = MainWindow()
         window.resize(window_width, window_height)
         window.move(window_x, window_y)
+        
+        # Connect to selected device
+        if selected_ip and selected_port and selected_type:
+            try:
+                success = window.controller_service.connect_to_controller(
+                    selected_ip,
+                    selected_port,
+                    selected_type
+                )
+                if success:
+                    logger.info(f"Connected to device {selected_device_id} at {selected_ip}:{selected_port}")
+                else:
+                    logger.warning(f"Failed to connect to device {selected_device_id} at {selected_ip}:{selected_port}")
+            except Exception as e:
+                logger.error(f"Error connecting to device: {e}")
+        
         window.show()
         
         if soo_file_path:

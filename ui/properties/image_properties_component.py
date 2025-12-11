@@ -17,53 +17,56 @@ class ImagePropertiesComponent(BasePropertiesComponent):
         self.init_ui()
     
     def init_ui(self):
-        layout = QHBoxLayout(self)
+        layout = QVBoxLayout(self)
         layout.setContentsMargins(4, 4, 4, 4)
         layout.setSpacing(8)
-        layout.setAlignment(Qt.AlignLeft | Qt.AlignTop)
+        layout.setAlignment(Qt.AlignTop)
         
         self.setStyleSheet("""
             QGroupBox {
                 font-weight: 600;
                 font-size: 13px;
-                border: 1px solid #D0D0D0;
+                border: 1px solid #555555;
                 border-radius: 4px;
                 margin-top: 8px;
                 padding-top: 12px;
-                background-color: #FAFAFA;
+                background-color: #2B2B2B;
+                color: #FFFFFF;
             }
             QGroupBox::title {
                 subcontrol-origin: margin;
                 left: 8px;
                 padding: 0 4px;
-                color: #333333;
+                color: #FFFFFF;
             }
             QLineEdit {
-                border: 1px solid #CCCCCC;
+                border: 1px solid #555555;
                 border-radius: 3px;
                 padding: 4px 6px;
-                background-color: #FFFFFF;
+                background-color: #3B3B3B;
+                color: #FFFFFF;
                 font-size: 12px;
                 selection-background-color: #4A90E2;
                 selection-color: #FFFFFF;
             }
             QLineEdit:focus {
                 border: 1px solid #4A90E2;
-                background-color: #FFFFFF;
+                background-color: #3B3B3B;
             }
             QLineEdit:hover {
-                border: 1px solid #999999;
+                border: 1px solid #666666;
             }
             QComboBox {
-                border: 1px solid #CCCCCC;
+                border: 1px solid #555555;
                 border-radius: 3px;
                 padding: 4px 6px;
-                background-color: #FFFFFF;
+                background-color: #3B3B3B;
+                color: #FFFFFF;
                 font-size: 12px;
                 min-width: 80px;
             }
             QComboBox:hover {
-                border: 1px solid #999999;
+                border: 1px solid #666666;
             }
             QComboBox:focus {
                 border: 1px solid #4A90E2;
@@ -76,23 +79,25 @@ class ImagePropertiesComponent(BasePropertiesComponent):
                 image: none;
                 border-left: 4px solid transparent;
                 border-right: 4px solid transparent;
-                border-top: 5px solid #666666;
+                border-top: 5px solid #CCCCCC;
                 width: 0;
                 height: 0;
             }
             QComboBox QAbstractItemView {
-                border: 1px solid #CCCCCC;
+                border: 1px solid #555555;
                 border-radius: 3px;
-                background-color: #FFFFFF;
-                selection-background-color: #4A90E2;
+                background-color: #2B2B2B;
+                color: #FFFFFF;
+                selection-background-color: #3B3B3B;
                 selection-color: #FFFFFF;
                 padding: 2px;
             }
             QTextEdit {
-                border: 1px solid #CCCCCC;
+                border: 1px solid #555555;
                 border-radius: 3px;
                 padding: 6px;
-                background-color: #FFFFFF;
+                background-color: #3B3B3B;
+                color: #FFFFFF;
                 font-size: 12px;
                 selection-background-color: #4A90E2;
                 selection-color: #FFFFFF;
@@ -101,13 +106,14 @@ class ImagePropertiesComponent(BasePropertiesComponent):
                 border: 1px solid #4A90E2;
             }
             QTextEdit:hover {
-                border: 1px solid #999999;
+                border: 1px solid #666666;
             }
             QDoubleSpinBox {
-                border: 1px solid #CCCCCC;
+                border: 1px solid #555555;
                 border-radius: 3px;
                 padding: 4px 6px;
-                background-color: #FFFFFF;
+                background-color: #3B3B3B;
+                color: #FFFFFF;
                 font-size: 12px;
                 selection-background-color: #4A90E2;
                 selection-color: #FFFFFF;
@@ -116,7 +122,7 @@ class ImagePropertiesComponent(BasePropertiesComponent):
                 border: 1px solid #4A90E2;
             }
             QDoubleSpinBox:hover {
-                border: 1px solid #999999;
+                border: 1px solid #666666;
             }
             QDoubleSpinBox::up-button, QDoubleSpinBox::down-button {
                 border: none;
@@ -127,13 +133,12 @@ class ImagePropertiesComponent(BasePropertiesComponent):
                 background-color: #F0F0F0;
             }
             QLabel {
-                color: #333333;
+                color: #FFFFFF;
                 font-size: 12px;
             }
         """)
         
         area_group = QGroupBox("Area attribute")
-        area_group.setMaximumWidth(200)
         area_layout = QVBoxLayout(area_group)
         area_layout.setContentsMargins(10, 16, 10, 10)
         area_layout.setSpacing(8)
@@ -149,7 +154,7 @@ class ImagePropertiesComponent(BasePropertiesComponent):
         self.image_coords_x.setText("0")
         self.image_coords_x.textChanged.connect(self._on_image_coords_changed)
         coords_comma = QLabel(",")
-        coords_comma.setStyleSheet("color: #666666; font-weight: bold;")
+        coords_comma.setStyleSheet("color: #CCCCCC; font-weight: bold;")
         self.image_coords_y = QLineEdit()
         self.image_coords_y.setPlaceholderText("0")
         self.image_coords_y.setMinimumWidth(70)
@@ -187,17 +192,11 @@ class ImagePropertiesComponent(BasePropertiesComponent):
         layout.addWidget(area_group)
         
         photo_list_group = QGroupBox("Photo List")
-        photo_list_group.setMinimumWidth(400)
-        photo_list_layout = QHBoxLayout(photo_list_group)
+        photo_list_group.setMinimumWidth(300)
+        photo_list_layout = QVBoxLayout(photo_list_group)
         photo_list_layout.setAlignment(Qt.AlignCenter)
-        
-        self.photo_list = PhotoIconView()
-        self.photo_list.setMinimumHeight(150)
-        self.photo_list.item_selected.connect(self._on_photo_item_selected)
-        self.photo_list.item_deleted.connect(self._on_photo_item_deleted)
-        photo_list_layout.addWidget(self.photo_list, stretch=1)
-        
-        photo_buttons_layout = QVBoxLayout()
+
+        photo_buttons_layout = QHBoxLayout()
         photo_buttons_layout.setContentsMargins(0, 0, 0, 0)
         photo_buttons_layout.setSpacing(4)
         photo_buttons_layout.setAlignment(Qt.AlignCenter)
@@ -219,81 +218,87 @@ class ImagePropertiesComponent(BasePropertiesComponent):
         
         photo_list_layout.addLayout(photo_buttons_layout)
         
+        self.photo_list = PhotoIconView()
+        self.photo_list.setMinimumHeight(150)
+        self.photo_list.item_selected.connect(self._on_photo_item_selected)
+        self.photo_list.item_deleted.connect(self._on_photo_item_deleted)
+        photo_list_layout.addWidget(self.photo_list, stretch=1)
+        
         layout.addWidget(photo_list_group, stretch=1)
         
-        animation_group = QGroupBox("Animation")
+        animation_group = QGroupBox("Display")
         animation_group.setMinimumWidth(250)
         animation_main_layout = QHBoxLayout(animation_group)
         animation_main_layout.setContentsMargins(10, 16, 10, 10)
         animation_main_layout.setSpacing(12)
         
-        buttons_column = QVBoxLayout()
-        buttons_column.setSpacing(8)
-        buttons_column.setAlignment(Qt.AlignTop)
-        buttons_column.setContentsMargins(0, 0, 0, 0)
+        buttons_row = QVBoxLayout()
+        buttons_row.setSpacing(8)
+        buttons_row.setAlignment(Qt.AlignLeft)
+        buttons_row.setContentsMargins(0, 0, 0, 0)
         
-        self.image_fixed_animation_btn = QPushButton("🚫")
-        self.image_fixed_animation_btn.setFixedSize(44, 44)
-        self.image_fixed_animation_btn.setToolTip("Fixed Animation")
-        font = self.image_fixed_animation_btn.font()
+        self.text_fixed_animation_btn = QPushButton("🚫")
+        self.text_fixed_animation_btn.setFixedSize(44, 44)
+        self.text_fixed_animation_btn.setToolTip("Fixed Animation")
+        font = self.text_fixed_animation_btn.font()
         font.setPointSize(28)
-        self.image_fixed_animation_btn.setFont(font)
-        self.image_fixed_animation_btn.setStyleSheet("""
+        self.text_fixed_animation_btn.setFont(font)
+        self.text_fixed_animation_btn.setStyleSheet("""
             QPushButton {
-                background-color: #F5F5F5;
-                border: 1px solid #CCCCCC;
+                background-color: #3B3B3B;
+                border: 1px solid #555555;
                 border-radius: 4px;
             }
             QPushButton:hover {
-                background-color: #E8F4F8;
+                background-color: #4B4B4B;
                 border: 1px solid #4A90E2;
             }
             QPushButton:pressed {
-                background-color: #D0E8F2;
+                background-color: #2B2B2B;
                 border: 1px solid #2E5C8A;
             }
         """)
-        self.image_fixed_animation_btn.clicked.connect(self._on_fixed_animation_clicked)
-        buttons_column.addWidget(self.image_fixed_animation_btn)
+        self.text_fixed_animation_btn.clicked.connect(self._on_fixed_animation_clicked)
+        buttons_row.addWidget(self.text_fixed_animation_btn)
         
-        self.image_random_animation_btn = QPushButton("🔀")
-        self.image_random_animation_btn.setFixedSize(44, 44)
-        self.image_random_animation_btn.setToolTip("Selected Random")
-        font = self.image_random_animation_btn.font()
+        self.text_random_animation_btn = QPushButton("🔀")
+        self.text_random_animation_btn.setFixedSize(44, 44)
+        self.text_random_animation_btn.setToolTip("Selected Random")
+        font = self.text_random_animation_btn.font()
         font.setPointSize(28)
-        self.image_random_animation_btn.setFont(font)
-        self.image_random_animation_btn.setStyleSheet("""
+        self.text_random_animation_btn.setFont(font)
+        self.text_random_animation_btn.setStyleSheet("""
             QPushButton {
-                background-color: #F5F5F5;
-                border: 1px solid #CCCCCC;
+                background-color: #3B3B3B;
+                border: 1px solid #555555;
                 border-radius: 4px;
             }
             QPushButton:hover {
-                background-color: #E8F4F8;
+                background-color: #4B4B4B;
                 border: 1px solid #4A90E2;
             }
             QPushButton:pressed {
-                background-color: #D0E8F2;
+                background-color: #2B2B2B;
                 border: 1px solid #2E5C8A;
             }
         """)
-        self.image_random_animation_btn.clicked.connect(self._on_random_animation_clicked)
-        buttons_column.addWidget(self.image_random_animation_btn)
+        self.text_random_animation_btn.clicked.connect(self._on_random_animation_clicked)
+        buttons_row.addWidget(self.text_random_animation_btn)
         
-        buttons_column.addStretch()
-        animation_main_layout.addLayout(buttons_column, stretch=1)
+        buttons_row.addStretch()
+        animation_main_layout.addLayout(buttons_row)
         
-        content_column = QVBoxLayout()
+        content_column = QHBoxLayout()
         content_column.setSpacing(8)
         content_column.setContentsMargins(0, 0, 0, 0)
         
-        animation_layout = QFormLayout()
+        animation_layout = QVBoxLayout()
         animation_layout.setContentsMargins(0, 0, 0, 0)
         animation_layout.setSpacing(8)
         
-        entrance_animation_layout = QHBoxLayout()
-        entrance_icon = QLabel("🚫")
-        entrance_animation_layout.addWidget(entrance_icon)
+        entrance_layout = QHBoxLayout()
+        entrance_layout.setSpacing(8)
+        entrance_layout.setContentsMargins(0, 0, 0, 0)
         self.image_entrance_animation_combo = QComboBox()
         self.image_entrance_animation_combo.addItems([
             "Random", "Immediate Show", "Move Left", "Move Right", "Move Up", "Move Down",
@@ -304,23 +309,20 @@ class ImagePropertiesComponent(BasePropertiesComponent):
         ])
         self.image_entrance_animation_combo.setCurrentText("Random")
         self.image_entrance_animation_combo.currentTextChanged.connect(self._on_entrance_animation_changed)
-        entrance_animation_layout.addWidget(self.image_entrance_animation_combo, stretch=1)
-        animation_layout.addRow("Display", entrance_animation_layout)
-        
-        entrance_speed_layout = QHBoxLayout()
-        entrance_speed_layout.addStretch()
+        entrance_layout.addWidget(self.image_entrance_animation_combo)
+        entrance_layout.addStretch()
         self.image_entrance_speed_combo = QComboBox()
         self.image_entrance_speed_combo.addItem("1 fast")
         self.image_entrance_speed_combo.addItems([f"{i}" for i in range(2, 9)])
         self.image_entrance_speed_combo.addItem("9 slow")
         self.image_entrance_speed_combo.setCurrentText("1 fast")
         self.image_entrance_speed_combo.currentTextChanged.connect(self._on_entrance_speed_changed)
-        entrance_speed_layout.addWidget(self.image_entrance_speed_combo, stretch=1)
-        animation_layout.addRow("", entrance_speed_layout)
+        entrance_layout.addWidget(self.image_entrance_speed_combo)
+        animation_layout.addLayout(entrance_layout)
         
-        exit_animation_layout = QHBoxLayout()
-        exit_icon = QLabel("🔄")
-        exit_animation_layout.addWidget(exit_icon)
+        exit_layout = QHBoxLayout()
+        exit_layout.setSpacing(8)
+        exit_layout.setContentsMargins(0, 0, 0, 0)
         self.image_exit_animation_combo = QComboBox()
         self.image_exit_animation_combo.addItems([
             "Random", "Immediate Show", "Move Left", "Move Right", "Move Up", "Move Down",
@@ -331,20 +333,24 @@ class ImagePropertiesComponent(BasePropertiesComponent):
         ])
         self.image_exit_animation_combo.setCurrentText("Random")
         self.image_exit_animation_combo.currentTextChanged.connect(self._on_exit_animation_changed)
-        exit_animation_layout.addWidget(self.image_exit_animation_combo, stretch=1)
-        animation_layout.addRow("Clear", exit_animation_layout)
-        
-        exit_speed_layout = QHBoxLayout()
-        exit_speed_layout.addStretch()
+        exit_layout.addWidget(self.image_exit_animation_combo)
+        exit_layout.addStretch()
         self.image_exit_speed_combo = QComboBox()
         self.image_exit_speed_combo.addItem("1 fast")
         self.image_exit_speed_combo.addItems([f"{i}" for i in range(2, 9)])
         self.image_exit_speed_combo.addItem("9 slow")
         self.image_exit_speed_combo.setCurrentText("1 fast")
         self.image_exit_speed_combo.currentTextChanged.connect(self._on_exit_speed_changed)
-        exit_speed_layout.addWidget(self.image_exit_speed_combo, stretch=1)
-        animation_layout.addRow("", exit_speed_layout)
+        exit_layout.addWidget(self.image_exit_speed_combo)
+        animation_layout.addLayout(exit_layout)
         
+        hold_layout = QHBoxLayout()
+        hold_layout.setSpacing(8)
+        hold_layout.setContentsMargins(0, 0, 0, 0)
+        hold_layout.setAlignment(Qt.AlignRight)
+        self.image_hold_time_label = QLabel("Hold Time:")
+        self.image_hold_time_label.setStyleSheet("font-size: 12px;")
+        hold_layout.addWidget(self.image_hold_time_label)
         self.image_hold_time_spin = QDoubleSpinBox()
         self.image_hold_time_spin.setMinimum(0.0)
         self.image_hold_time_spin.setMaximum(999.9)
@@ -353,7 +359,8 @@ class ImagePropertiesComponent(BasePropertiesComponent):
         self.image_hold_time_spin.setSuffix(" second")
         self.image_hold_time_spin.setValue(0.0)
         self.image_hold_time_spin.valueChanged.connect(self._on_hold_time_changed)
-        animation_layout.addRow("Hold", self.image_hold_time_spin)
+        hold_layout.addWidget(self.image_hold_time_spin)
+        animation_layout.addLayout(hold_layout)
         
         content_column.addLayout(animation_layout)
         content_column.addStretch()

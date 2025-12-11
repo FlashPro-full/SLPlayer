@@ -40,19 +40,40 @@ class MenuBar(QMenuBar):
         super().__init__(parent)
         self.setStyleSheet("""
             QMenuBar {
-                background-color: #E5E5E5;
+                background-color: #2B2B2B;
+                color: #FFFFFF;
                 padding: 2px;
+                border-bottom: 2px solid #555555;
             }
             QMenuBar::item {
                 background-color: transparent;
+                color: #FFFFFF;
                 padding: 4px 8px;
                 border-radius: 3px;
             }
             QMenuBar::item:selected {
-                background-color: #D6D6D6;
+                background-color: #3B3B3B;
             }
             QMenuBar::item:pressed {
-                background-color: #C5C5C5;
+                background-color: #4B4B4B;
+            }
+            QMenu {
+                background-color: #2B2B2B;
+                color: #FFFFFF;
+                border: 1px solid #555555;
+            }
+            QMenu::item {
+                background-color: transparent;
+                color: #FFFFFF;
+                padding: 4px 20px;
+            }
+            QMenu::item:selected {
+                background-color: #3B3B3B;
+            }
+            QMenu::separator {
+                background-color: #555555;
+                height: 1px;
+                margin: 4px 0px;
             }
         """)
         self.menus = {}

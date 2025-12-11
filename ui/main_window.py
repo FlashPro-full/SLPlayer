@@ -28,6 +28,17 @@ class MainWindow(QtWidgets.QMainWindow):
         self.setWindowTitle("SLPlayer")
         self.setGeometry(100, 100, 800, 600)
         
+        # Set dark grey background
+        self.setStyleSheet("""
+            QMainWindow {
+                background-color: #2B2B2B;
+            }
+            QWidget {
+                background-color: #2B2B2B;
+                color: #FFFFFF;
+            }
+        """)
+        
         self.program_manager = ProgramManager()
         self.screen_manager = ScreenManager()
         self.file_manager = FileManager(self.screen_manager)
@@ -42,10 +53,6 @@ class MainWindow(QtWidgets.QMainWindow):
         self._setup_toolbar()
         self._setup_main_content()
         self._connect_signals()
-        
-        # Schedule automatic controller discovery on startup
-        # Use QTimer to delay slightly so UI is fully rendered
-        QTimer.singleShot(1000, self._startup_controller_discovery)
     
     def _setup_menu_bar(self):
         self.menu_bar = MenuBar(self)
@@ -53,35 +60,38 @@ class MainWindow(QtWidgets.QMainWindow):
         
     def _setup_toolbar(self):
         self.program_toolbar = ProgramToolbar(self)
-        self.addToolBar(Qt.LeftToolBarArea, self.program_toolbar)
-        self.program_toolbar.setOrientation(Qt.Vertical)
+        self.addToolBar(Qt.TopToolBarArea, self.program_toolbar)
+        self.program_toolbar.setOrientation(Qt.Horizontal)
         self.content_types_toolbar = ContentTypesToolbar(self)
-        self.addToolBar(Qt.LeftToolBarArea, self.content_types_toolbar)
-        self.content_types_toolbar.setOrientation(Qt.Vertical)
+        self.addToolBar(Qt.TopToolBarArea, self.content_types_toolbar)
+        self.content_types_toolbar.setOrientation(Qt.Horizontal)
         self.control_toolbar = ControlToolbar(self)
-        self.addToolBar(Qt.LeftToolBarArea, self.control_toolbar)
-        self.control_toolbar.setOrientation(Qt.Vertical)
+        self.addToolBar(Qt.TopToolBarArea, self.control_toolbar)
+        self.control_toolbar.setOrientation(Qt.Horizontal)
         self.playback_toolbar = PlaybackToolbar(self)
-        self.addToolBar(Qt.LeftToolBarArea, self.playback_toolbar)
-        self.playback_toolbar.setOrientation(Qt.Vertical)
+        self.addToolBar(Qt.TopToolBarArea, self.playback_toolbar)
+        self.playback_toolbar.setOrientation(Qt.Horizontal)
     
     def _setup_main_content(self):
-        main_splitter = QSplitter(Qt.Vertical, self)
+        # Main horizontal splitter: left side (screen list + content), right side (properties)
+        main_splitter = QSplitter(Qt.Horizontal, self)
         
-        top_splitter = QSplitter(Qt.Horizontal, self)
+        # Left side: vertical splitter for screen list and content
+        left_splitter = QSplitter(Qt.Horizontal, self)
         self.screen_list_panel = ScreenListPanel(self)
         self.screen_list_panel.set_screen_manager(self.screen_manager)
-        top_splitter.addWidget(self.screen_list_panel)
+        left_splitter.addWidget(self.screen_list_panel)
         
         self.content_widget = ContentWidget(self, self.screen_manager)
-        top_splitter.addWidget(self.content_widget)
+        left_splitter.addWidget(self.content_widget)
         
-        top_splitter.setSizes([250, 750])
-        top_splitter.setStretchFactor(0, 0)
-        top_splitter.setStretchFactor(1, 1)
+        left_splitter.setSizes([250, 750])
+        left_splitter.setStretchFactor(0, 0)
+        left_splitter.setStretchFactor(1, 1)
         
-        main_splitter.addWidget(top_splitter)
+        main_splitter.addWidget(left_splitter)
         
+        # Right side: properties panel
         self.properties_panel = PropertiesPanel(self)
         self.content_widget.set_properties_panel(self.properties_panel)
         self.content_widget.set_screen_list_panel(self.screen_list_panel)
@@ -89,7 +99,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.properties_panel.set_screen_manager(self.screen_manager)
         main_splitter.addWidget(self.properties_panel)
         
-        main_splitter.setSizes([600, 300])
+        main_splitter.setSizes([1000, 370])
         main_splitter.setStretchFactor(0, 1)
         main_splitter.setStretchFactor(1, 0)
         
@@ -1085,6 +1095,12 @@ class MainWindow(QtWidgets.QMainWindow):
                 logger.info(f"Auto-saved {saved_count} screen(s) to work directory on close")
         except Exception as e:
             logger.error(f"Error auto-saving on close: {e}", exc_info=True)
+        
+        try:
+            from controllers.huidu_sdk import _stop_api_server
+            _stop_api_server()
+        except Exception as e:
+            logger.error(f"Error stopping API server on close: {e}")
         
         event.accept()
 

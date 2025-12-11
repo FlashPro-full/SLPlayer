@@ -28,7 +28,6 @@ class ScreenListPanel(QWidget):
     program_renamed = pyqtSignal(str, str)
     delete_program_requested = pyqtSignal(str)
     program_deleted = pyqtSignal(str)
-    program_checked = pyqtSignal(str, bool)
     program_copy_requested = pyqtSignal(str)
     program_paste_requested = pyqtSignal(str)
     program_moved = pyqtSignal(str, int)
@@ -61,27 +60,24 @@ class ScreenListPanel(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
         
+        self.setStyleSheet("""
+            QWidget {
+                background-color: #2B2B2B;
+                border-right: 2px solid #555555;
+            }
+        """)
+        
         toolbar_widget = QWidget()
         toolbar_widget.setStyleSheet("""
             QWidget {
-                background-color: #D6D6D6;
+                background-color: #2B2B2B;
+                border-bottom: 2px solid #555555;
             }
         """)
         toolbar_layout = QHBoxLayout(toolbar_widget)
         toolbar_layout.setContentsMargins(4, 2, 4, 2)
         toolbar_layout.setSpacing(2)
         toolbar_layout.addStretch()
-        
-        self.select_all_checkbox = QCheckBox()
-        self.select_all_checkbox.setToolTip(tr("program_list.select_all_tooltip"))
-        self.select_all_checkbox.setTristate(True)
-        self.select_all_checkbox.stateChanged.connect(self.on_select_all_changed)
-        self.select_all_checkbox.setStyleSheet("""
-            QCheckBox {
-                margin-top: 2px;
-            }
-        """)
-        toolbar_layout.addWidget(self.select_all_checkbox)
         
         TOOL_BUTTON_STYLE = """
             QToolButton {
@@ -91,12 +87,6 @@ class ScreenListPanel(QWidget):
                 font-size: 14px;
             }
         """
-        
-        self.copy_btn = self._create_tool_button("📑", tr("program_list.copy"), self.on_copy_clicked, TOOL_BUTTON_STYLE)
-        toolbar_layout.addWidget(self.copy_btn)
-        
-        self.paste_btn = self._create_tool_button("📋", tr("program_list.paste") + " (Ctrl+V)", self.on_paste_clicked, TOOL_BUTTON_STYLE)
-        toolbar_layout.addWidget(self.paste_btn)
         
         self.up_btn = self._create_tool_button("🔼", tr("program_list.move_up") + " (Alt+↑)", self.on_move_up, TOOL_BUTTON_STYLE)
         toolbar_layout.addWidget(self.up_btn)
@@ -125,23 +115,35 @@ class ScreenListPanel(QWidget):
         
         self.tree.setStyleSheet("""
             QTreeWidget {
-                background-color: #FFFFFF;
+                background-color: #333333;
                 border: none;
                 padding: 2px;
+                color: #FFFFFF;
             }
             QTreeWidget::item {
                 padding: 4px 2px;
                 height: 20px;
+                color: #FFFFFF;
+                outline: none;
             }
             QTreeWidget::item:selected {
-                background-color: #E8E8E8;
-                color: #000000;
+                background-color: #3B3B3B;
+                border: 1px solid #4A90E2;
+                color: #FFFFFF;
+                outline: none;
             }
             QTreeWidget::item:selected:hover {
-                background-color: #E0E0E0;
+                background-color: #3B3B3B;
+                border: 1px solid #4A90E2;
+                outline: none;
             }
             QTreeWidget::item:hover {
-                background-color: #F5F5F5;
+                background-color: #3B3B3B;
+                border: 1px solid #4A90E2;
+                outline: none;
+            }
+            QTreeWidget::item:focus {
+                outline: none;
             }
         """)
         
@@ -229,14 +231,10 @@ class ScreenListPanel(QWidget):
             
             for program in screen.programs:
                 program_item = QTreeWidgetItem(screen_item)
-                is_checked = program.properties.get("checked", True)
-                program.properties["checked"] = is_checked
                 program_item.setText(0, f"💽 {program.name}")
                 program_item.setData(0, Qt.UserRole, "program")
                 program_item.setData(0, Qt.UserRole + 1, program.id)
-                program_item.setData(0, Qt.UserRole + 2, is_checked)
-                program_item.setCheckState(0, Qt.Checked if is_checked else Qt.Unchecked)
-                program_item.setFlags(program_item.flags() | Qt.ItemIsEditable | Qt.ItemIsUserCheckable)
+                program_item.setFlags(program_item.flags() | Qt.ItemIsEditable)
                 program_item.setChildIndicatorPolicy(QTreeWidgetItem.ChildIndicatorPolicy.ShowIndicator)
                 item_map[program.id] = program_item
                 
@@ -315,8 +313,6 @@ class ScreenListPanel(QWidget):
             self.tree.scrollToItem(current_item)
             QTimer.singleShot(10, lambda: self._emit_item_signal(current_item))
         
-        self._update_select_all_checkbox()
-    
     def _on_selection_changed(self):
         selected_items = self.tree.selectedItems()
         if not selected_items:
@@ -362,7 +358,6 @@ class ScreenListPanel(QWidget):
                 self._last_selected_content = None
                 set_screen_name(screen_name)
                 self.screen_selected.emit(screen_name)
-                self._update_select_all_checkbox()
             elif item_type == "program":
                 program_id = item.data(0, Qt.UserRole + 1)
                 self._last_selected_program = program_id
@@ -376,7 +371,6 @@ class ScreenListPanel(QWidget):
                 else:
                     self._last_selected_screen = None
                 self.program_selected.emit(program_id)
-                self._update_select_all_checkbox()
             elif item_type == "content":
                 program_id = item.data(0, Qt.UserRole + 1)
                 element_id = item.data(0, Qt.UserRole + 2)
@@ -395,7 +389,6 @@ class ScreenListPanel(QWidget):
                 else:
                     self._last_selected_screen = None
                 self.content_selected.emit(program_id, element_id)
-                self._update_select_all_checkbox()
         except Exception as e:
             pass
     
@@ -852,28 +845,11 @@ class ScreenListPanel(QWidget):
         item_type = item.data(0, Qt.UserRole)
         
         if item_type == "program":
-            checked = (item.checkState(0) == Qt.Checked)
-            old_checked = item.data(0, Qt.UserRole + 2)
-            if old_checked is None or old_checked != checked:
-                self.tree.blockSignals(True)
-                item.setData(0, Qt.UserRole + 2, checked)
-                self.tree.blockSignals(False)
-                
-                if self.screen_manager:
-                    program_id = item.data(0, Qt.UserRole + 1)
-                    program = self.screen_manager.get_program_by_id(program_id)
-                    if program:
-                        program.properties["checked"] = checked
-                
+            text = item.text(0)
+            new_name = text.replace("💽 ", "").strip()
+            if new_name:
                 program_id = item.data(0, Qt.UserRole + 1)
-                self.program_checked.emit(program_id, checked)
-                self._update_select_all_checkbox()
-            else:
-                text = item.text(0)
-                new_name = text.replace("💽 ", "").strip()
-                if new_name:
-                    program_id = item.data(0, Qt.UserRole + 1)
-                    self.program_renamed.emit(program_id, new_name)
+                self.program_renamed.emit(program_id, new_name)
         elif item_type == "content":
             text = item.text(0)
             parts = text.split(" ", 1)
@@ -882,67 +858,6 @@ class ScreenListPanel(QWidget):
                 program_id = item.data(0, Qt.UserRole + 1)
                 element_id = item.data(0, Qt.UserRole + 2)
                 self.content_renamed.emit(program_id, element_id, new_name)
-    
-    def on_select_all_changed(self, state):
-        current_item = self.tree.currentItem()
-        if not current_item:
-            return
-        
-        checked = (state == Qt.Checked)
-        item_type = current_item.data(0, Qt.UserRole)
-        
-        self.tree.blockSignals(True)
-        self.select_all_checkbox.blockSignals(True)
-        
-        if item_type == "program":
-            program_item = current_item
-            program_item.setCheckState(0, Qt.Checked if checked else Qt.Unchecked)
-            program_item.setData(0, Qt.UserRole + 2, checked)
-            
-            self.select_all_checkbox.setCheckState(Qt.Checked if checked else Qt.Unchecked)
-            self.select_all_checkbox.blockSignals(False)
-            self.tree.blockSignals(False)
-            
-            if not self._refreshing:
-                program_id = program_item.data(0, Qt.UserRole + 1)
-                self.program_checked.emit(program_id, checked)
-                self._update_select_all_checkbox()
-        elif item_type == "screen":
-            screen_item = current_item
-            for j in range(screen_item.childCount()):
-                program_item = screen_item.child(j)
-                if program_item.data(0, Qt.UserRole) == "program":
-                    program_item.setCheckState(0, Qt.Checked if checked else Qt.Unchecked)
-                    program_item.setData(0, Qt.UserRole + 2, checked)
-            
-            self.select_all_checkbox.setCheckState(Qt.Checked if checked else Qt.Unchecked)
-            self.select_all_checkbox.blockSignals(False)
-            self.tree.blockSignals(False)
-            
-            if not self._refreshing:
-                for j in range(screen_item.childCount()):
-                    program_item = screen_item.child(j)
-                    if program_item.data(0, Qt.UserRole) == "program":
-                        program_id = program_item.data(0, Qt.UserRole + 1)
-                        self.program_checked.emit(program_id, checked)
-                self._update_select_all_checkbox()
-        else:
-            program_item = current_item.parent()
-            if program_item and program_item.data(0, Qt.UserRole) == "program":
-                program_item.setCheckState(0, Qt.Checked if checked else Qt.Unchecked)
-                program_item.setData(0, Qt.UserRole + 2, checked)
-                
-                self.select_all_checkbox.setCheckState(Qt.Checked if checked else Qt.Unchecked)
-                self.select_all_checkbox.blockSignals(False)
-                self.tree.blockSignals(False)
-                
-                if not self._refreshing:
-                    program_id = program_item.data(0, Qt.UserRole + 1)
-                    self.program_checked.emit(program_id, checked)
-                    self._update_select_all_checkbox()
-            else:
-                self.select_all_checkbox.blockSignals(False)
-                self.tree.blockSignals(False)
     
     def _get_selected_screen_item(self):
         current_item = self.tree.currentItem()
@@ -961,52 +876,4 @@ class ScreenListPanel(QWidget):
             return self.tree.topLevelItem(0)
         return None
     
-    def _update_select_all_checkbox(self):
-        current_item = self.tree.currentItem()
-        if not current_item:
-            self.select_all_checkbox.blockSignals(True)
-            self.select_all_checkbox.setCheckState(Qt.Unchecked)
-            self.select_all_checkbox.blockSignals(False)
-            return
-        
-        item_type = current_item.data(0, Qt.UserRole)
-        self.select_all_checkbox.blockSignals(True)
-        
-        if item_type == "program":
-            program_item = current_item
-            if program_item.checkState(0) == Qt.Checked:
-                self.select_all_checkbox.setCheckState(Qt.Checked)
-            else:
-                self.select_all_checkbox.setCheckState(Qt.Unchecked)
-        elif item_type == "screen":
-            screen_item = current_item
-            checked_count = 0
-            total_count = 0
-            
-            for j in range(screen_item.childCount()):
-                program_item = screen_item.child(j)
-                if program_item.data(0, Qt.UserRole) == "program":
-                    total_count += 1
-                    if program_item.checkState(0) == Qt.Checked:
-                        checked_count += 1
-            
-            if total_count == 0:
-                self.select_all_checkbox.setCheckState(Qt.Unchecked)
-            elif checked_count == 0:
-                self.select_all_checkbox.setCheckState(Qt.Unchecked)
-            elif checked_count == total_count:
-                self.select_all_checkbox.setCheckState(Qt.Checked)
-            else:
-                self.select_all_checkbox.setCheckState(Qt.PartiallyChecked)
-        else:
-            program_item = current_item.parent()
-            if program_item and program_item.data(0, Qt.UserRole) == "program":
-                if program_item.checkState(0) == Qt.Checked:
-                    self.select_all_checkbox.setCheckState(Qt.Checked)
-                else:
-                    self.select_all_checkbox.setCheckState(Qt.Unchecked)
-            else:
-                self.select_all_checkbox.setCheckState(Qt.Unchecked)
-        
-        self.select_all_checkbox.blockSignals(False)
 

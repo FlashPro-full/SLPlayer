@@ -10,6 +10,13 @@ class StatusBarWidget(QStatusBar):
     
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.setStyleSheet("""
+            QStatusBar {
+                background-color: #2B2B2B;
+                color: #FFFFFF;
+                border-top: 2px solid #555555;
+            }
+        """)
         self.init_ui()
         self.set_connection_status(ConnectionStatus.DISCONNECTED)
     
@@ -25,7 +32,7 @@ class StatusBarWidget(QStatusBar):
         
         self.scanning_spinner = LoadingSpinner(self.scanning_widget, size=16, color="#2196F3")
         self.scanning_label = QLabel("Scanning for controllers...")
-        self.scanning_label.setStyleSheet("color: #666; font-size: 11px;")
+        self.scanning_label.setStyleSheet("color: #CCCCCC; font-size: 11px;")
         
         scanning_layout.addWidget(self.scanning_spinner)
         scanning_layout.addWidget(self.scanning_label)

@@ -15,60 +15,73 @@ class TimingPropertiesComponent(BasePropertiesComponent):
         self.init_ui()
     
     def init_ui(self):
-        main_layout = QHBoxLayout(self)
+        main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(4, 4, 4, 4)
         main_layout.setSpacing(8)
-        main_layout.setAlignment(Qt.AlignLeft | Qt.AlignTop)
+        main_layout.setAlignment(Qt.AlignTop)
         
         self.setStyleSheet("""
             QGroupBox {
                 font-weight: 600;
                 font-size: 13px;
-                border: 1px solid #D0D0D0;
+                border: 1px solid #555555;
                 border-radius: 4px;
                 margin-top: 8px;
                 padding-top: 12px;
-                background-color: #FAFAFA;
+                background-color: #2B2B2B;
+                color: #FFFFFF;
             }
             QGroupBox::title {
                 subcontrol-origin: margin;
                 left: 8px;
                 padding: 0 4px;
-                color: #333333;
+                color: #FFFFFF;
             }
             QLineEdit, QSpinBox, QComboBox {
-                border: 1px solid #CCCCCC;
+                border: 1px solid #555555;
                 border-radius: 3px;
                 padding: 4px 6px;
-                background-color: #FFFFFF;
+                background-color: #3B3B3B;
+                color: #FFFFFF;
                 font-size: 12px;
             }
             QPushButton {
-                border: 1px solid #CCCCCC;
+                border: 1px solid #555555;
                 border-radius: 3px;
                 padding: 4px 8px;
-                background-color: #FFFFFF;
+                background-color: #3B3B3B;
+                color: #FFFFFF;
                 font-size: 12px;
             }
             QPushButton:hover {
-                background-color: #E8F4F8;
+                background-color: #4B4B4B;
                 border: 1px solid #4A90E2;
             }
             QRadioButton {
                 font-size: 12px;
+                color: #FFFFFF;
             }
             QDateTimeEdit, QTimeEdit {
-                border: 1px solid #CCCCCC;
+                border: 1px solid #555555;
                 border-radius: 3px;
                 padding: 4px 6px;
-                background-color: #FFFFFF;
+                background-color: #3B3B3B;
+                color: #FFFFFF;
                 font-size: 12px;
+            }
+            QComboBox QAbstractItemView {
+                border: 1px solid #555555;
+                border-radius: 3px;
+                background-color: #2B2B2B;
+                color: #FFFFFF;
+                selection-background-color: #3B3B3B;
+                selection-color: #FFFFFF;
+                padding: 2px;
             }
         """)
         
         # Area attribute group (same as Text)
         area_group = QGroupBox("Area attribute")
-        area_group.setMaximumWidth(200)
         area_layout = QVBoxLayout(area_group)
         area_layout.setContentsMargins(10, 16, 10, 10)
         area_layout.setSpacing(8)
@@ -83,7 +96,7 @@ class TimingPropertiesComponent(BasePropertiesComponent):
         self.timing_coords_x.setMinimumWidth(70)
         self.timing_coords_x.setText("0")
         coords_comma = QLabel(",")
-        coords_comma.setStyleSheet("color: #666666; font-weight: bold;")
+        coords_comma.setStyleSheet("color: #CCCCCC; font-weight: bold;")
         self.timing_coords_y = QLineEdit()
         self.timing_coords_y.setPlaceholderText("0")
         self.timing_coords_y.setMinimumWidth(70)

@@ -14,22 +14,25 @@ class ScreenPropertiesComponent(BasePropertiesComponent):
         self.init_ui()
     
     def init_ui(self):
-        layout = QHBoxLayout(self)
+        layout = QVBoxLayout(self)
         layout.setContentsMargins(4, 4, 4, 4)
         layout.setSpacing(8)
-        layout.setAlignment(Qt.AlignLeft | Qt.AlignTop)
+        layout.setAlignment(Qt.AlignTop)
         
         self.setStyleSheet("""
             QGroupBox {
                 font-size: 13px;
+                border: 1px solid #555555;
+                background-color: #2B2B2B;
+                color: #FFFFFF;
             }
             QLabel {
                 font-size: 13px;
+                color: #FFFFFF;
             }
         """)
         
         display_props_group = QGroupBox("Display properties")
-        display_props_group.setMinimumWidth(300)
         display_props_layout = QFormLayout(display_props_group)
         display_props_layout.setContentsMargins(8, 8, 8, 8)
         display_props_layout.setSpacing(8)
@@ -40,8 +43,9 @@ class ScreenPropertiesComponent(BasePropertiesComponent):
         self.screen_controller_type_input.setStyleSheet("""
             QLineEdit {
                 border: none;
-                border-bottom: 1px solid #CCCCCC;
-                background-color: transparent;
+                border-bottom: 1px solid #555555;
+                background-color: #3B3B3B;
+                color: #FFFFFF;
                 padding: 4px 0px;
                 font-size: 13px;
             }

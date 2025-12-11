@@ -41,43 +41,85 @@ class PropertiesPanel(QWidget):
         main_layout.setSpacing(0)
         
         self.setStyleSheet("""
+            PropertiesPanel {
+                border-left: 2px solid #555555;
+            }
             QWidget {
-                background-color: #FFFFFF;
+                background-color: #2B2B2B;
+                color: #FFFFFF;
                 font-size: 12px;
             }
             QScrollArea {
                 border: none;
-                background-color: #FFFFFF;
+                background-color: #2B2B2B;
             }
             QGroupBox {
                 font-weight: bold;
                 font-size: 12px;
-                border: 1px solid #CCCCCC;
+                border: 1px solid #555555;
                 border-radius: 4px;
                 margin-top: 8px;
                 padding-top: 8px;
+                background-color: #2B2B2B;
+                color: #FFFFFF;
             }
             QGroupBox::title {
                 subcontrol-origin: margin;
                 left: 8px;
                 padding: 0 4px;
                 font-size: 12px;
+                color: #FFFFFF;
             }
             QLabel {
                 font-size: 12px;
+                color: #FFFFFF;
             }
             QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox, QTimeEdit, QDateEdit {
                 font-size: 12px;
                 padding: 4px;
                 min-height: 20px;
+                background-color: #3B3B3B;
+                color: #FFFFFF;
+                border: 1px solid #555555;
+                border-radius: 3px;
+            }
+            QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QDoubleSpinBox:focus, QTimeEdit:focus, QDateEdit:focus {
+                border: 1px solid #4A90E2;
             }
             QPushButton {
                 font-size: 12px;
                 padding: 4px 8px;
                 min-height: 20px;
+                background-color: #3B3B3B;
+                color: #FFFFFF;
+                border: 1px solid #555555;
+                border-radius: 3px;
+            }
+            QPushButton:hover {
+                background-color: #4B4B4B;
+                border: 1px solid #666666;
+            }
+            QPushButton:pressed {
+                background-color: #2B2B2B;
             }
             QCheckBox, QRadioButton {
                 font-size: 12px;
+                color: #FFFFFF;
+            }
+            QComboBox QAbstractItemView {
+                background-color: #2B2B2B;
+                color: #FFFFFF;
+                border: 1px solid #555555;
+                selection-background-color: #3B3B3B;
+                selection-color: #FFFFFF;
+            }
+            QComboBox::drop-down {
+                border-left: 1px solid #555555;
+            }
+            QComboBox::down-arrow {
+                border-left: 4px solid transparent;
+                border-right: 4px solid transparent;
+                border-top: 5px solid #CCCCCC;
             }
         """)
         

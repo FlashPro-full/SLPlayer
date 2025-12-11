@@ -30,55 +30,68 @@ class WeatherPropertiesComponent(BasePropertiesComponent):
         main_layout.setSpacing(12)
         main_layout.setAlignment(Qt.AlignLeft | Qt.AlignTop)
         
-        groups_layout = QHBoxLayout()
+        groups_layout = QVBoxLayout()
         groups_layout.setSpacing(12)
-        groups_layout.setAlignment(Qt.AlignLeft | Qt.AlignTop)
+        groups_layout.setAlignment(Qt.AlignTop)
         
         self.setStyleSheet("""
             QGroupBox {
                 font-weight: 600;
                 font-size: 13px;
-                border: 1px solid #D0D0D0;
+                border: 1px solid #555555;
                 border-radius: 4px;
                 margin-top: 8px;
                 padding-top: 12px;
-                background-color: #FAFAFA;
+                background-color: #2B2B2B;
+                color: #FFFFFF;
             }
             QGroupBox::title {
                 subcontrol-origin: margin;
                 left: 8px;
                 padding: 0 4px;
-                color: #333333;
+                color: #FFFFFF;
             }
             QLineEdit {
-                border: 1px solid #CCCCCC;
+                border: 1px solid #555555;
                 border-radius: 3px;
                 padding: 4px 6px;
-                background-color: #FFFFFF;
+                background-color: #3B3B3B;
+                color: #FFFFFF;
                 font-size: 12px;
             }
             QComboBox {
-                border: 1px solid #CCCCCC;
+                border: 1px solid #555555;
                 border-radius: 3px;
                 padding: 4px 6px;
-                background-color: #FFFFFF;
+                background-color: #3B3B3B;
+                color: #FFFFFF;
                 font-size: 12px;
             }
             QPushButton {
                 border: 1px solid #CCCCCC;
                 border-radius: 3px;
                 padding: 4px 8px;
-                background-color: #FFFFFF;
+                background-color: #3B3B3B;
+                color: #FFFFFF;
                 font-size: 12px;
             }
             QCheckBox {
                 font-size: 12px;
+                color: #FFFFFF;
+            }
+            QComboBox QAbstractItemView {
+                border: 1px solid #555555;
+                border-radius: 3px;
+                background-color: #2B2B2B;
+                color: #FFFFFF;
+                selection-background-color: #3B3B3B;
+                selection-color: #FFFFFF;
+                padding: 2px;
             }
         """)
         
         # Area attribute group (same as text)
         area_group = QGroupBox("Area attribute")
-        area_group.setMaximumWidth(200)
         area_layout = QVBoxLayout(area_group)
         area_layout.setContentsMargins(10, 16, 10, 10)
         area_layout.setSpacing(8)
@@ -93,7 +106,7 @@ class WeatherPropertiesComponent(BasePropertiesComponent):
         self.weather_coords_x.setPlaceholderText("0")
         self.weather_coords_x.setMinimumWidth(70)
         coords_comma = QLabel(",")
-        coords_comma.setStyleSheet("color: #666666; font-weight: bold;")
+        coords_comma.setStyleSheet("color: #CCCCCC; font-weight: bold;")
         self.weather_coords_y = QLineEdit()
         self.weather_coords_y.setPlaceholderText("0")
         self.weather_coords_y.setMinimumWidth(70)
@@ -377,7 +390,7 @@ class WeatherPropertiesComponent(BasePropertiesComponent):
         hold_row = QHBoxLayout()
         hold_row.setSpacing(8)
         hold_label = QLabel("Hold")
-        hold_label.setStyleSheet("font-weight: 500; color: #333333; min-width: 40px;")
+        hold_label.setStyleSheet("font-weight: 500; color: #FFFFFF; min-width: 40px;")
         hold_row.addWidget(hold_label)
         from PyQt5.QtWidgets import QDoubleSpinBox
         self.weather_hold_time = QDoubleSpinBox()

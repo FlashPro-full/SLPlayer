@@ -8,6 +8,23 @@ from typing import Optional
 import requests
 from requests_toolbelt.multipart.encoder import MultipartEncoder
 from sdk.common.Config import Config
+import sys
+import os
+
+# Add parent directory to path for logger import
+sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
+try:
+    from utils.logger import get_logger
+    logger = get_logger('HuiduSDK.HttpApi')
+except ImportError:
+    # Fallback if logger not available
+    import logging
+    logger = logging.getLogger('HuiduSDK.HttpApi')
+    logger.setLevel(logging.INFO)
+    if not logger.handlers:
+        handler = logging.StreamHandler()
+        handler.setFormatter(logging.Formatter('%(levelname)s - %(message)s'))
+        logger.addHandler(handler)
 
 class HttpApi:
     def __init__(self, host_url: Optional[str] = None):
@@ -32,16 +49,56 @@ class HttpApi:
 
     def device_list(self) -> str:
         api_url = self.dev_api_url + "list/"
-        return self._get(api_url)
+        logger.info(f"SDK Request: GET {api_url}")
+        response = self._get(api_url)
+        try:
+            response_json = json.loads(response)
+            if response_json.get("message") == "ok":
+                logger.info(f"SDK Response: GET {api_url} - OK - {response}")
+            else:
+                logger.warning(f"SDK Response: GET {api_url} - Error - {response}")
+        except json.JSONDecodeError:
+            logger.error(f"SDK Response: GET {api_url} - Invalid JSON - {response}")
+        return response
 
     def device(self, body: str) -> str:
-        return self._post(self.dev_api_url, body)
+        logger.info(f"SDK Request: POST {self.dev_api_url} - Body: {body}")
+        response = self._post(self.dev_api_url, body)
+        try:
+            response_json = json.loads(response)
+            if response_json.get("message") == "ok":
+                logger.info(f"SDK Response: POST {self.dev_api_url} - OK - {response}")
+            else:
+                logger.warning(f"SDK Response: POST {self.dev_api_url} - Error - {response}")
+        except json.JSONDecodeError:
+            logger.error(f"SDK Response: POST {self.dev_api_url} - Invalid JSON - {response}")
+        return response
 
     def program(self, body: str) -> str:
-        return self._post(self.program_api_url, body, 60)
+        logger.info(f"SDK Request: POST {self.program_api_url} - Body: {body}")
+        response = self._post(self.program_api_url, body, 60)
+        try:
+            response_json = json.loads(response)
+            if response_json.get("message") == "ok":
+                logger.info(f"SDK Response: POST {self.program_api_url} - OK - {response}")
+            else:
+                logger.warning(f"SDK Response: POST {self.program_api_url} - Error - {response}")
+        except json.JSONDecodeError:
+            logger.error(f"SDK Response: POST {self.program_api_url} - Invalid JSON - {response}")
+        return response
 
     def upload_file(self, file_path: str) -> str:
-        return self._file(file_path)
+        logger.info(f"SDK Request: POST {self.file_api_url} - Upload file: {file_path}")
+        response = self._file(file_path)
+        try:
+            response_json = json.loads(response)
+            if response_json.get("message") == "ok":
+                logger.info(f"SDK Response: POST {self.file_api_url} - OK - File: {file_path} - {response}")
+            else:
+                logger.warning(f"SDK Response: POST {self.file_api_url} - Error - File: {file_path} - {response}")
+        except json.JSONDecodeError:
+            logger.error(f"SDK Response: POST {self.file_api_url} - Invalid JSON - File: {file_path} - {response}")
+        return response
 
     def _file(self, file_path: str) -> str:
         loc_file_path = Path(file_path)
@@ -73,8 +130,10 @@ class HttpApi:
             )
             response.raise_for_status()
             response_string = response.text
+            logger.debug(f"SDK HTTP Response: POST {self.file_api_url} - Status: {response.status_code}")
         except Exception as e:
             err_string = str(e)
+            logger.error(f"SDK HTTP Error: POST {self.file_api_url} - {err_string}")
 
         if not response_string:
             return json.dumps({
@@ -104,8 +163,10 @@ class HttpApi:
             )
             response.raise_for_status()
             response_string = response.text
+            logger.debug(f"SDK HTTP Response: POST {url} - Status: {response.status_code}")
         except Exception as e:
             err_string = str(e)
+            logger.error(f"SDK HTTP Error: POST {url} - {err_string}")
 
         if not response_string:
             return json.dumps({
@@ -130,8 +191,10 @@ class HttpApi:
             )
             response.raise_for_status()
             response_string = response.text
+            logger.debug(f"SDK HTTP Response: GET {url} - Status: {response.status_code}")
         except Exception as e:
             err_string = str(e)
+            logger.error(f"SDK HTTP Error: GET {url} - {err_string}")
 
         if not response_string:
             return json.dumps({

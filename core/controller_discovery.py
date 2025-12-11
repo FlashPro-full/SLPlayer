@@ -139,9 +139,9 @@ class ControllerDiscovery(QObject):
     
     def _init_huidu_sdk(self) -> bool:
         try:
-            from controllers.huidu_sdk import HuiduSDK
+            from controllers.huidu_sdk import HuiduSDK, DEFAULT_HOST
             if self._huidu_sdk is None:
-                    self._huidu_sdk = HuiduSDK()
+                    self._huidu_sdk = HuiduSDK(DEFAULT_HOST)
             return True
         except Exception as e:
             logger.warning(f"Could not initialize Huidu SDK: {e}. Huidu discovery will be skipped.")
@@ -453,76 +453,114 @@ class ControllerDiscovery(QObject):
         discovered: List[ControllerInfo] = []
         
         try:
-            from controllers.huidu_sdk import HuiduSDK, SDK_AVAILABLE
+            from controllers.huidu_sdk import HuiduSDK, SDK_AVAILABLE, DEFAULT_HOST
+            from core.controller_database import get_controller_database
             
             if not SDK_AVAILABLE:
                 logger.debug("Huidu SDK not available - skipping network discovery")
                 return discovered
             
-            # Get all network ranges (from all interfaces)
-            all_network_ranges = self._get_all_network_ranges()
-            if not all_network_ranges:
-                logger.warning("Could not determine network ranges for Huidu discovery")
-                return discovered
-            
             default_port = 30080
-            total_ips = sum(len(r) for r in all_network_ranges)
-            logger.info(f"Huidu network discovery: Found {len(all_network_ranges)} network interface(s), total {total_ips} IP addresses to scan on port {default_port}")
+            logger.info(f"Huidu network discovery: Checking localhost:{default_port}")
             
             try:
-                sdk = HuiduSDK()
+                sdk = HuiduSDK(DEFAULT_HOST)
             except RuntimeError as e:
                 logger.debug(f"Could not create HuiduSDK instance: {e}")
                 return discovered
             
-            import time
-            start_time = time.time()
-            checked_count = 0
-            
-            # Scan each network range separately (only gateway IP .1)
-            for network_idx, ip_range in enumerate(all_network_ranges, 1):
-                if self.stop_event.is_set():
-                    break
+            try:
+                result = sdk.device.get_online_devices()
+                if result.get("message") != "ok":
+                    logger.debug("No online devices found")
+                    return discovered
                 
-                if not ip_range or len(ip_range) == 0:
-                    continue
+                devices = result.get("data", [])
+                if not devices or not isinstance(devices, list):
+                    logger.debug("No online devices found")
+                    return discovered
                 
-                gateway_ip = ip_range[0]
+                logger.info(f"Found {len(devices)} online device(s)")
                 
-                # Validate gateway IP format before scanning
-                if not gateway_ip or '.' not in gateway_ip:
-                    logger.warning(f"Invalid gateway IP format: {gateway_ip}, skipping")
-                    continue
+                db = get_controller_database()
                 
-                try:
-                    ip_parts = gateway_ip.split('.')
-                    if len(ip_parts) != 4 or not all(0 <= int(p) <= 255 for p in ip_parts):
-                        logger.warning(f"Invalid gateway IP format: {gateway_ip}, skipping")
+                for device_id in devices:
+                    if self.stop_event.is_set():
+                        break
+                    
+                    if not isinstance(device_id, str):
                         continue
-                except (ValueError, AttributeError):
-                    logger.warning(f"Invalid gateway IP format: {gateway_ip}, skipping")
-                    continue
-                
-                network_prefix = gateway_ip.rsplit('.', 1)[0] if '.' in gateway_ip else "unknown"
-                logger.info(f"Huidu network {network_idx}/{len(all_network_ranges)}: Checking gateway {gateway_ip}:{default_port}")
-                
-                checked_count += 1
-                try:
-                    if sdk.is_card_online(gateway_ip):
-                        controller_info = ControllerInfo(gateway_ip, default_port, "huidu", f"Huidu_{gateway_ip}")
-                        controller_info.name = f"Huidu_Network_{gateway_ip}"
+                    
+                    try:
+                        property_result = sdk.get_device_property([device_id])
+                        if property_result.get("message") != "ok":
+                            logger.debug(f"Failed to get properties for device {device_id}")
+                            continue
+                        
+                        data_array = property_result.get("data", [])
+                        if not data_array or len(data_array) == 0:
+                            logger.debug(f"No property data for device {device_id}")
+                            continue
+                        
+                        device_data = data_array[0].get("data", {})
+                        if not device_data:
+                            logger.debug(f"Empty property data for device {device_id}")
+                            continue
+                        
+                        device_ip = device_data.get("eth.ip", "localhost")
+                        device_name = device_data.get("name", f"Huidu_{device_id}")
+                        screen_width = device_data.get("screen.width", "64")
+                        screen_height = device_data.get("screen.height", "32")
+                        firmware_version = device_data.get("version.app", "")
+                        hardware_version = device_data.get("version.hardware", "")
+                        model = hardware_version or device_data.get("model", "Huidu")
+                        
+                        controller_info = ControllerInfo(device_ip, default_port, "huidu", device_name)
+                        controller_info.name = device_name
+                        controller_info.mac_address = device_id
+                        controller_info.firmware_version = firmware_version
+                        controller_info.model = model
+                        controller_info.display_resolution = f"{screen_width}x{screen_height}"
+                        
+                        device_info = {
+                            "name": device_name,
+                            "controller_id": device_id,
+                            "ip": device_ip,
+                            "port": default_port,
+                            "model": model,
+                            "version": firmware_version,
+                            "version.app": firmware_version,
+                            "version.hardware": hardware_version,
+                            "screen.width": screen_width,
+                            "screen.height": screen_height,
+                            "display_resolution": f"{screen_width}x{screen_height}",
+                            "mac_address": device_id,
+                            "serial_number": device_id
+                        }
+                        
+                        db.add_or_update_controller(
+                            device_id,
+                            device_ip,
+                            default_port,
+                            "Huidu",
+                            device_info
+                        )
+                        
                         discovered.append(controller_info)
-                        logger.info(f"Found Huidu controller: {gateway_ip}:{default_port}")
+                        logger.info(f"Found Huidu controller: {device_id} at {device_ip}:{default_port}")
                         
                         # Read programs and media in background thread
                         threading.Thread(target=self._read_controller_data, args=(controller_info,), daemon=True).start()
-                except Exception:
-                    pass
+                    except Exception as e:
+                        logger.debug(f"Error processing device {device_id}: {e}")
+                
+                if discovered:
+                    logger.info(f"Huidu network discovery complete: Found {len(discovered)} controller(s)")
+                else:
+                    logger.info("Huidu network discovery complete: No controllers found")
             
-            if discovered:
-                logger.info(f"Huidu network discovery complete: Found {len(discovered)} controller(s) across {len(all_network_ranges)} network(s)")
-            else:
-                logger.info(f"Huidu network discovery complete: No controllers found across {len(all_network_ranges)} network(s)")
+            except Exception as e:
+                logger.debug(f"Error checking localhost for Huidu controllers: {e}")
             
         except Exception as e:
             logger.error(f"Error discovering Huidu network controllers: {e}", exc_info=True)
@@ -700,64 +738,6 @@ class ControllerDiscovery(QObject):
     
     def _discover_huidu_mobile_ranges(self, ranges: List[Dict[str, str]]) -> List[ControllerInfo]:
         discovered: List[ControllerInfo] = []
-        
-        try:
-            from controllers.huidu_sdk import HuiduSDK, SDK_AVAILABLE
-            
-            if not SDK_AVAILABLE:
-                logger.debug("Huidu SDK not available - skipping mobile range discovery")
-                return discovered
-            
-            default_port = 30080
-            try:
-                sdk = HuiduSDK()
-            except RuntimeError as e:
-                logger.debug(f"Could not create HuiduSDK instance: {e}")
-                return discovered
-            
-            for ip_range in ranges:
-                if self.stop_event.is_set():
-                    break
-                try:
-                    ip_start = ip_range.get("ipStart", "")
-                    ip_end = ip_range.get("ipEnd", "")
-                    if not ip_start or not ip_end:
-                        continue
-                    
-                    logger.info(f"Scanning Huidu mobile network range: {ip_start} - {ip_end} using SDK")
-                    
-                    start_parts = ip_start.split('.')
-                    end_parts = ip_end.split('.')
-                    
-                    if len(start_parts) != 4 or len(end_parts) != 4:
-                        continue
-                    
-                    start_last = int(start_parts[3])
-                    end_last = int(end_parts[3])
-                    network_prefix = '.'.join(start_parts[:3])
-                    
-                    scan_range = min(100, abs(end_last - start_last) + 1)
-                    
-                    for i in range(scan_range):
-                        if self.stop_event.is_set():
-                            break
-                        ip = f"{network_prefix}.{start_last + i}"
-                        if start_last + i > 254:
-                            break
-                        
-                        try:
-                            if sdk.is_card_online(ip):
-                                controller_info = ControllerInfo(ip, default_port, "huidu", f"Huidu_Mobile_{ip}")
-                                controller_info.name = f"Huidu_Mobile_{ip}"
-                                discovered.append(controller_info)
-                                logger.info(f"Found Huidu controller (Mobile Network): {ip}:{default_port}")
-                        except Exception:
-                            pass
-                except Exception as e:
-                    logger.warning(f"Error scanning Huidu mobile network range {ip_range}: {e}")
-        except Exception as e:
-            logger.warning(f"Error in mobile network discovery: {e}")
-        
         return discovered
     
     def get_local_network_range(self) -> List[str]:
@@ -934,19 +914,19 @@ class ControllerDiscovery(QObject):
         Start comprehensive scanning for controllers across all connection types.
         
         Supports multiple connection types:
-        - Wi-Fi: Uses UDP broadcast (NovaStar) or network scanning (Huidu)
-        - Ethernet: Uses UDP broadcast (NovaStar) or network scanning (Huidu)
+        - Wi-Fi: Uses UDP broadcast (NovaStar)
+        - Ethernet: Uses UDP broadcast (NovaStar)
+        - Huidu Localhost: Connects to API server on localhost:30080
         - USB/Serial: Scans serial ports (Huidu only, requires pyserial)
-        - 3G/4G/5G Mobile: Uses IP range search for known mobile network ranges (both NovaStar and Huidu)
+        - 3G/4G/5G Mobile: Uses IP range search for known mobile network ranges (NovaStar only)
         - Remote IPs: Can search specific IP addresses or ranges
         
         Discovery Process:
         1. NovaStar Wi-Fi/Ethernet (UDP broadcast on local network)
-        2. Huidu Wi-Fi/Ethernet (Network port scanning)
+        2. Huidu Localhost (API server on localhost:30080)
         3. Huidu USB/Serial (Serial port scanning)
         4. NovaStar Mobile Networks (3G/4G/5G IP ranges)
-        5. Huidu Mobile Networks (3G/4G/5G IP ranges)
-        6. Specific IP addresses (if provided)
+        5. Specific IP addresses (if provided)
         
         Args:
             ip_range: Optional list of specific IPs to scan (for remote/mobile controllers)
@@ -987,9 +967,9 @@ class ControllerDiscovery(QObject):
                         except Exception as e:
                             logger.debug(f"Error reading data from NovaStar controller {controller.ip}: {e}")
                 
-                # Step 2: Huidu Wi-Fi/Ethernet and USB/Serial
+                # Step 2: Huidu Localhost and USB/Serial
                 if not self.stop_event.is_set():
-                    logger.info("Step 2: Scanning Huidu controllers (Wi-Fi/Ethernet/USB/Serial)")
+                    logger.info("Step 2: Scanning Huidu controllers (Localhost/USB/Serial)")
                     try:
                         if self._init_huidu_sdk():
                             huidu_controllers = self._discover_huidu_controllers()
@@ -1031,23 +1011,6 @@ class ControllerDiscovery(QObject):
                     except Exception as e:
                         logger.warning(f"Error during NovaStar mobile network discovery: {e}")
                     
-                    try:
-                        # Huidu mobile network discovery
-                        huidu_mobile = self._discover_huidu_mobile_ranges(mobile_network_ranges)
-                        for controller in huidu_mobile:
-                            if self.stop_event.is_set():
-                                break
-                            existing = next((c for c in self.discovered_controllers 
-                                           if c.ip == controller.ip and c.port == controller.port), None)
-                            if not existing:
-                                self.discovered_controllers.append(controller)
-                                self.controller_found.emit(controller)
-                                try:
-                                    self._read_controller_data(controller)
-                                except Exception as e:
-                                    logger.debug(f"Error reading data from Huidu mobile controller {controller.ip}: {e}")
-                    except Exception as e:
-                        logger.warning(f"Error during Huidu mobile network discovery: {e}")
                 
                 # Step 4: Specific IP addresses (if provided)
                 if not self.stop_event.is_set() and ip_range:
