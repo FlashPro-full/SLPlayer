@@ -598,7 +598,7 @@ class MainWindow(QtWidgets.QMainWindow):
                         from controllers.base_controller import ConnectionStatus
                         self.status_bar.set_connection_status(
                             ConnectionStatus.DISCONNECTED,
-                            f"{len(discovered)} controller(s) found (not connected)"
+                            ""
                         )
             else:
                 logger.info("No controllers found on startup")

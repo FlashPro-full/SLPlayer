@@ -507,7 +507,44 @@ class ControllerDiscovery(QObject):
                             logger.debug(f"Empty property data for device {device_id}")
                             continue
                         
-                        device_ip = device_data.get("eth.ip", "localhost")
+                        device_ip = device_data.get("eth.ip") or device_data.get("ip") or device_data.get("address") or device_data.get("network.ip")
+                        
+                        if not device_ip or device_ip == "localhost" or device_ip == "127.0.0.1":
+                            import re
+                            ip_pattern = re.compile(r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$')
+                            if ip_pattern.match(device_id):
+                                device_ip = device_id
+                            else:
+                                from controllers.network_manager import NetworkManager
+                                network_manager = NetworkManager()
+                                arp_devices = network_manager.get_connected_wifi_devices()
+                                device_id_normalized = device_id.replace(':', '-').upper()
+                                for arp_device in arp_devices:
+                                    arp_mac = arp_device.get("mac", "").replace(':', '-').upper()
+                                    if device_id_normalized in arp_mac or arp_mac in device_id_normalized:
+                                        test_ip = arp_device.get("ip")
+                                        if test_ip and network_manager.test_port_connection(test_ip, default_port, timeout=1.0):
+                                            device_ip = test_ip
+                                            break
+                                
+                                if not device_ip or device_ip == "localhost":
+                                    local_network_ips = network_manager.get_local_network_ip_range()
+                                    for test_ip in local_network_ips[:50]:
+                                        if self.stop_event.is_set():
+                                            break
+                                        if network_manager.test_port_connection(test_ip, default_port, timeout=0.5):
+                                            try:
+                                                test_sdk = HuiduSDK(f"http://{test_ip}:{default_port}")
+                                                test_result = test_sdk.device.get_online_devices()
+                                                if test_result.get("message") == "ok" and device_id in test_result.get("data", []):
+                                                    device_ip = test_ip
+                                                    break
+                                            except:
+                                                pass
+                        
+                        if not device_ip or device_ip == "localhost":
+                            device_ip = "localhost"
+                        
                         device_name = device_data.get("name", f"Huidu_{device_id}")
                         screen_width = device_data.get("screen.width", "64")
                         screen_height = device_data.get("screen.height", "32")

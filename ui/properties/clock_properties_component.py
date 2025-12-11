@@ -151,9 +151,7 @@ class ClockPropertiesComponent(BasePropertiesComponent):
         clock_attr_layout.addStretch()
         main_layout.addWidget(clock_attr_group)
         
-        # Other group (dynamic based on clock type)
         self.other_group = QGroupBox("Other")
-        self.other_group.setMinimumWidth(800)
         self.other_layout = QVBoxLayout(self.other_group)
         self.other_layout.setContentsMargins(10, 16, 10, 10)
         self.other_layout.setSpacing(8)
@@ -169,10 +167,9 @@ class ClockPropertiesComponent(BasePropertiesComponent):
         self.clock_dims_height.textChanged.connect(self._on_dims_changed)
         
     def _setup_system_clock_options(self):
-        """Setup UI for System clock type"""
         self._clear_other_group()
         
-        form_layout = QHBoxLayout()
+        form_layout = QVBoxLayout()
         form_layout.setSpacing(8)
         
         vLayout_1 = QVBoxLayout()
@@ -210,6 +207,12 @@ class ClockPropertiesComponent(BasePropertiesComponent):
         font_layout.addWidget(self.system_font_size_spin, stretch=1)
         vLayout_1.addLayout(font_layout)
 
+        form_layout.addLayout(vLayout_1)
+        
+        vLayout_2 = QVBoxLayout()
+        vLayout_2.setSpacing(8)
+        vLayout_2.setContentsMargins(4, 4, 4, 4)
+
         hour_scale_layout = QHBoxLayout()
         hour_scale_layout.setSpacing(8)
         self.system_hour_scale_shape_combo = QComboBox()
@@ -220,8 +223,8 @@ class ClockPropertiesComponent(BasePropertiesComponent):
         self.system_hour_scale_color_btn = QPushButton("")
         self.system_hour_scale_color_btn.setStyleSheet("background-color: #FF0000;")
         self.system_hour_scale_color_btn.clicked.connect(self._on_system_hour_scale_color_clicked)
-        hour_scale_layout.addWidget(self.system_hour_scale_color_btn, stretch=1)
-        vLayout_1.addLayout(hour_scale_layout)
+        hour_scale_layout.addWidget(self.system_hour_scale_color_btn)
+        vLayout_2.addLayout(hour_scale_layout)
         
         minute_scale_layout = QHBoxLayout()
         minute_scale_layout.setSpacing(8)
@@ -233,14 +236,8 @@ class ClockPropertiesComponent(BasePropertiesComponent):
         self.system_minute_scale_color_btn = QPushButton("")
         self.system_minute_scale_color_btn.setStyleSheet("background-color: #00FF00;")
         self.system_minute_scale_color_btn.clicked.connect(self._on_system_minute_scale_color_clicked)
-        minute_scale_layout.addWidget(self.system_minute_scale_color_btn, stretch=1)
-        vLayout_1.addLayout(minute_scale_layout)
-
-        form_layout.addLayout(vLayout_1)
-        
-        vLayout_2 = QVBoxLayout()
-        vLayout_2.setSpacing(8)
-        vLayout_2.setContentsMargins(4, 4, 4, 4)
+        minute_scale_layout.addWidget(self.system_minute_scale_color_btn)
+        vLayout_2.addLayout(minute_scale_layout)
         
         hour_hand_layout = QHBoxLayout()
         hour_hand_layout.setSpacing(8)
@@ -252,7 +249,7 @@ class ClockPropertiesComponent(BasePropertiesComponent):
         self.system_hour_hand_color_btn = QPushButton("")
         self.system_hour_hand_color_btn.setStyleSheet("background-color: #FF0000;")
         self.system_hour_hand_color_btn.clicked.connect(self._on_system_hour_hand_color_clicked)
-        hour_hand_layout.addWidget(self.system_hour_hand_color_btn, stretch=1)
+        hour_hand_layout.addWidget(self.system_hour_hand_color_btn)
         vLayout_2.addLayout(hour_hand_layout)
         
         minute_hand_layout = QHBoxLayout()
@@ -265,7 +262,7 @@ class ClockPropertiesComponent(BasePropertiesComponent):
         self.system_minute_hand_color_btn = QPushButton("")
         self.system_minute_hand_color_btn.setStyleSheet("background-color: #00FF00;")
         self.system_minute_hand_color_btn.clicked.connect(self._on_system_minute_hand_color_clicked)
-        minute_hand_layout.addWidget(self.system_minute_hand_color_btn, stretch=1)
+        minute_hand_layout.addWidget(self.system_minute_hand_color_btn)
         vLayout_2.addLayout(minute_hand_layout)
         
         second_hand_layout = QHBoxLayout()
@@ -278,7 +275,7 @@ class ClockPropertiesComponent(BasePropertiesComponent):
         self.system_second_hand_color_btn = QPushButton("")
         self.system_second_hand_color_btn.setStyleSheet("background-color: #0000FF;")
         self.system_second_hand_color_btn.clicked.connect(self._on_system_second_hand_color_clicked)
-        second_hand_layout.addWidget(self.system_second_hand_color_btn, stretch=1)
+        second_hand_layout.addWidget(self.system_second_hand_color_btn)
         vLayout_2.addLayout(second_hand_layout)
 
         form_layout.addLayout(vLayout_2)
@@ -340,10 +337,9 @@ class ClockPropertiesComponent(BasePropertiesComponent):
         self.other_layout.addStretch()
     
     def _setup_digital_clock_options(self):
-        """Setup UI for Digital clock type"""
         self._clear_other_group()
         
-        form_layout = QHBoxLayout()
+        form_layout = QVBoxLayout()
         form_layout.setSpacing(8)
         
         vLayout_1 = QVBoxLayout()
@@ -456,7 +452,6 @@ class ClockPropertiesComponent(BasePropertiesComponent):
         self.other_layout.addStretch()
     
     def _setup_analog_clock_options(self):
-        """Setup UI for Analog clock type"""
         self._clear_other_group()
         
         form_layout = QFormLayout()

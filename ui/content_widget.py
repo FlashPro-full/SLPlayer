@@ -28,8 +28,8 @@ class ContentWidget(QtWidgets.QWidget):
             }
         """)
         self.checker_size = 10
-        self.color1 = QtGui.QColor(43, 43, 43)  # #2B2B2B
-        self.color2 = QtGui.QColor(35, 35, 35)  # #232323 (slightly darker for checkerboard)
+        self.color1 = QtGui.QColor(43, 43, 43)
+        self.color2 = QtGui.QColor(35, 35, 35)
         self._cached_pixmap = None
         self._cached_size = QSize()
         self.scale_factor = 1.0
@@ -60,7 +60,6 @@ class ContentWidget(QtWidgets.QWidget):
     def set_properties_panel(self, properties_panel):
         self.properties_panel = properties_panel
         if properties_panel:
-            # Connect property_changed signal to update content widget
             properties_panel.property_changed.connect(self._on_property_changed)
     
     def set_screen_list_panel(self, screen_list_panel):
@@ -186,16 +185,16 @@ class ContentWidget(QtWidgets.QWidget):
                 "system": {
                     "font_family": "Arial",
                     "font_size": 24,
-                    "title_enabled": True,  # Default enabled
-                    "title_value": "LED",  # Default title "LED"
+                    "title_enabled": True,
+                    "title_value": "LED",
                     "title_color": "#0000FF",
-                    "date_enabled": True,  # Default enabled
+                    "date_enabled": True,
                     "date_format": "YYYY-MM-DD",
                     "date_color": "#0000FF",
-                    "week_enabled": True,  # Default enabled
+                    "week_enabled": True,
                     "week_format": "Full Name",
                     "week_color": "#00FF00",
-                    "noon_enabled": True,  # Default enabled
+                    "noon_enabled": True,
                     "noon_color": "#0000FF",
                     "hour_scale_shape": "straight line",
                     "hour_scale_color": "#FF0000",
@@ -212,16 +211,16 @@ class ContentWidget(QtWidgets.QWidget):
                     "font_family": "Arial",
                     "font_size": 24,
                     "line_setting": "Single Line",
-                    "title_enabled": True,  # Default enabled
+                    "title_enabled": True,
                     "title_value": "Clock",
                     "title_color": "#FF0000",
-                    "date_enabled": True,  # Default enabled
+                    "date_enabled": True,
                     "date_format": "YYYY-MM-DD",
                     "date_color": "#0000FF",
-                    "time_enabled": True,  # Default enabled
+                    "time_enabled": True,
                     "time_format": "HH:MM:SS",
                     "time_color": "#FF0000",
-                    "week_enabled": True,  # Default enabled
+                    "week_enabled": True,
                     "week_format": "Full Name",
                     "week_color": "#00FF00"
                 }
@@ -286,14 +285,11 @@ class ContentWidget(QtWidgets.QWidget):
         if playing:
             if not self._animation_timer.isActive():
                 self._animation_timer.start()
-            # Clock timer runs continuously (both in preview and playback)
             if not self._clock_timer.isActive():
                 self._clock_timer.start()
         else:
             if self._animation_timer.isActive():
                 self._animation_timer.stop()
-            # Keep clock timer running even when not playing (for preview)
-            # Clock timer continues to run
         self.update()
     
     def _handle_video_error(self, element_id: str, error):
@@ -341,16 +337,14 @@ class ContentWidget(QtWidgets.QWidget):
         if element_id in self._video_widgets:
             video_widget = self._video_widgets[element_id]
             
-            # Get video dimensions to calculate aspect ratio and center it
             video_width = width
             video_height = height
             video_x = x
             video_y = y
             
-            # Try to get actual video dimensions from the player
             if element_id in self._video_players:
                 player = self._video_players[element_id]
-                # Get video size from media metadata or use cv2
+
                 try:
                     video_url = player.media().canonicalUrl()
                     if video_url.isLocalFile():
@@ -457,10 +451,8 @@ class ContentWidget(QtWidgets.QWidget):
         entrance_anim = animation_props.get("entrance", "None")
         exit_anim = animation_props.get("exit", "None")
         
-        # If both entrance and exit are "Immediate Show", skip animation entirely
-        if entrance_anim == "Immediate Show" and exit_anim == "Immediate Show":
+        if entrance_anim == "Immediate Show" and exit_anim == "Immediate Clear":
             scaled_pixmap = pixmap.scaled(width, height, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-            # Center the pixmap
             scaled_width = scaled_pixmap.width()
             scaled_height = scaled_pixmap.height()
             draw_x = x + (width - scaled_width) // 2
@@ -492,7 +484,6 @@ class ContentWidget(QtWidgets.QWidget):
         
         anim_state = self._photo_animations[element_id]
         
-        # Available animations (excluding Random and Immediate Show)
         available_animations = [
             "Move Left", "Move Right", "Move Up", "Move Down",
             "Cover Left", "Cover Right", "Cover Up", "Cover Down",
@@ -501,7 +492,6 @@ class ContentWidget(QtWidgets.QWidget):
             "Gradual Change", "Vertical Blinds", "Horizontal Blinds", "Twinkle"
         ]
         
-        # Handle Random: select and store a random animation for this cycle
         if entrance_anim == "Random":
             if anim_state["selected_entrance_anim"] is None or (anim_state["phase"] == "entrance" and anim_state["progress"] == 0.0):
                 if available_animations:
@@ -515,7 +505,7 @@ class ContentWidget(QtWidgets.QWidget):
                 if available_animations:
                     anim_state["selected_exit_anim"] = random.choice(available_animations)
                 else:
-                    anim_state["selected_exit_anim"] = "Immediate Show"
+                    anim_state["selected_exit_anim"] = "Immediate Clear"
             exit_anim = anim_state["selected_exit_anim"]
         hold_time = animation_props.get("hold_time", 0.0)
         entrance_speed = animation_props.get("entrance_speed", "1 fast")
@@ -523,14 +513,12 @@ class ContentWidget(QtWidgets.QWidget):
         
         speed_multiplier = self._get_speed_multiplier(entrance_speed if anim_state["phase"] == "entrance" else exit_speed)
         
-        # If Immediate Show, set entrance duration to 0 to skip animation
         if entrance_anim == "Immediate Show":
             anim_state["entrance_duration"] = 0.0
         else:
             anim_state["entrance_duration"] = 1000.0 / speed_multiplier
         
-        # If exit is Immediate Show or None, set exit duration to 0
-        if exit_anim == "Immediate Show" or exit_anim == "None":
+        if exit_anim == "Immediate Clear" or exit_anim == "None":
             anim_state["exit_duration"] = 0.0
         else:
             anim_state["exit_duration"] = 1000.0 / speed_multiplier
@@ -548,7 +536,6 @@ class ContentWidget(QtWidgets.QWidget):
             else:
                 anim_state["progress"] = elapsed / duration if duration > 0 else 1.0
         elif anim_state["phase"] == "hold":
-            # If entrance is "Immediate Show", stay in hold phase indefinitely (no exit animation)
             if entrance_anim == "Immediate Show":
                 anim_state["progress"] = 1.0
             else:
@@ -560,7 +547,6 @@ class ContentWidget(QtWidgets.QWidget):
                 else:
                     anim_state["progress"] = 1.0
         elif anim_state["phase"] == "exit":
-            # If entrance is "Immediate Show", we should never reach exit phase, but handle it just in case
             if entrance_anim == "Immediate Show":
                 anim_state["phase"] = "hold"
                 anim_state["progress"] = 1.0
@@ -626,16 +612,13 @@ class ContentWidget(QtWidgets.QWidget):
             "Gradual Change", "Vertical Blinds", "Horizontal Blinds", "Twinkle"
         ]
         
-        # Handle Random: select a random animation
         if anim_type == "Random":
             anim_type = random.choice(available_animations)
         
-        # Handle Immediate Show: show immediately without animation
         if anim_type == "Immediate Show" or anim_type == "None":
             painter.drawPixmap(x, y, pixmap)
             return
         
-        # Apply specific animations
         if anim_type == "Move Left":
             offset_x = int((1.0 - progress) * width)
             painter.drawPixmap(x + offset_x, y, pixmap)
@@ -772,11 +755,9 @@ class ContentWidget(QtWidgets.QWidget):
             painter.setOpacity(1.0)
     
     def _apply_exit_animation(self, painter, pixmap, x, y, width, height, anim_type, progress):
-        # Handle Immediate Show or None: don't show exit animation
-        if anim_type == "Immediate Show" or anim_type == "None":
+        if anim_type == "Immediate Clear" or anim_type == "None":
             return
         
-        # Apply specific exit animations (reversed from entrance)
         if anim_type == "Move Left":
             offset_x = int(-progress * width)
             painter.drawPixmap(x + offset_x, y, pixmap)
@@ -919,7 +900,7 @@ class ContentWidget(QtWidgets.QWidget):
         exit_anim = animation_props.get("exit", "None")
         
         # If both entrance and exit are "Immediate Show", skip animation entirely
-        if entrance_anim == "Immediate Show" and exit_anim == "Immediate Show":
+        if entrance_anim == "Immediate Show" and exit_anim == "Immediate Clear":
             self._draw_text_static(painter, text_content, text_format, element_props, x, y, width, height, element_rect, is_selected, scale, is_singleline)
             # Clean up animation state if it exists
             if element_id in self._text_animations:
@@ -969,7 +950,7 @@ class ContentWidget(QtWidgets.QWidget):
                 if available_animations:
                     anim_state["selected_exit_anim"] = random.choice(available_animations)
                 else:
-                    anim_state["selected_exit_anim"] = "Immediate Show"
+                    anim_state["selected_exit_anim"] = "Immediate Clear"
             exit_anim = anim_state["selected_exit_anim"]
         
         hold_time = animation_props.get("hold_time", 0.0)
@@ -978,14 +959,12 @@ class ContentWidget(QtWidgets.QWidget):
         
         speed_multiplier = self._get_speed_multiplier(entrance_speed if anim_state["phase"] == "entrance" else exit_speed)
         
-        # If Immediate Show, set entrance duration to 0 to skip animation
         if entrance_anim == "Immediate Show":
             anim_state["entrance_duration"] = 0.0
         else:
             anim_state["entrance_duration"] = 1000.0 / speed_multiplier
         
-        # If exit is Immediate Show or None, set exit duration to 0
-        if exit_anim == "Immediate Show" or exit_anim == "None" or (is_singleline and exit_anim == "Don't Clear Screen"):
+        if exit_anim == "Immediate Clear" or exit_anim == "None" or (is_singleline and exit_anim == "Don't Clear Screen"):
             anim_state["exit_duration"] = 0.0
         else:
             anim_state["exit_duration"] = 1000.0 / speed_multiplier
@@ -1003,7 +982,6 @@ class ContentWidget(QtWidgets.QWidget):
             else:
                 anim_state["progress"] = elapsed / duration if duration > 0 else 1.0
         elif anim_state["phase"] == "hold":
-            # If entrance is "Immediate Show", stay in hold phase indefinitely (no exit animation)
             if entrance_anim == "Immediate Show":
                 anim_state["progress"] = 1.0
             else:
@@ -1015,7 +993,6 @@ class ContentWidget(QtWidgets.QWidget):
                 else:
                     anim_state["progress"] = 1.0
         elif anim_state["phase"] == "exit":
-            # If entrance is "Immediate Show", we should never reach exit phase, but handle it just in case
             if entrance_anim == "Immediate Show":
                 anim_state["phase"] = "hold"
                 anim_state["progress"] = 1.0
@@ -1045,9 +1022,6 @@ class ContentWidget(QtWidgets.QWidget):
             painter.drawRect(element_rect)
     
     def _draw_text_static(self, painter, text_content, text_format, element_props, x, y, width, height, element_rect, is_selected, scale, is_singleline=False):
-        """Draw text without animation effects"""
-        # Only set clipping if element_rect is provided (not None) to avoid overriding animation clipping
-        # When called from animation functions, element_rect is None, so we don't override the clipping set by animations
         if element_rect is not None:
             element_bounds = QtCore.QRect(x, y, width, height)
             painter.setClipRect(element_bounds)
@@ -1181,46 +1155,46 @@ class ContentWidget(QtWidgets.QWidget):
         if is_singleline:
             available_animations.extend(["Continuous Move Left", "Continuous Move Right"])
         
-        # Handle Random: select a random animation
         if anim_type == "Random":
             anim_type = random.choice(available_animations)
         
-        # Handle Immediate Show: show immediately without animation
         if anim_type == "Immediate Show" or anim_type == "None":
             self._draw_text_static(painter, text_content, text_format, element_props, x, y, width, height, None, False, scale, is_singleline)
             painter.setClipping(False)
             return
         
-        # Save painter state
         painter.save()
-        
-        # Apply specific animations
-        if anim_type == "Move Left" or (is_singleline and anim_type == "Continuous Move Left"):
+
+
+        if is_singleline and anim_type == "Continuous Move Left":
             offset_x = int((1.0 - progress) * width)
             painter.translate(offset_x, 0)
-            # After translation, adjust clipping rectangle to account for translation
-            # In translated coordinate space, original bounds become (x - offset_x, y, width, height)
             painter.setClipRect(x - offset_x, y, width, height)
             self._draw_text_static(painter, text_content, text_format, element_props, x, y, width, height, None, False, scale, is_singleline)
-        elif anim_type == "Move Right" or (is_singleline and anim_type == "Continuous Move Right"):
+        
+        if is_singleline and anim_type == "Continuous Move Right":
             offset_x = int(-(1.0 - progress) * width)
             painter.translate(offset_x, 0)
-            # After translation, adjust clipping rectangle to account for translation
-            # In translated coordinate space, original bounds become (x - offset_x, y, width, height)
+            painter.setClipRect(x - offset_x, y, width, height)
+            self._draw_text_static(painter, text_content, text_format, element_props, x, y, width, height, None, False, scale, is_singleline)
+        if anim_type == "Move Left":
+            offset_x = int((1.0 - progress) * width)
+            painter.translate(offset_x, 0)
+            painter.setClipRect(x - offset_x, y, width, height)
+            self._draw_text_static(painter, text_content, text_format, element_props, x, y, width, height, None, False, scale, is_singleline)
+        elif anim_type == "Move Right":
+            offset_x = int(-(1.0 - progress) * width)
+            painter.translate(offset_x, 0)
             painter.setClipRect(x - offset_x, y, width, height)
             self._draw_text_static(painter, text_content, text_format, element_props, x, y, width, height, None, False, scale, is_singleline)
         elif anim_type == "Move Up":
             offset_y = int((1.0 - progress) * height)
             painter.translate(0, offset_y)
-            # After translation, adjust clipping rectangle to account for translation
-            # In translated coordinate space, original bounds become (x, y - offset_y, width, height)
             painter.setClipRect(x, y - offset_y, width, height)
             self._draw_text_static(painter, text_content, text_format, element_props, x, y, width, height, None, False, scale, is_singleline)
         elif anim_type == "Move Down":
             offset_y = int(-(1.0 - progress) * height)
             painter.translate(0, offset_y)
-            # After translation, adjust clipping rectangle to account for translation
-            # In translated coordinate space, original bounds become (x, y - offset_y, width, height)
             painter.setClipRect(x, y - offset_y, width, height)
             self._draw_text_static(painter, text_content, text_format, element_props, x, y, width, height, None, False, scale, is_singleline)
         elif anim_type == "Cover Left":
@@ -1339,55 +1313,41 @@ class ContentWidget(QtWidgets.QWidget):
             self._draw_text_static(painter, text_content, text_format, element_props, x, y, width, height, None, False, scale, is_singleline)
             painter.setOpacity(1.0)
         else:
-            # Default: fade in
             painter.setOpacity(progress)
             self._draw_text_static(painter, text_content, text_format, element_props, x, y, width, height, None, False, scale, is_singleline)
             painter.setOpacity(1.0)
         
         painter.restore()
-        # Ensure clipping is disabled after animation
         painter.setClipping(False)
     
     def _apply_text_exit_animation(self, painter, text_content, text_format, element_props, x, y, width, height, anim_type, progress, scale, is_singleline=False):
-        # Set clipping to element bounds to prevent text from displaying outside
         element_bounds = QtCore.QRect(x, y, width, height)
         painter.setClipRect(element_bounds)
         
-        # Handle Immediate Show or None: don't show exit animation
-        if anim_type == "Immediate Show" or anim_type == "None" or (is_singleline and anim_type == "Don't Clear Screen"):
+        if anim_type == "Immediate Clear" or anim_type == "None" or (is_singleline and anim_type == "Don't Clear Screen"):
             painter.setClipping(False)
             return
         
-        # Save painter state
         painter.save()
         
-        # Apply specific exit animations (reversed from entrance)
-        if anim_type == "Move Left" or (is_singleline and anim_type == "Continuous Move Left"):
+        if anim_type == "Move Left":
             offset_x = int(-progress * width)
             painter.translate(offset_x, 0)
-            # After translation, adjust clipping rectangle to account for translation
-            # In translated coordinate space, original bounds become (x - offset_x, y, width, height)
             painter.setClipRect(x - offset_x, y, width, height)
             self._draw_text_static(painter, text_content, text_format, element_props, x, y, width, height, None, False, scale, is_singleline)
-        elif anim_type == "Move Right" or (is_singleline and anim_type == "Continuous Move Right"):
+        elif anim_type == "Move Right":
             offset_x = int(progress * width)
             painter.translate(offset_x, 0)
-            # After translation, adjust clipping rectangle to account for translation
-            # In translated coordinate space, original bounds become (x - offset_x, y, width, height)
             painter.setClipRect(x - offset_x, y, width, height)
             self._draw_text_static(painter, text_content, text_format, element_props, x, y, width, height, None, False, scale, is_singleline)
         elif anim_type == "Move Up":
             offset_y = int(-progress * height)
             painter.translate(0, offset_y)
-            # After translation, adjust clipping rectangle to account for translation
-            # In translated coordinate space, original bounds become (x, y - offset_y, width, height)
             painter.setClipRect(x, y - offset_y, width, height)
             self._draw_text_static(painter, text_content, text_format, element_props, x, y, width, height, None, False, scale, is_singleline)
         elif anim_type == "Move Down":
             offset_y = int(progress * height)
             painter.translate(0, offset_y)
-            # After translation, adjust clipping rectangle to account for translation
-            # In translated coordinate space, original bounds become (x, y - offset_y, width, height)
             painter.setClipRect(x, y - offset_y, width, height)
             self._draw_text_static(painter, text_content, text_format, element_props, x, y, width, height, None, False, scale, is_singleline)
         elif anim_type == "Cover Left":
@@ -1506,7 +1466,6 @@ class ContentWidget(QtWidgets.QWidget):
             self._draw_text_static(painter, text_content, text_format, element_props, x, y, width, height, None, False, scale, is_singleline)
             painter.setOpacity(1.0)
         else:
-            # Default: fade out
             painter.setOpacity(1.0 - progress)
             self._draw_text_static(painter, text_content, text_format, element_props, x, y, width, height, None, False, scale, is_singleline)
             painter.setOpacity(1.0)

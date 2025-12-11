@@ -1,7 +1,7 @@
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QComboBox,
                              QGroupBox, QLineEdit, QSpinBox, QDoubleSpinBox, QTextEdit, QPushButton)
 from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QTextCursor, QFont, QColor, QPen, QBrush
+from PyQt5.QtGui import QTextCursor, QTextCharFormat, QFont, QColor, QPen, QBrush
 from typing import Optional, Dict
 from datetime import datetime
 from ui.properties.base_properties_component import BasePropertiesComponent
@@ -306,7 +306,7 @@ class TextPropertiesComponent(BasePropertiesComponent):
         exit_layout.setContentsMargins(0, 0, 0, 0)
         self.text_exit_animation_combo = QComboBox()
         self.text_exit_animation_combo.addItems([
-            "Random", "Immediate Show", "Move Left", "Move Right", "Move Up", "Move Down",
+            "Random", "Immediate Clear", "Move Left", "Move Right", "Move Up", "Move Down",
             "Cover Left", "Cover Right", "Cover Up", "Cover Down",
             "Top Left Cover", "Top Right Cover", "Bottom Left Cover", "Bottom Right Cover",
             "Open From Middle", "Up Down Open", "Close From Middle", "Up Down Close",
@@ -431,11 +431,6 @@ class TextPropertiesComponent(BasePropertiesComponent):
             self.current_element["properties"]["text"]["format"] = default_format
         
         self.text_content_edit.blockSignals(False)
-        
-        if text_format:
-            self.text_editor_toolbar._update_format_buttons()
-        else:
-            self.text_editor_toolbar._update_format_buttons()
         
         animation = element_props.get("animation", {})
         
@@ -581,14 +576,13 @@ class TextPropertiesComponent(BasePropertiesComponent):
         if "animation" not in self.current_element["properties"]:
             self.current_element["properties"]["animation"] = {}
         
-        # Set both entrance and exit to "Immediate Show"
         self.text_entrance_animation_combo.setCurrentText("Immediate Show")
-        self.text_exit_animation_combo.setCurrentText("Immediate Show")
+        self.text_exit_animation_combo.setCurrentText("Immediate Clear")
         
         self.current_element["properties"]["animation"]["entrance"] = "Immediate Show"
         self.current_element["properties"]["animation"]["entrance_animation"] = get_animation_index("Immediate Show")
-        self.current_element["properties"]["animation"]["exit"] = "Immediate Show"
-        self.current_element["properties"]["animation"]["exit_animation"] = get_animation_index("Immediate Show")
+        self.current_element["properties"]["animation"]["exit"] = "Immediate Clear"
+        self.current_element["properties"]["animation"]["exit_animation"] = get_animation_index("Immediate Clear")
         
         self.current_program.modified = datetime.now().isoformat()
         self.property_changed.emit("text_animation_fixed", True)
@@ -788,6 +782,44 @@ class TextPropertiesComponent(BasePropertiesComponent):
                 pen = QPen(Qt.NoPen)
                 char_format.setTextOutline(pen)
         
+        font = char_format.font()
+        self.text_editor_toolbar.font_size_spin.blockSignals(True)
+        self.text_editor_toolbar.font_family_combo.blockSignals(True)
+        if format_data.get("font_size"):
+            self.text_editor_toolbar.font_size_spin.setValue(format_data["font_size"])
+        else:
+            self.text_editor_toolbar.font_size_spin.setValue(font.pointSize() if font.pointSize() > 0 else 12)
+        if format_data.get("font_family"):
+            self.text_editor_toolbar.font_family_combo.setCurrentText(format_data["font_family"])
+        else:
+            self.text_editor_toolbar.font_family_combo.setCurrentText(font.family())
+        self.text_editor_toolbar.font_size_spin.blockSignals(False)
+        self.text_editor_toolbar.font_family_combo.blockSignals(False)
+        
+        self.text_editor_toolbar.bold_btn.blockSignals(True)
+        self.text_editor_toolbar.italic_btn.blockSignals(True)
+        self.text_editor_toolbar.underline_btn.blockSignals(True)
+        if format_data.get("bold") is not None:
+            self.text_editor_toolbar.bold_btn.setChecked(format_data["bold"])
+        else:
+            self.text_editor_toolbar.bold_btn.setChecked(char_format.fontWeight() == QFont.Bold)
+        if format_data.get("italic") is not None:
+            self.text_editor_toolbar.italic_btn.setChecked(format_data["italic"])
+        else:
+            self.text_editor_toolbar.italic_btn.setChecked(char_format.fontItalic())
+        if format_data.get("underline") is not None:
+            self.text_editor_toolbar.underline_btn.setChecked(format_data["underline"])
+        else:
+            self.text_editor_toolbar.underline_btn.setChecked(char_format.fontUnderline())
+        self.text_editor_toolbar.bold_btn.blockSignals(False)
+        self.text_editor_toolbar.italic_btn.blockSignals(False)
+        self.text_editor_toolbar.underline_btn.blockSignals(False)
+        
+        if format_data.get("outline") is not None:
+            self.text_editor_toolbar.outline_btn.blockSignals(True)
+            self.text_editor_toolbar.outline_btn.setChecked(format_data["outline"])
+            self.text_editor_toolbar.outline_btn.blockSignals(False)
+        
         horizontal_align = Qt.AlignHCenter
         vertical_align = Qt.AlignVCenter
         
@@ -816,6 +848,19 @@ class TextPropertiesComponent(BasePropertiesComponent):
         cursor.setCharFormat(char_format)
         cursor.clearSelection()
         self.text_content_edit.setTextCursor(cursor)
+        
+        default_char_format = QTextCharFormat()
+        default_color = QColor(format_data["font_color"]) if format_data.get("font_color") else QColor(Qt.white)
+        default_char_format.setForeground(default_color)
+        if format_data.get("font_family"):
+            font = default_char_format.font()
+            font.setFamily(format_data["font_family"])
+            default_char_format.setFont(font)
+        if format_data.get("font_size"):
+            font = default_char_format.font()
+            font.setPointSize(format_data["font_size"])
+            default_char_format.setFont(font)
+        self.text_content_edit.setCurrentCharFormat(default_char_format)
         
         self.text_editor_toolbar._horizontal_alignment = horizontal_align
         self.text_editor_toolbar._vertical_alignment = vertical_align

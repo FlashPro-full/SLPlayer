@@ -427,8 +427,6 @@ class SingleLineTextPropertiesComponent(BasePropertiesComponent):
         
         self.singleline_text_content_edit.blockSignals(False)
         
-        self.line_editor_toolbar._update_format_buttons()
-        
         animation = element_props.get("animation", {})
         
         entrance_animation = animation.get("entrance", "Random")

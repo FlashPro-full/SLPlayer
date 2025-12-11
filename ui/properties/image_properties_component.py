@@ -325,7 +325,7 @@ class ImagePropertiesComponent(BasePropertiesComponent):
         exit_layout.setContentsMargins(0, 0, 0, 0)
         self.image_exit_animation_combo = QComboBox()
         self.image_exit_animation_combo.addItems([
-            "Random", "Immediate Show", "Move Left", "Move Right", "Move Up", "Move Down",
+            "Random", "Immediate Clear", "Move Left", "Move Right", "Move Up", "Move Down",
             "Cover Left", "Cover Right", "Cover Up", "Cover Down",
             "Top Left Cover", "Top Right Cover", "Bottom Left Cover", "Bottom Right Cover",
             "Open From Middle", "Up Down Open", "Close From Middle", "Up Down Close",
@@ -540,14 +540,13 @@ class ImagePropertiesComponent(BasePropertiesComponent):
         if "animation" not in self.current_element["properties"]:
             self.current_element["properties"]["animation"] = {}
         
-        # Set both entrance and exit to "Immediate Show"
         self.image_entrance_animation_combo.setCurrentText("Immediate Show")
-        self.image_exit_animation_combo.setCurrentText("Immediate Show")
+        self.image_exit_animation_combo.setCurrentText("Immediate Clear")
         
         self.current_element["properties"]["animation"]["entrance"] = "Immediate Show"
         self.current_element["properties"]["animation"]["entrance_animation"] = get_animation_index("Immediate Show")
-        self.current_element["properties"]["animation"]["exit"] = "Immediate Show"
-        self.current_element["properties"]["animation"]["exit_animation"] = get_animation_index("Immediate Show")
+        self.current_element["properties"]["animation"]["exit"] = "Immediate Clear"
+        self.current_element["properties"]["animation"]["exit_animation"] = get_animation_index("Immediate Clear")
         
         self.current_program.modified = datetime.now().isoformat()
         self.property_changed.emit("image_animation_fixed", True)

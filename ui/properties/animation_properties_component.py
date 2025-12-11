@@ -367,7 +367,6 @@ class AnimationPropertiesComponent(BasePropertiesComponent):
         
         # Animation style group
         animation_style_group = QGroupBox("Animation style")
-        animation_style_group.setMinimumWidth(600)
         animation_style_layout = QVBoxLayout(animation_style_group)
         animation_style_layout.setContentsMargins(10, 16, 10, 10)
         animation_style_layout.setSpacing(8)
@@ -412,15 +411,15 @@ class AnimationPropertiesComponent(BasePropertiesComponent):
         
         grid_widget = QWidget()
         self.thumbnail_grid_layout = QGridLayout(grid_widget)
-        self.thumbnail_grid_layout.setContentsMargins(10, 10, 10, 10)
-        self.thumbnail_grid_layout.setSpacing(8)
+        self.thumbnail_grid_layout.setContentsMargins(5, 5, 5, 5)
+        self.thumbnail_grid_layout.setSpacing(4)
         
         self.animation_thumbnails = []
         self.selected_thumbnail_index = 0
         
         for i in range(34):
-            row = i // 4
-            col = i % 4
+            row = i // 3
+            col = i % 3
             thumbnail = AnimationStyleThumbnail(i, self)
             thumbnail.selected.connect(self._on_thumbnail_selected)
             self.animation_thumbnails.append(thumbnail)
@@ -638,12 +637,31 @@ class AnimationPropertiesComponent(BasePropertiesComponent):
         text_props = element_props.get("text", {})
         if isinstance(text_props, dict):
             text_content = text_props.get("content", "")
-            self.animation_text_content_edit.blockSignals(True)
-            self.animation_text_content_edit.setPlainText(text_content)
-            self.animation_text_content_edit.blockSignals(False)
-            
             text_format = text_props.get("format", {})
+        else:
+            text_content = str(text_props) if text_props else ""
+            text_format = {}
+        
+        self.animation_text_content_edit.blockSignals(True)
+        self.animation_text_content_edit.setPlainText(text_content)
+        
+        if text_format:
             self._apply_format_to_text_edit(text_format)
+        else:
+            default_format = {
+                "font_color": "#FFFFFF",
+                "font_size": 12,
+                "alignment": "center",
+                "vertical_alignment": "middle"
+            }
+            self._apply_format_to_text_edit(default_format)
+            if "properties" not in self.current_element:
+                self.current_element["properties"] = {}
+            if "text" not in self.current_element["properties"]:
+                self.current_element["properties"]["text"] = {}
+            self.current_element["properties"]["text"]["format"] = default_format
+        
+        self.animation_text_content_edit.blockSignals(False)
         
         # Load animation style
         animation_style = element_props.get("animation_style", {})
@@ -774,71 +792,91 @@ class AnimationPropertiesComponent(BasePropertiesComponent):
         self.current_program.modified = datetime.now().isoformat()
     
     def _apply_format_to_text_edit(self, text_format: Dict):
-        """Apply format to text edit similar to text_properties_component"""
         if not text_format:
             return
         
         cursor = self.animation_text_content_edit.textCursor()
         cursor.select(QTextCursor.Document)
-        
-        char_format = QTextCharFormat()
-        font = QFont()
+        char_format = cursor.charFormat()
         
         if text_format.get("font_family"):
-            font.setFamily(text_format.get("font_family"))
-        font_size_val = text_format.get("font_size")
-        if font_size_val is not None:
-            font.setPointSize(int(font_size_val))
-        if text_format.get("bold"):
-            font.setBold(True)
-        if text_format.get("italic"):
-            font.setItalic(True)
-        if text_format.get("underline"):
-            font.setUnderline(True)
-        char_format.setFont(font)
+            font = char_format.font()
+            font.setFamily(text_format["font_family"])
+            char_format.setFont(font)
+        
+        if text_format.get("font_size"):
+            font = char_format.font()
+            font.setPointSize(text_format["font_size"])
+            char_format.setFont(font)
+        else:
+            font = char_format.font()
+            if font.pointSize() < 6:
+                font.setPointSize(12)
+                char_format.setFont(font)
+        
+        if text_format.get("bold") is not None:
+            char_format.setFontWeight(QFont.Bold if text_format["bold"] else QFont.Normal)
+        
+        if text_format.get("italic") is not None:
+            char_format.setFontItalic(text_format["italic"])
+        
+        if text_format.get("underline") is not None:
+            char_format.setFontUnderline(text_format["underline"])
         
         if text_format.get("font_color"):
-            char_format.setForeground(QColor(text_format.get("font_color")))
+            color = QColor(text_format["font_color"])
+            char_format.setForeground(color)
+            self.animation_text_editor_toolbar.font_color = color
+            self.animation_text_editor_toolbar._update_font_color_button()
         else:
-            char_format.setForeground(QColor("#FFFFFF"))
+            color = QColor(Qt.white)
+            char_format.setForeground(color)
+            self.animation_text_editor_toolbar.font_color = color
+            self.animation_text_editor_toolbar._update_font_color_button()
         
-        text_bg_color_str = text_format.get("text_bg_color")
-        if text_bg_color_str:
-            text_bg_color = QColor(text_bg_color_str)
-            char_format.setBackground(QBrush(text_bg_color))
+        if text_format.get("text_bg_color"):
+            color = QColor(text_format["text_bg_color"])
+            char_format.setBackground(color)
+            self.animation_text_editor_toolbar.text_bg_color = color
+            self.animation_text_editor_toolbar._update_text_bg_color_button()
         else:
             char_format.setBackground(QBrush())
             char_format.clearBackground()
+            self.animation_text_editor_toolbar.text_bg_color = None
+            self.animation_text_editor_toolbar._update_text_bg_color_button()
         
-        outline = text_format.get("outline", False)
-        if outline:
-            pen = QPen(QColor(Qt.black))
-            pen.setStyle(Qt.SolidLine)
-            pen.setWidth(1)
-            char_format.setTextOutline(pen)
-        else:
-            pen = QPen(Qt.NoPen)
-            char_format.setTextOutline(pen)
+        if text_format.get("outline") is not None:
+            if text_format["outline"]:
+                pen = QPen(QColor(Qt.black))
+                pen.setStyle(Qt.SolidLine)
+                pen.setWidth(1)
+                char_format.setTextOutline(pen)
+            else:
+                pen = QPen(Qt.NoPen)
+                char_format.setTextOutline(pen)
         
-        horizontal_align = Qt.AlignLeft
-        vertical_align = Qt.AlignTop
+        horizontal_align = Qt.AlignHCenter
+        vertical_align = Qt.AlignVCenter
         
         if text_format.get("alignment"):
             alignment_str = text_format["alignment"]
-            if alignment_str == "center":
+            if alignment_str == "left":
+                horizontal_align = Qt.AlignLeft
+            elif alignment_str == "center":
                 horizontal_align = Qt.AlignHCenter
             elif alignment_str == "right":
                 horizontal_align = Qt.AlignRight
         
         if text_format.get("vertical_alignment"):
             vertical_str = text_format["vertical_alignment"]
-            if vertical_str == "middle":
+            if vertical_str == "top":
+                vertical_align = Qt.AlignTop
+            elif vertical_str == "middle":
                 vertical_align = Qt.AlignVCenter
             elif vertical_str == "bottom":
                 vertical_align = Qt.AlignBottom
         
-        from PyQt5.QtGui import QTextBlockFormat
-        block_format = QTextBlockFormat()
+        block_format = cursor.blockFormat()
         block_format.setAlignment(horizontal_align)
         cursor.setBlockFormat(block_format)
         
@@ -846,25 +884,62 @@ class AnimationPropertiesComponent(BasePropertiesComponent):
         cursor.clearSelection()
         self.animation_text_content_edit.setTextCursor(cursor)
         
-        if hasattr(self, 'animation_text_editor_toolbar') and self.animation_text_editor_toolbar:
-            toolbar = self.animation_text_editor_toolbar
-            toolbar._horizontal_alignment = horizontal_align
-            toolbar._vertical_alignment = vertical_align
-            toolbar.align_left_btn.blockSignals(True)
-            toolbar.align_center_btn.blockSignals(True)
-            toolbar.align_right_btn.blockSignals(True)
-            toolbar.align_left_btn.setChecked(horizontal_align == Qt.AlignLeft)
-            toolbar.align_center_btn.setChecked(horizontal_align == Qt.AlignHCenter)
-            toolbar.align_right_btn.setChecked(horizontal_align == Qt.AlignRight)
-            toolbar.align_left_btn.blockSignals(False)
-            toolbar.align_center_btn.blockSignals(False)
-            toolbar.align_right_btn.blockSignals(False)
-            toolbar.align_top_btn.blockSignals(True)
-            toolbar.align_middle_btn.blockSignals(True)
-            toolbar.align_bottom_btn.blockSignals(True)
-            toolbar.align_top_btn.setChecked(vertical_align == Qt.AlignTop)
-            toolbar.align_middle_btn.setChecked(vertical_align == Qt.AlignVCenter)
-            toolbar.align_bottom_btn.setChecked(vertical_align == Qt.AlignBottom)
-            toolbar.align_top_btn.blockSignals(False)
-            toolbar.align_middle_btn.blockSignals(False)
-            toolbar.align_bottom_btn.blockSignals(False)
+        font = char_format.font()
+        self.animation_text_editor_toolbar.font_size_spin.blockSignals(True)
+        self.animation_text_editor_toolbar.font_family_combo.blockSignals(True)
+        if text_format.get("font_size"):
+            self.animation_text_editor_toolbar.font_size_spin.setValue(text_format["font_size"])
+        else:
+            self.animation_text_editor_toolbar.font_size_spin.setValue(font.pointSize() if font.pointSize() > 0 else 12)
+        if text_format.get("font_family"):
+            self.animation_text_editor_toolbar.font_family_combo.setCurrentText(text_format["font_family"])
+        else:
+            self.animation_text_editor_toolbar.font_family_combo.setCurrentText(font.family())
+        self.animation_text_editor_toolbar.font_size_spin.blockSignals(False)
+        self.animation_text_editor_toolbar.font_family_combo.blockSignals(False)
+        
+        self.animation_text_editor_toolbar.bold_btn.blockSignals(True)
+        self.animation_text_editor_toolbar.italic_btn.blockSignals(True)
+        self.animation_text_editor_toolbar.underline_btn.blockSignals(True)
+        if text_format.get("bold") is not None:
+            self.animation_text_editor_toolbar.bold_btn.setChecked(text_format["bold"])
+        else:
+            self.animation_text_editor_toolbar.bold_btn.setChecked(char_format.fontWeight() == QFont.Bold)
+        if text_format.get("italic") is not None:
+            self.animation_text_editor_toolbar.italic_btn.setChecked(text_format["italic"])
+        else:
+            self.animation_text_editor_toolbar.italic_btn.setChecked(char_format.fontItalic())
+        if text_format.get("underline") is not None:
+            self.animation_text_editor_toolbar.underline_btn.setChecked(text_format["underline"])
+        else:
+            self.animation_text_editor_toolbar.underline_btn.setChecked(char_format.fontUnderline())
+        self.animation_text_editor_toolbar.bold_btn.blockSignals(False)
+        self.animation_text_editor_toolbar.italic_btn.blockSignals(False)
+        self.animation_text_editor_toolbar.underline_btn.blockSignals(False)
+        
+        if text_format.get("outline") is not None:
+            self.animation_text_editor_toolbar.outline_btn.blockSignals(True)
+            self.animation_text_editor_toolbar.outline_btn.setChecked(text_format["outline"])
+            self.animation_text_editor_toolbar.outline_btn.blockSignals(False)
+        
+        default_char_format = QTextCharFormat()
+        default_color = QColor(text_format["font_color"]) if text_format.get("font_color") else QColor(Qt.white)
+        default_char_format.setForeground(default_color)
+        if text_format.get("font_family"):
+            font = default_char_format.font()
+            font.setFamily(text_format["font_family"])
+            default_char_format.setFont(font)
+        if text_format.get("font_size"):
+            font = default_char_format.font()
+            font.setPointSize(text_format["font_size"])
+            default_char_format.setFont(font)
+        self.animation_text_content_edit.setCurrentCharFormat(default_char_format)
+        
+        self.animation_text_editor_toolbar._horizontal_alignment = horizontal_align
+        self.animation_text_editor_toolbar._vertical_alignment = vertical_align
+        self.animation_text_editor_toolbar.align_left_btn.setChecked(horizontal_align == Qt.AlignLeft)
+        self.animation_text_editor_toolbar.align_center_btn.setChecked(horizontal_align == Qt.AlignHCenter)
+        self.animation_text_editor_toolbar.align_right_btn.setChecked(horizontal_align == Qt.AlignRight)
+        self.animation_text_editor_toolbar.align_top_btn.setChecked(vertical_align == Qt.AlignTop)
+        self.animation_text_editor_toolbar.align_middle_btn.setChecked(vertical_align == Qt.AlignVCenter)
+        self.animation_text_editor_toolbar.align_bottom_btn.setChecked(vertical_align == Qt.AlignBottom)

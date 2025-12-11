@@ -6,9 +6,9 @@ from enum import IntEnum
 
 
 class AnimationEffect(IntEnum):
-    """Animation effect indices matching HDPlayer format"""
     RANDOM = -1
     IMMEDIATE_SHOW = 0
+    IMMEDIATE_CLEAR = 0
     MOVE_LEFT = 1
     MOVE_RIGHT = 2
     MOVE_UP = 3
@@ -34,11 +34,10 @@ class AnimationEffect(IntEnum):
     DONT_CLEAR_SCREEN = 23
 
 
-# Mapping from UI string names to animation indices
-# Common animations for text and image/photo
 ANIMATION_NAME_TO_INDEX = {
     "Random": AnimationEffect.RANDOM,
     "Immediate Show": AnimationEffect.IMMEDIATE_SHOW,
+    "Immediate Clear": AnimationEffect.IMMEDIATE_CLEAR,
     "Move Left": AnimationEffect.MOVE_LEFT,
     "Move Right": AnimationEffect.MOVE_RIGHT,
     "Move Up": AnimationEffect.MOVE_UP,
@@ -59,7 +58,6 @@ ANIMATION_NAME_TO_INDEX = {
     "Vertical Blinds": AnimationEffect.VERTICAL_BLINDS,
     "Horizontal Blinds": AnimationEffect.HORIZONTAL_BLINDS,
     "Twinkle": AnimationEffect.TWINKLE,
-    # Single line text specific animations
     "Continuous Move Left": AnimationEffect.CONTINUOUS_MOVE_LEFT,
     "Continuous Move Right": AnimationEffect.CONTINUOUS_MOVE_RIGHT,
     "Don't Clear Screen": AnimationEffect.DONT_CLEAR_SCREEN,

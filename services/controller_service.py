@@ -156,7 +156,8 @@ class ControllerService(QObject):
                 event_bus.controller_connected.emit(self.current_controller)
                 logger.info(f"Connected to {controller_type} controller at {ip}:{port}")
             else:
-                event_bus.controller_error.emit(f"Failed to connect to {ip}:{port}")
+                logger.warning(f"Failed to connect to {controller_type} controller at {ip}:{port}")
+                event_bus.controller_disconnected.emit()
             
             return result
             

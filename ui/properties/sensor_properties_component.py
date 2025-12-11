@@ -106,6 +106,11 @@ class SensorPropertiesComponent(BasePropertiesComponent):
         self.sensor_fixed_text.setText("The Temperature")
         self.sensor_fixed_text.textChanged.connect(self._on_fixed_text_changed)
         fixed_text_layout.addWidget(self.sensor_fixed_text, stretch=1)
+        fixed_text_layout.addStretch()
+        other_layout.addLayout(fixed_text_layout)
+
+        font_row = QHBoxLayout()
+        font_row.addWidget(QLabel("Font:"))
         self.font_family_combo = QComboBox()
         self.font_family_combo.addItems([
             "Arial", "Times New Roman", "Courier New", "Verdana", "Georgia",
@@ -113,14 +118,18 @@ class SensorPropertiesComponent(BasePropertiesComponent):
             "Arial Black", "Impact", "Tahoma", "Lucida Console", "Monaco"
         ])
         self.font_family_combo.currentTextChanged.connect(self._on_font_family_changed)
-        fixed_text_layout.addWidget(self.font_family_combo)
+        font_row.addWidget(self.font_family_combo, stretch=1)
+        font_row.addStretch()
+
         self.font_color_btn = QPushButton("A")
         self.font_color_btn.setToolTip("Font Color")
         self.font_color_btn.clicked.connect(self._on_font_color_clicked)
         self.font_color = QColor(Qt.white)
         self._update_font_color_button()
-        fixed_text_layout.addWidget(self.font_color_btn)
-        other_layout.addLayout(fixed_text_layout)
+        font_row.addWidget(self.font_color_btn)
+        font_row.addStretch()
+        
+        other_layout.addLayout(font_row)
         
         sensor_unit_layout = QHBoxLayout()
         sensor_unit_layout.addWidget(QLabel("Sensor Unit:"))
@@ -362,16 +371,19 @@ class SensorPropertiesComponent(BasePropertiesComponent):
     def _update_font_color_button(self):
         self.font_color_btn.setStyleSheet(f"""
             QPushButton {{
-                background-color: {self.font_color.name()};
-                border: 1px solid #CCCCCC;
+                background-color: #3B3B3B;
+                border: 1px solid #555555;
                 border-radius: 3px;
-                color: {'white' if self.font_color.lightness() < 128 else 'black'};
-                font-weight: bold;
-                padding: 4px;
-                min-width: 30px;
+                padding: 4px 8px;
+                font-size: 12px;
+                color: {self.font_color.name()};
             }}
             QPushButton:hover {{
-                border: 2px solid #4A90E2;
+                background-color: #4B4B4B;
+                border: 1px solid #4A90E2;
+            }}
+            QPushButton:pressed {{
+                background-color: #5B5B5B;
             }}
         """)
 

@@ -250,82 +250,91 @@ class TimingPropertiesComponent(BasePropertiesComponent):
         self.top_text_color_btn = QPushButton("")
         self.top_text_color_btn.clicked.connect(self._on_top_text_color_clicked)
         top_text_layout.addWidget(self.top_text_color_btn)
+
+        no_title_layout.addLayout(top_text_layout)
         
+        multiline_layout = QHBoxLayout()
+        multiline_layout.setSpacing(8)
         multiline_combo = QComboBox()
         multiline_combo.addItems(["Multiline", "Singleline"])
         multiline_combo.setCurrentText("Multiline")
         multiline_combo.currentTextChanged.connect(self._on_multiline_changed)
-        top_text_layout.addWidget(multiline_combo)
+        multiline_layout.addWidget(multiline_combo, stretch=1)
+        multiline_layout.addStretch()
         self.multiline_combo = multiline_combo
         
-        # Space setting
-        top_text_layout.addWidget(QLabel("Space:"))
+        multiline_layout.addWidget(QLabel("Space:"))
         self.top_text_space = QSpinBox()
         self.top_text_space.setRange(0, 100)
         self.top_text_space.setValue(5)
         self.top_text_space.setSuffix(" px")
         self.top_text_space.valueChanged.connect(self._on_top_text_space_changed)
-        top_text_layout.addWidget(self.top_text_space)
+        multiline_layout.addWidget(self.top_text_space)
         
-        no_title_layout.addLayout(top_text_layout)
+        no_title_layout.addLayout(multiline_layout)
         
-        # Display style
         display_style_label = QLabel("Display style:")
         display_style_label.setStyleSheet("font-weight: 600; font-size: 13px;")
         no_title_layout.addWidget(display_style_label)
         
-        # Enable/disable checkboxes
-        checkboxes_layout = QHBoxLayout()
-        checkboxes_layout.setSpacing(12)
+        checkboxes_layout_1 = QHBoxLayout()
+        checkboxes_layout_1.setSpacing(12)
         
         self.year_check = QCheckBox("Year")
         self.year_check.setChecked(True)
         self.year_check.toggled.connect(self._on_display_unit_changed)
-        checkboxes_layout.addWidget(self.year_check)
+        checkboxes_layout_1.addWidget(self.year_check)
         
         self.day_check = QCheckBox("Day")
         self.day_check.setChecked(True)
         self.day_check.toggled.connect(self._on_display_unit_changed)
-        checkboxes_layout.addWidget(self.day_check)
+        checkboxes_layout_1.addWidget(self.day_check)
         
         self.hour_check = QCheckBox("Hour")
         self.hour_check.setChecked(True)
         self.hour_check.toggled.connect(self._on_display_unit_changed)
-        checkboxes_layout.addWidget(self.hour_check)
+        checkboxes_layout_1.addWidget(self.hour_check)
+
+        checkboxes_layout_1.addStretch()
+
+        no_title_layout.addLayout(checkboxes_layout_1)
+
+        checkboxes_layout_2 = QHBoxLayout()
+        checkboxes_layout_2.setSpacing(12)
         
         self.minute_check = QCheckBox("Minute")
         self.minute_check.setChecked(True)
         self.minute_check.toggled.connect(self._on_display_unit_changed)
-        checkboxes_layout.addWidget(self.minute_check)
+        checkboxes_layout_2.addWidget(self.minute_check)
         
         self.second_check = QCheckBox("Second")
         self.second_check.setChecked(True)
         self.second_check.toggled.connect(self._on_display_unit_changed)
-        checkboxes_layout.addWidget(self.second_check)
+        checkboxes_layout_2.addWidget(self.second_check)
         
         self.millisecond_check = QCheckBox("Millisecond")
         self.millisecond_check.setChecked(False)
         self.millisecond_check.toggled.connect(self._on_display_unit_changed)
-        checkboxes_layout.addWidget(self.millisecond_check)
+        checkboxes_layout_2.addWidget(self.millisecond_check)
         
-        checkboxes_layout.addStretch()
-        no_title_layout.addLayout(checkboxes_layout)
+        checkboxes_layout_2.addStretch()
+        no_title_layout.addLayout(checkboxes_layout_2)
         
-        # Display font color and position align
         display_settings_layout = QHBoxLayout()
         display_settings_layout.setSpacing(8)
-        display_settings_layout.addWidget(QLabel("Display Color:"))
+        display_settings_layout.addWidget(QLabel("Color:"))
         self.display_color_btn = QPushButton("")
         self.display_color_btn.clicked.connect(self._on_display_color_clicked)
         display_settings_layout.addWidget(self.display_color_btn)
         
         display_settings_layout.addStretch()
-        display_settings_layout.addWidget(QLabel("Position Align:"))
+        display_settings_layout.addWidget(QLabel("Align:"))
         self.position_align_combo = QComboBox()
         self.position_align_combo.addItems(["Center", "Top", "Bottom"])
         self.position_align_combo.setCurrentText("Center")
         self.position_align_combo.currentTextChanged.connect(self._on_position_align_changed)
-        display_settings_layout.addWidget(self.position_align_combo)
+        display_settings_layout.addWidget(self.position_align_combo, stretch=1) 
+        display_settings_layout.addStretch()
         
         no_title_layout.addLayout(display_settings_layout)
         no_title_layout.addStretch()
@@ -720,7 +729,7 @@ class TimingPropertiesComponent(BasePropertiesComponent):
             if "timing" not in self.current_element["properties"]:
                 self.current_element["properties"]["timing"] = {}
             self.current_element["properties"]["timing"]["top_text_color"] = top_text_color
-            self.top_text_color_btn.setStyleSheet(f"background-color: {top_text_color};")
+        self.top_text_color_btn.setStyleSheet(f"background-color: {top_text_color};")
         
         multiline = timing_props.get("multiline", True)
         if hasattr(self, 'multiline_combo'):
@@ -768,7 +777,7 @@ class TimingPropertiesComponent(BasePropertiesComponent):
             if "display_style" not in self.current_element["properties"]["timing"]:
                 self.current_element["properties"]["timing"]["display_style"] = {}
             self.current_element["properties"]["timing"]["display_style"]["color"] = display_color
-            self.display_color_btn.setStyleSheet(f"background-color: {display_color};")
+        self.display_color_btn.setStyleSheet(f"background-color: {display_color};")
         
         position_align = display_style.get("position_align", "center")
         position_align_index = self.position_align_combo.findText(position_align.capitalize())

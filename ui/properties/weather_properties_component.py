@@ -88,6 +88,29 @@ class WeatherPropertiesComponent(BasePropertiesComponent):
                 selection-color: #FFFFFF;
                 padding: 2px;
             }
+            QToolButton {
+                background-color: #3B3B3B;
+                border: 1px solid #555555;
+                border-radius: 3px;
+                padding: 4px 8px;
+                min-width: 32px;
+                min-height: 24px;
+                font-size: 12px;
+                color: #FFFFFF;
+            }
+            QToolButton:hover {
+                background-color: #4B4B4B;
+                border: 1px solid #4A90E2;
+            }
+            QToolButton:pressed {
+                background-color: #5B5B5B;
+                border: 1px solid #2E5C8A;
+            }
+            QToolButton:checked {
+                background-color: #4A90E2;
+                color: #FFFFFF;
+                border: 1px solid #2E5C8A;
+            }
         """)
         
         # Area attribute group (same as text)
@@ -143,18 +166,15 @@ class WeatherPropertiesComponent(BasePropertiesComponent):
         no_title_layout.setContentsMargins(10, 16, 10, 10)
         no_title_layout.setSpacing(8)
         
-        # City search, Font Family, Horizontal Align
         city_row = QHBoxLayout()
         city_row.setSpacing(8)
         
-        # City search input with autocomplete
         city_label = QLabel("City:")
         self.weather_city_input = QLineEdit()
         self.weather_city_input.setText("Rome")
         self.weather_city_input.setPlaceholderText("Search city...")
         self.weather_city_input.textChanged.connect(self._on_city_changed)
         
-        # Setup autocomplete
         completer = QCompleter(self.city_list, self)
         completer.setCaseSensitivity(Qt.CaseInsensitive)
         completer.setFilterMode(Qt.MatchContains)
@@ -162,16 +182,18 @@ class WeatherPropertiesComponent(BasePropertiesComponent):
         
         city_row.addWidget(city_label)
         city_row.addWidget(self.weather_city_input, stretch=1)
+        city_row.addStretch()
         
-        # Font Family
-        font_label = QLabel("Font Family:")
         self.weather_font_family_combo = QComboBox()
         self.weather_font_family_combo.addItems(["Arial", "Times New Roman", "Courier New", "Verdana", "Georgia", "Comic Sans MS"])
         self.weather_font_family_combo.currentTextChanged.connect(self._on_font_family_changed)
-        city_row.addWidget(font_label)
         city_row.addWidget(self.weather_font_family_combo)
+
+        no_title_layout.addLayout(city_row)
+
+        align_row = QHBoxLayout()
+        align_row.setSpacing(8)
         
-        # Horizontal Align buttons
         align_label = QLabel("Align:")
         self.weather_align_left_btn = QToolButton()
         self.weather_align_left_btn.setText("↤")
@@ -192,7 +214,6 @@ class WeatherPropertiesComponent(BasePropertiesComponent):
         self.weather_align_group.addButton(self.weather_align_right_btn, 2)
         self.weather_align_group.buttonClicked.connect(self._on_align_changed)
         
-        # Set center as default
         self.weather_align_center_btn.setChecked(True)
         
         align_btn_layout = QHBoxLayout()
@@ -201,24 +222,18 @@ class WeatherPropertiesComponent(BasePropertiesComponent):
         align_btn_layout.addWidget(self.weather_align_center_btn)
         align_btn_layout.addWidget(self.weather_align_right_btn)
         
-        city_row.addWidget(align_label)
-        city_row.addLayout(align_btn_layout)
-        city_row.addStretch()
-        
-        no_title_layout.addLayout(city_row)
-        
-        # Display Mode selector
-        display_mode_layout = QHBoxLayout()
-        display_mode_label = QLabel("Display Mode:")
+        align_row.addWidget(align_label)
+        align_row.addLayout(align_btn_layout)
+        align_row.addStretch()
+
         self.weather_display_mode_combo = QComboBox()
         self.weather_display_mode_combo.addItems(["Multiline mode", "Single line mode"])
         self.weather_display_mode_combo.currentTextChanged.connect(self._on_display_mode_changed)
-        display_mode_layout.addWidget(display_mode_label)
-        display_mode_layout.addWidget(self.weather_display_mode_combo)
-        display_mode_layout.addStretch()
-        no_title_layout.addLayout(display_mode_layout)
+        align_row.addWidget(self.weather_display_mode_combo, stretch=1)
+        align_row.addStretch()
         
-        # Attributes combobox
+        no_title_layout.addLayout(align_row)
+        
         attributes_combo_layout = QHBoxLayout()
         attributes_combo_layout.setSpacing(8)
         attributes_combo_layout.addWidget(QLabel("Attributes:"))
@@ -229,19 +244,27 @@ class WeatherPropertiesComponent(BasePropertiesComponent):
         ])
         self.weather_attributes_combo.currentTextChanged.connect(self._on_attribute_selected)
         attributes_combo_layout.addWidget(self.weather_attributes_combo, stretch=1)
+        attributes_combo_layout.addStretch()
+
+        no_title_layout.addLayout(attributes_combo_layout)
+
+        color_row = QHBoxLayout()
+        color_row.setSpacing(8)
         
+        color_row.addWidget(QLabel("Display Color:"))
         self.weather_attribute_color_btn = QPushButton("")
         self.weather_attribute_color_btn.setFixedSize(30, 25)
         self.weather_attribute_color_btn.setStyleSheet("background-color: #FF0000;")
         self.weather_attribute_color_btn.clicked.connect(self._on_selected_attribute_color_clicked)
-        attributes_combo_layout.addWidget(self.weather_attribute_color_btn)
+        color_row.addWidget(self.weather_attribute_color_btn)
         
         self.weather_attribute_enabled_check = QCheckBox("Enabled")
         self.weather_attribute_enabled_check.setChecked(True)
         self.weather_attribute_enabled_check.toggled.connect(self._on_selected_attribute_enabled_changed)
-        attributes_combo_layout.addWidget(self.weather_attribute_enabled_check)
-        
-        no_title_layout.addLayout(attributes_combo_layout)
+        color_row.addWidget(self.weather_attribute_enabled_check)
+
+        color_row.addStretch()
+        no_title_layout.addLayout(color_row)
         
         self._attribute_map = {
             "City": ("city", "#FF0000"),
@@ -273,7 +296,7 @@ class WeatherPropertiesComponent(BasePropertiesComponent):
         temp_unit_layout.addWidget(self.weather_temp_unit_c_btn)
         temp_unit_layout.addWidget(self.weather_temp_unit_f_btn)
         self._temp_unit_widget.setVisible(False)
-        attributes_combo_layout.addWidget(self._temp_unit_widget)
+        color_row.addWidget(self._temp_unit_widget)
         
         if self.weather_attributes_combo.count() > 0:
             self.weather_attributes_combo.setCurrentIndex(0)
@@ -283,9 +306,8 @@ class WeatherPropertiesComponent(BasePropertiesComponent):
         
         groups_layout.addWidget(no_title_group)
         
-        # Animation group (same as text Display)
         animation_group = QGroupBox("Animation")
-        animation_group.setMinimumWidth(350)
+        animation_group.setMinimumWidth(300)
         animation_layout = QHBoxLayout(animation_group)
         animation_layout.setContentsMargins(10, 16, 10, 10)
         animation_layout.setSpacing(12)
@@ -303,16 +325,16 @@ class WeatherPropertiesComponent(BasePropertiesComponent):
         self.weather_fixed_animation_btn.setFont(font)
         self.weather_fixed_animation_btn.setStyleSheet("""
             QPushButton {
-                background-color: #F5F5F5;
-                border: 1px solid #CCCCCC;
+                background-color: #3B3B3B;
+                border: 1px solid #555555;
                 border-radius: 4px;
             }
             QPushButton:hover {
-                background-color: #E8F4F8;
+                background-color: #4B4B4B;
                 border: 1px solid #4A90E2;
             }
             QPushButton:pressed {
-                background-color: #D0E8F2;
+                background-color: #2B2B2B;
                 border: 1px solid #2E5C8A;
             }
         """)
@@ -327,16 +349,16 @@ class WeatherPropertiesComponent(BasePropertiesComponent):
         self.weather_random_animation_btn.setFont(font)
         self.weather_random_animation_btn.setStyleSheet("""
             QPushButton {
-                background-color: #F5F5F5;
-                border: 1px solid #CCCCCC;
+                background-color: #3B3B3B;
+                border: 1px solid #555555;
                 border-radius: 4px;
             }
             QPushButton:hover {
-                background-color: #E8F4F8;
+                background-color: #4B4B4B;
                 border: 1px solid #4A90E2;
             }
             QPushButton:pressed {
-                background-color: #D0E8F2;
+                background-color: #2B2B2B;
                 border: 1px solid #2E5C8A;
             }
         """)
@@ -488,9 +510,8 @@ class WeatherPropertiesComponent(BasePropertiesComponent):
         setattr(self, "weather_temp_color_btn", color_btn)
     
     def _get_animation_list(self):
-        """Get list of available animations"""
         animations = ["Immediate Show", "Random"]
-        for i in range(100):  # Assuming max 100 animations
+        for i in range(100):
             name = get_animation_name(i)
             if name and name not in animations:
                 animations.append(name)
@@ -848,13 +869,12 @@ class WeatherPropertiesComponent(BasePropertiesComponent):
         self._trigger_autosave()
     
     def _on_fixed_animation_clicked(self):
-        """Set entrance and exit animations to Immediate Show"""
         if "properties" not in self.current_element:
             self.current_element["properties"] = {}
         if "animation" not in self.current_element["properties"]:
             self.current_element["properties"]["animation"] = {}
         self.current_element["properties"]["animation"]["entrance"] = "Immediate Show"
-        self.current_element["properties"]["animation"]["exit"] = "Immediate Show"
+        self.current_element["properties"]["animation"]["exit"] = "Immediate Clear"
         self.current_program.modified = datetime.now().isoformat()
         self.property_changed.emit("weather_animation_fixed", True)
         self._trigger_autosave()
@@ -862,7 +882,7 @@ class WeatherPropertiesComponent(BasePropertiesComponent):
         entrance_index = self.weather_entrance_animation_combo.findText("Immediate Show")
         if entrance_index >= 0:
             self.weather_entrance_animation_combo.setCurrentIndex(entrance_index)
-        exit_index = self.weather_exit_animation_combo.findText("Immediate Show")
+        exit_index = self.weather_exit_animation_combo.findText("Immediate Clear")
         if exit_index >= 0:
             self.weather_exit_animation_combo.setCurrentIndex(exit_index)
     

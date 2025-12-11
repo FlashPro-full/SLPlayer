@@ -64,22 +64,57 @@ class DateRangeMultiSelector(QWidget):
         self.date_table = QTableWidget()
         self.date_table.setColumnCount(3)
         self.date_table.setHorizontalHeaderLabels(["", "Start", "End"])
-        self.date_table.horizontalHeader().setStretchLastSection(True)
+        self.date_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.date_table.verticalHeader().setVisible(False)
         self.date_table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.date_table.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.date_table.setAlternatingRowColors(True)
         self.date_table.setStyleSheet("""
             QTableWidget {
+                background-color: #2B2B2B;
                 border: 1px solid #555555;
                 color: #FFFFFF;
-                border-radius: 4px;
-                background-color: #3B3B3B;
-                color: #FFFFFF;
-                width: 100%;
+                gridline-color: #555555;
             }
             QTableWidget::item {
+                color: #FFFFFF;
+                border-bottom: 1px solid #555555;
                 padding: 2px;
+            }
+            QTableWidget::item:hover {
+                background-color: #2A60B2;
+                border: 1px solid #4A90E2;
+                outline: none;
+            }
+            QTableWidget::item:selected {
+                background-color: #2A60B2;
+                border: 1px solid #4A90E2;
+                outline: none;
+            }
+            QTableWidget::item:selected:hover {
+                background-color: #2A60B2;
+                border: 1px solid #4A90E2;
+                outline: none;
+            }
+            QHeaderView {
+                background-color: #3B3B3B;
+            }
+            QHeaderView::section {
+                background-color: #3B3B3B;
+                color: #FFFFFF;
+                padding: 8px;
+                border: 1px solid #555555;
+            }
+            QTableWidget QHeaderView::section:horizontal {
+                background-color: #3B3B3B;
+                color: #FFFFFF;
+                padding: 8px;
+                border: 1px solid #555555;
+                border-top: none;
+            }
+            QTableCornerButton::section {
+                background-color: #3B3B3B;
+                border: 1px solid #555555;
             }
         """)
         self.date_table.setVisible(False)
@@ -332,7 +367,6 @@ class DateRangeMultiSelector(QWidget):
         """)
         self.date_table.setCellWidget(row, 2, end_date_edit)
         
-        self.date_table.resizeColumnsToContents()
         self._update_tags()
     
     def _on_checkbox_changed(self, row: int, state: int):

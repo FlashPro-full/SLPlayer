@@ -33,22 +33,31 @@ class HuiduController(BaseController):
         try:
             self.sdk.initialize(f"http://{self.ip_address}:{self.port}", self.sdk.sdk_key, self.sdk.sdk_secret)
             
-            if not self.sdk.is_card_online(self.ip_address):
-                logger.warning(f"Huidu controller at {self.ip_address} is not online")
-                self.set_status(ConnectionStatus.ERROR)
-                return False
+            is_online = self.sdk.is_card_online(self.ip_address)
+            if not is_online:
+                logger.warning(f"Huidu controller at {self.ip_address} is_card_online check failed, but attempting connection anyway")
             
             info = self.get_device_info()
-            if info:
-                self.set_status(ConnectionStatus.CONNECTED)
-                logger.info(f"Connected to Huidu controller at {self.ip_address}")
-                return True
+            if info and info.get("controller_id"):
+                ping_success = info.get("connection_status", {}).get("ping", False)
+                port_success = info.get("connection_status", {}).get("port", False)
+                sdk_online = info.get("connection_status", {}).get("sdk_online", False)
+                
+                if ping_success and (port_success or sdk_online or is_online):
+                    self.set_status(ConnectionStatus.CONNECTED)
+                    logger.info(f"Connected to Huidu controller at {self.ip_address}")
+                    return True
+                else:
+                    logger.warning(f"Huidu controller at {self.ip_address} connection checks failed: ping={ping_success}, port={port_success}, sdk={sdk_online}")
+                    self.set_status(ConnectionStatus.DISCONNECTED)
+                    return False
             else:
-                self.set_status(ConnectionStatus.ERROR)
+                logger.warning(f"Failed to get device info for Huidu controller at {self.ip_address}")
+                self.set_status(ConnectionStatus.DISCONNECTED)
                 return False
         except Exception as e:
             logger.error(f"Error connecting to Huidu controller: {e}", exc_info=True)
-            self.set_status(ConnectionStatus.ERROR)
+            self.set_status(ConnectionStatus.DISCONNECTED)
             return False
     
     def disconnect(self):

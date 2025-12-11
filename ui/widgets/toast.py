@@ -83,7 +83,6 @@ class ToastWidget(QWidget):
         self.setMinimumWidth(300)
         self.setMaximumWidth(500)
         
-
         self.adjustSize()
     
     def reposition(self):

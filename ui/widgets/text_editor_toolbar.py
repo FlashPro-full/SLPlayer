@@ -315,8 +315,11 @@ class TextEditorToolbar(QWidget):
         self.italic_btn.blockSignals(False)
         self.underline_btn.blockSignals(False)
         
-        if char_format.foreground().color().isValid():
-            self.font_color = char_format.foreground().color()
+        foreground = char_format.foreground()
+        if foreground.style() != Qt.NoBrush and foreground.color().isValid():
+            cursor_color = foreground.color()
+            if cursor_color != QColor(Qt.black) or self.font_color == QColor(Qt.black):
+                self.font_color = cursor_color
             self._update_font_color_button()
         
         bg_brush = char_format.background()
