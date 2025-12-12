@@ -1,6 +1,3 @@
-"""
-Application settings and configuration management
-"""
 import json
 import os
 from pathlib import Path
@@ -13,8 +10,7 @@ logger = get_logger(__name__)
 
 
 class Settings:
-    """Manages application settings"""
-    
+
     def __init__(self):
         self.config_dir = get_app_data_dir()
         self.config_file = get_settings_file()
@@ -52,15 +48,13 @@ class Settings:
         self.settings = self.load_settings()
     
     def load_settings(self) -> Dict[str, Any]:
-        """Load settings from file or return defaults"""
+
         if self.config_file.exists():
             try:
                 with open(self.config_file, 'r', encoding='utf-8') as f:
                     loaded = json.load(f)
-                    # Merge with defaults to ensure all keys exist
                     settings = self.default_settings.copy()
                     settings.update(loaded)
-                    # Validate settings types
                     settings = self._validate_settings(settings)
                     return settings
             except json.JSONDecodeError as e:
@@ -70,12 +64,10 @@ class Settings:
                 logger.exception(f"Error loading settings: {e}")
                 return self.default_settings.copy()
         else:
-            # Create config directory if it doesn't exist
             self.config_dir.mkdir(parents=True, exist_ok=True)
             return self.default_settings.copy()
     
     def save_settings(self):
-        """Save current settings to file"""
         try:
             self.config_dir.mkdir(parents=True, exist_ok=True)
             with open(self.config_file, 'w', encoding='utf-8') as f:
@@ -88,7 +80,6 @@ class Settings:
             logger.exception(f"Unexpected error saving settings: {e}")
     
     def get(self, key: str, default: Any = None) -> Any:
-        """Get a setting value using dot notation (e.g., 'window.width')"""
         keys = key.split('.')
         value = self.settings
         for k in keys:
@@ -99,7 +90,6 @@ class Settings:
         return value
     
     def set(self, key: str, value: Any):
-        """Set a setting value using dot notation"""
         keys = key.split('.')
         settings = self.settings
         for k in keys[:-1]:
@@ -110,11 +100,9 @@ class Settings:
         self.save_settings()
     
     def _validate_settings(self, settings: Dict[str, Any]) -> Dict[str, Any]:
-        """Validate settings types and fix invalid values"""
         validated = self.default_settings.copy()
         validated.update(settings)
         
-        # Validate window settings
         if "window" in validated and isinstance(validated["window"], dict):
             window = validated["window"]
             for key in ["width", "height", "x", "y"]:
@@ -125,7 +113,6 @@ class Settings:
                         logger.warning(f"Invalid window.{key}, using default")
                         validated["window"][key] = self.default_settings["window"][key]
         
-        # Validate canvas settings
         if "canvas" in validated and isinstance(validated["canvas"], dict):
             canvas = validated["canvas"]
             if "width" in canvas or "height" in canvas:
@@ -140,11 +127,9 @@ class Settings:
                     except (ValueError, TypeError):
                         validated["canvas"]["height"] = self.default_settings.get("canvas", {}).get("height", 1080)
         
-        # Validate auto_save
         if "auto_save" in validated:
             validated["auto_save"] = bool(validated["auto_save"])
         
-        # Validate auto_save_interval
         if "auto_save_interval" in validated:
             try:
                 validated["auto_save_interval"] = int(validated["auto_save_interval"])
@@ -156,6 +141,5 @@ class Settings:
         return validated
 
 
-# Global settings instance
 settings = Settings()
 

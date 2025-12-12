@@ -68,48 +68,66 @@ def main():
             settings.set("first_launch_complete", True)
             logger.info("First launch network setup completed")
         
-        try:
-            from core.controller_research_service import ControllerResearchService
-            ControllerResearchService.populate_database(force_update=False)
-            logger.info("Controller database populated with research data")
-        except Exception as e:
-            logger.warning(f"Could not populate controller database at startup: {e}")
-        
-        # Show device selection dialog first
         from ui.device_selection_dialog import DeviceSelectionDialog
         device_dialog = DeviceSelectionDialog()
-        
-        selected_ip = None
-        selected_port = None
-        selected_type = None
-        selected_device_id = None
-        
-        if device_dialog.exec() == device_dialog.Accepted:
-            selected_ip = device_dialog.selected_ip
-            selected_port = device_dialog.selected_port
-            selected_type = device_dialog.selected_type
-            selected_device_id = device_dialog.selected_controller_id
+        device_dialog.show()
         
         window = MainWindow()
         window.resize(window_width, window_height)
         window.move(window_x, window_y)
+        window.hide()
         
-        # Connect to selected device
-        if selected_ip and selected_port and selected_type:
+        device_dialog.set_main_window(window)
+        
+        def on_device_selected(ip, port, controller_type, device_id):
             try:
                 success = window.controller_service.connect_to_controller(
-                    selected_ip,
-                    selected_port,
-                    selected_type
+                    ip,
+                    port,
+                    controller_type
                 )
                 if success:
-                    logger.info(f"Connected to device {selected_device_id} at {selected_ip}:{selected_port}")
+                    logger.info(f"Connected to device {device_id} at {ip}:{port}")
+                    
+                    from core.controller_database import get_controller_database
+                    db = get_controller_database()
+                    device_info = db.get_controller(device_id)
+                    
+                    if device_info:
+                        width = device_info.get('width')
+                        height = device_info.get('height')
+                        
+                        if not width or not height:
+                            display_resolution = device_info.get('display_resolution', '')
+                            if display_resolution and 'x' in display_resolution.lower():
+                                try:
+                                    parts = display_resolution.lower().replace(' ', '').split('x')
+                                    if len(parts) == 2:
+                                        width = int(parts[0])
+                                        height = int(parts[1])
+                                except (ValueError, IndexError):
+                                    pass
+                        
+                        if width and height:
+                            from core.screen_config import set_screen_config
+                            brand = device_info.get('model', '') or controller_type
+                            model = device_info.get('model', '') or ''
+                            set_screen_config(brand, model, width, height, 0, None)
+                            logger.info(f"Set screen resolution from device: {width}x{height}")
+                        else:
+                            logger.warning(f"Could not extract resolution from device info")
                 else:
-                    logger.warning(f"Failed to connect to device {selected_device_id} at {selected_ip}:{selected_port}")
+                    logger.warning(f"Failed to connect to device {device_id} at {ip}:{port}")
             except Exception as e:
                 logger.error(f"Error connecting to device: {e}")
+            
+            window.show()
+            window.raise_()
+            window.activateWindow()
         
-        window.show()
+        device_dialog.device_selected.connect(on_device_selected)
+        
+        window._device_dialog = device_dialog
         
         if soo_file_path:
             logger.info(f"Loading specific .soo file from command-line: {soo_file_path}")

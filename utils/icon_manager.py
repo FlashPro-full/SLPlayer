@@ -1,6 +1,3 @@
-"""
-Icon management - Handles application icon setup
-"""
 import sys
 from pathlib import Path
 from PyQt5.QtGui import QIcon
@@ -24,7 +21,6 @@ class IconManager:
             return True
         else:
             logger.warning(f"Icon file not found: {icon_path}")
-            # Try alternative names as fallback
             for alt_name in ["icon.ico", "app_icon.ico", "SLPlayer.ico", "icon.png"]:
                 alt_path = base_path / "resources" / alt_name
                 if alt_path.exists():
@@ -36,13 +32,7 @@ class IconManager:
     
     @staticmethod
     def setup_taskbar_icon(window, base_path: Path) -> None:
-        """
-        Set taskbar icon using Windows API (if available).
-        
-        Args:
-            window: Main window instance
-            base_path: Base path of the application
-        """
+
         if sys.platform != "win32":
             return
         
@@ -63,7 +53,7 @@ class IconManager:
                 except Exception as e:
                     logger.warning(f"Could not set taskbar icon: {e}")
             
-            # Set icon after a short delay to ensure window is fully initialized
+
             QTimer.singleShot(100, set_icon)
         else:
             logger.warning(f"Taskbar icon file not found: {icon_path}")

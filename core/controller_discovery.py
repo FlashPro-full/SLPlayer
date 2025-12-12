@@ -440,20 +440,18 @@ class ControllerDiscovery(QObject):
     
     def _discover_huidu_controllers(self) -> List[ControllerInfo]:
         discovered: List[ControllerInfo] = []
-        self._init_huidu_sdk()
         
+        # Only use network discovery (via API server)
         network_discovered = self._discover_huidu_network()
-        serial_discovered = self._discover_huidu_serial()
-        
         discovered.extend(network_discovered)
-        discovered.extend(serial_discovered)
+        
         return discovered
     
     def _discover_huidu_network(self) -> List[ControllerInfo]:
         discovered: List[ControllerInfo] = []
         
         try:
-            from controllers.huidu_sdk import HuiduSDK, SDK_AVAILABLE, DEFAULT_HOST
+            from controllers.huidu_sdk import HuiduSDK, SDK_AVAILABLE, DEFAULT_HOST, _is_port_open
             from core.controller_database import get_controller_database
             
             if not SDK_AVAILABLE:
@@ -461,15 +459,28 @@ class ControllerDiscovery(QObject):
                 return discovered
             
             default_port = 30080
-            logger.info(f"Huidu network discovery: Checking localhost:{default_port}")
+            logger.info(f"Huidu network discovery: Checking 127.0.0.1:{default_port}")
             
-            try:
-                sdk = HuiduSDK(DEFAULT_HOST)
-            except RuntimeError as e:
-                logger.debug(f"Could not create HuiduSDK instance: {e}")
+            if not self._huidu_sdk:
+                if not self._init_huidu_sdk():
+                    return discovered
+            
+            if not self._huidu_sdk:
                 return discovered
             
+            sdk = self._huidu_sdk
+            
+            if "127.0.0.1" in str(DEFAULT_HOST):
+                max_wait = 10.0
+                waited = 0.0
+                while not _is_port_open("127.0.0.1", 30080, timeout=0.5) and waited < max_wait:
+                    time.sleep(0.5)
+                    waited += 0.5
+                if waited >= max_wait:
+                    logger.warning("API server not ready after waiting, continuing anyway")
+            
             try:
+                # Step 1: Get online devices
                 result = sdk.device.get_online_devices()
                 if result.get("message") != "ok":
                     logger.debug("No online devices found")
@@ -484,6 +495,7 @@ class ControllerDiscovery(QObject):
                 
                 db = get_controller_database()
                 
+                # Step 2: Compare with local database and process new devices
                 for device_id in devices:
                     if self.stop_event.is_set():
                         break
@@ -491,105 +503,107 @@ class ControllerDiscovery(QObject):
                     if not isinstance(device_id, str):
                         continue
                     
-                    try:
-                        property_result = sdk.get_device_property([device_id])
-                        if property_result.get("message") != "ok":
-                            logger.debug(f"Failed to get properties for device {device_id}")
-                            continue
-                        
-                        data_array = property_result.get("data", [])
-                        if not data_array or len(data_array) == 0:
-                            logger.debug(f"No property data for device {device_id}")
-                            continue
-                        
-                        device_data = data_array[0].get("data", {})
-                        if not device_data:
-                            logger.debug(f"Empty property data for device {device_id}")
-                            continue
-                        
-                        device_ip = device_data.get("eth.ip") or device_data.get("ip") or device_data.get("address") or device_data.get("network.ip")
-                        
-                        if not device_ip or device_ip == "localhost" or device_ip == "127.0.0.1":
-                            import re
-                            ip_pattern = re.compile(r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$')
-                            if ip_pattern.match(device_id):
-                                device_ip = device_id
-                            else:
-                                from controllers.network_manager import NetworkManager
-                                network_manager = NetworkManager()
-                                arp_devices = network_manager.get_connected_wifi_devices()
-                                device_id_normalized = device_id.replace(':', '-').upper()
-                                for arp_device in arp_devices:
-                                    arp_mac = arp_device.get("mac", "").replace(':', '-').upper()
-                                    if device_id_normalized in arp_mac or arp_mac in device_id_normalized:
-                                        test_ip = arp_device.get("ip")
-                                        if test_ip and network_manager.test_port_connection(test_ip, default_port, timeout=1.0):
-                                            device_ip = test_ip
-                                            break
-                                
-                                if not device_ip or device_ip == "localhost":
-                                    local_network_ips = network_manager.get_local_network_ip_range()
-                                    for test_ip in local_network_ips[:50]:
-                                        if self.stop_event.is_set():
-                                            break
-                                        if network_manager.test_port_connection(test_ip, default_port, timeout=0.5):
-                                            try:
-                                                test_sdk = HuiduSDK(f"http://{test_ip}:{default_port}")
-                                                test_result = test_sdk.device.get_online_devices()
-                                                if test_result.get("message") == "ok" and device_id in test_result.get("data", []):
-                                                    device_ip = test_ip
-                                                    break
-                                            except:
-                                                pass
-                        
-                        if not device_ip or device_ip == "localhost":
-                            device_ip = "localhost"
-                        
-                        device_name = device_data.get("name", f"Huidu_{device_id}")
-                        screen_width = device_data.get("screen.width", "64")
-                        screen_height = device_data.get("screen.height", "32")
-                        firmware_version = device_data.get("version.app", "")
-                        hardware_version = device_data.get("version.hardware", "")
-                        model = hardware_version or device_data.get("model", "Huidu")
+                    # Check if device already exists in database
+                    existing_controller = db.get_controller(device_id)
+                    
+                    if existing_controller:
+                        # Device exists in DB, create ControllerInfo from DB data
+                        device_ip = existing_controller.get("ip_address", "127.0.0.1")
+                        device_name = existing_controller.get("device_name", f"Huidu_{device_id}")
+                        display_resolution = existing_controller.get("display_resolution", "64x32")
+                        firmware_version = existing_controller.get("firmware_version", "")
+                        model = existing_controller.get("model", "Huidu")
                         
                         controller_info = ControllerInfo(device_ip, default_port, "huidu", device_name)
                         controller_info.name = device_name
                         controller_info.mac_address = device_id
                         controller_info.firmware_version = firmware_version
                         controller_info.model = model
-                        controller_info.display_resolution = f"{screen_width}x{screen_height}"
-                        
-                        device_info = {
-                            "name": device_name,
-                            "controller_id": device_id,
-                            "ip": device_ip,
-                            "port": default_port,
-                            "model": model,
-                            "version": firmware_version,
-                            "version.app": firmware_version,
-                            "version.hardware": hardware_version,
-                            "screen.width": screen_width,
-                            "screen.height": screen_height,
-                            "display_resolution": f"{screen_width}x{screen_height}",
-                            "mac_address": device_id,
-                            "serial_number": device_id
-                        }
-                        
-                        db.add_or_update_controller(
-                            device_id,
-                            device_ip,
-                            default_port,
-                            "Huidu",
-                            device_info
-                        )
+                        controller_info.display_resolution = display_resolution
                         
                         discovered.append(controller_info)
-                        logger.info(f"Found Huidu controller: {device_id} at {device_ip}:{default_port}")
-                        
-                        # Read programs and media in background thread
-                        threading.Thread(target=self._read_controller_data, args=(controller_info,), daemon=True).start()
-                    except Exception as e:
-                        logger.debug(f"Error processing device {device_id}: {e}")
+                        logger.debug(f"Using existing device info from DB for {device_id}")
+                    else:
+                        # New device - get properties and save to DB
+                        try:
+                            property_result = sdk.get_device_property([device_id])
+                            if property_result.get("message") != "ok":
+                                logger.debug(f"Failed to get properties for device {device_id}")
+                                continue
+                            
+                            data_array = property_result.get("data", [])
+                            if not data_array or len(data_array) == 0:
+                                logger.debug(f"No property data for device {device_id}")
+                                continue
+                            
+                            device_data = data_array[0].get("data", {})
+                            if not device_data:
+                                logger.debug(f"Empty property data for device {device_id}")
+                                continue
+                            
+                            import re
+                            ip_pattern = re.compile(r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$')
+                            
+                            device_ip = None
+                            
+                            if ip_pattern.match(device_id):
+                                device_ip = device_id
+                                logger.debug(f"Device ID is already an IP address: {device_ip}")
+                            
+                            if not device_ip or device_ip == "127.0.0.1":
+                                device_ip = device_data.get("eth.ip")
+                                if device_ip and ip_pattern.match(device_ip) and device_ip != "127.0.0.1":
+                                    logger.debug(f"Found IP from eth.ip: {device_ip}")
+                            
+                            if not device_ip or device_ip == "127.0.0.1":
+                                logger.warning(f"Could not determine real IP from device properties for device {device_id}, defaulting to 127.0.0.1")
+                                device_ip = "127.0.0.1"
+                            else:
+                                logger.info(f"Found device IP from eth.ip: {device_ip} for device {device_id}")
+                            
+                            device_name = device_data.get("name", f"Huidu_{device_id}")
+                            screen_width = device_data.get("screen.width", "64")
+                            screen_height = device_data.get("screen.height", "32")
+                            firmware_version = device_data.get("version.app", "")
+                            hardware_version = device_data.get("version.hardware", "")
+                            model = hardware_version or device_data.get("model", "Huidu")
+                            
+                            controller_info = ControllerInfo(device_ip, default_port, "huidu", device_name)
+                            controller_info.name = device_name
+                            controller_info.mac_address = device_id
+                            controller_info.firmware_version = firmware_version
+                            controller_info.model = model
+                            controller_info.display_resolution = f"{screen_width}x{screen_height}"
+                            
+                            device_info = {
+                                "name": device_name,
+                                "controller_id": device_id,
+                                "ip": device_ip,
+                                "port": default_port,
+                                "model": model,
+                                "version": firmware_version,
+                                "version.app": firmware_version,
+                                "version.hardware": hardware_version,
+                                "screen.width": screen_width,
+                                "screen.height": screen_height,
+                                "display_resolution": f"{screen_width}x{screen_height}",
+                                "mac_address": device_id,
+                                "serial_number": device_id
+                            }
+                            
+                            # Save new device to database
+                            db.add_or_update_controller(
+                                device_id,
+                                device_ip,
+                                default_port,
+                                "Huidu",
+                                device_info
+                            )
+                            
+                            discovered.append(controller_info)
+                            logger.info(f"Found new Huidu controller: {device_id} at {device_ip}:{default_port}")
+                        except Exception as e:
+                            logger.debug(f"Error processing new device {device_id}: {e}")
                 
                 if discovered:
                     logger.info(f"Huidu network discovery complete: Found {len(discovered)} controller(s)")
@@ -597,7 +611,7 @@ class ControllerDiscovery(QObject):
                     logger.info("Huidu network discovery complete: No controllers found")
             
             except Exception as e:
-                logger.debug(f"Error checking localhost for Huidu controllers: {e}")
+                logger.debug(f"Error checking 127.0.0.1 for Huidu controllers: {e}")
             
         except Exception as e:
             logger.error(f"Error discovering Huidu network controllers: {e}", exc_info=True)
@@ -605,7 +619,6 @@ class ControllerDiscovery(QObject):
         return discovered
     
     def _get_all_network_ranges(self) -> List[List[str]]:
-        """Get all network IP ranges from all active interfaces (returns list of lists, one per network)"""
         try:
             import platform
             all_ranges = []
@@ -748,15 +761,15 @@ class ControllerDiscovery(QObject):
                     
                     serial_params = f"{port_num}:9600"
                     try:
-                        if self._huidu_sdk.is_card_online(serial_params, 1):
-                            controller_info = ControllerInfo(serial_params, port_num, "huidu", f"Huidu_Serial_{port_name}")
+                        if self._huidu_sdk and self._huidu_sdk.is_card_online("127.0.0.1", 1):
+                            # Serial ports use 127.0.0.1 for API server communication
+                            # Store serial params as a custom attribute, use 127.0.0.1 for IP
+                            controller_info = ControllerInfo("127.0.0.1", 30080, "huidu", f"Huidu_Serial_{port_name}")
                             controller_info.name = f"Huidu_Serial_{port_name}"
-                            params = self._huidu_sdk.get_screen_params(serial_params, 1)
-                            if params:
-                                width = params.get("width", 0)
-                                height = params.get("height", 0)
-                                if width and height:
-                                    controller_info.display_resolution = f"{width}x{height}"
+                            # Store serial params for later use
+                            controller_info.serial_params = serial_params  # type: ignore
+                            # For serial devices, query via 127.0.0.1 API server
+                            # Don't call get_screen_params with serial params - it expects IP addresses
                             discovered.append(controller_info)
                             logger.info(f"Found Huidu controller (Serial/USB): {port_name}")
                             
@@ -953,16 +966,14 @@ class ControllerDiscovery(QObject):
         Supports multiple connection types:
         - Wi-Fi: Uses UDP broadcast (NovaStar)
         - Ethernet: Uses UDP broadcast (NovaStar)
-        - Huidu Localhost: Connects to API server on localhost:30080
-        - USB/Serial: Scans serial ports (Huidu only, requires pyserial)
+        - Huidu Network: Connects to API server on 127.0.0.1:30080
         - 3G/4G/5G Mobile: Uses IP range search for known mobile network ranges (NovaStar only)
         - Remote IPs: Can search specific IP addresses or ranges
         
         Discovery Process:
         1. NovaStar Wi-Fi/Ethernet (UDP broadcast on local network)
-        2. Huidu Localhost (API server on localhost:30080)
-        3. Huidu USB/Serial (Serial port scanning)
-        4. NovaStar Mobile Networks (3G/4G/5G IP ranges)
+        2. Huidu Network (API server on 127.0.0.1:30080)
+        3. NovaStar Mobile Networks (3G/4G/5G IP ranges)
         5. Specific IP addresses (if provided)
         
         Args:
@@ -981,7 +992,7 @@ class ControllerDiscovery(QObject):
             try:
                 logger.info("=" * 60)
                 logger.info("Starting comprehensive controller discovery")
-                logger.info("Connection types: Wi-Fi, Ethernet, USB/Serial, 3G/4G/5G")
+                logger.info("Connection types: Wi-Fi, Ethernet, Huidu Network, 3G/4G/5G")
                 logger.info("=" * 60)
                 
                 # Step 1: NovaStar Wi-Fi/Ethernet (UDP broadcast)
@@ -1004,9 +1015,9 @@ class ControllerDiscovery(QObject):
                         except Exception as e:
                             logger.debug(f"Error reading data from NovaStar controller {controller.ip}: {e}")
                 
-                # Step 2: Huidu Localhost and USB/Serial
+                # Step 2: Huidu network discovery (via API server)
                 if not self.stop_event.is_set():
-                    logger.info("Step 2: Scanning Huidu controllers (Localhost/USB/Serial)")
+                    logger.info("Step 2: Scanning Huidu controllers (via API server)")
                     try:
                         if self._init_huidu_sdk():
                             huidu_controllers = self._discover_huidu_controllers()
@@ -1018,10 +1029,6 @@ class ControllerDiscovery(QObject):
                                 if not existing:
                                     self.discovered_controllers.append(controller)
                                     self.controller_found.emit(controller)
-                                    try:
-                                        self._read_controller_data(controller)
-                                    except Exception as e:
-                                        logger.debug(f"Error reading data from Huidu controller {controller.ip}: {e}")
                         else:
                             logger.info("Huidu SDK not available - skipping Huidu discovery")
                     except Exception as e:

@@ -29,32 +29,11 @@ class ControllerService(QObject):
     def discover_controllers(self, timeout: int = 5, 
                             ip_range: Optional[List[str]] = None,
                             mobile_network_ranges: Optional[List[Dict[str, str]]] = None) -> List[ControllerInfo]:
-        """
-        Discover controllers on the network.
-        
-        Supports multiple connection types:
-        - Wi-Fi/Ethernet: Automatic local network discovery
-        - USB/Serial: Automatic serial port scanning (Huidu)
-        - 3G/4G/5G Mobile: Use mobile_network_ranges parameter
-        - Remote IPs: Use ip_range parameter for specific IPs
-        
-        Args:
-            timeout: Maximum time to wait for discovery (seconds)
-            ip_range: Optional list of specific IP addresses to search (for remote/mobile controllers)
-            mobile_network_ranges: Optional list of dicts with 'ipStart' and 'ipEnd' for mobile network IP ranges
-            
-        Returns:
-            List of discovered ControllerInfo objects
-        """
         try:
-            # Clear previous results
             self.discovered_controllers = []
             
-            # Start the scan with optional parameters
             self.discovery.start_scan(ip_range=ip_range, mobile_network_ranges=mobile_network_ranges)
             
-            # Wait for discovery to complete or timeout
-            # Use QEventLoop to wait for the signal without blocking the main thread
             loop = QEventLoop()
             timer = QTimer()
             timer.setSingleShot(True)
@@ -77,16 +56,11 @@ class ControllerService(QObject):
             timer.timeout.connect(on_timeout)
             self.discovery.discovery_finished.connect(on_finished)
             
-            # Set timeout
-            timer.start(timeout * 1000)  # Convert to milliseconds
+            timer.start(timeout * 1000)
             
-            # Wait for either completion or timeout
             loop.exec()
             
-            # Disconnect the temporary handler
             self.discovery.discovery_finished.disconnect(on_finished)
-            
-            # Get the discovered controllers
             self.discovered_controllers = self.discovery.get_discovered_controllers()
             event_bus.controller_discovered.emit(self.discovered_controllers)
             logger.info(f"Discovered {len(self.discovered_controllers)} controllers")
@@ -98,24 +72,13 @@ class ControllerService(QObject):
     
     def connect_to_controller(self, ip: str, port: int, 
                             controller_type: str, controller_info: Optional['ControllerInfo'] = None) -> bool:
-        """
-        Connect to a controller.
-        
-        Args:
-            ip: Controller IP address
-            port: Controller port
-            controller_type: 'novastar' or 'huidu'
-            controller_info: Optional ControllerInfo from discovery (contains SN, model, etc.)
-        """
         try:
             if self.current_controller:
                 self.disconnect()
             
             if controller_type.lower() == 'novastar':
                 self.current_controller = NovaStarController(ip, port)
-                # If we have discovery info with SN, use it
                 if controller_info and hasattr(controller_info, 'mac_address') and controller_info.mac_address:
-                    # For NovaStar, mac_address is actually the SN (serial number)
                     self.current_controller._device_sn = controller_info.mac_address
                     logger.info(f"Using discovered SN for NovaStar: {controller_info.mac_address}")
             elif controller_type.lower() == 'huidu':
@@ -130,7 +93,6 @@ class ControllerService(QObject):
                 
                 device_info = self.current_controller.get_device_info()
                 
-                # Read brightness from controller at startup
                 if hasattr(self.current_controller, 'get_brightness'):
                     try:
                         brightness = self.current_controller.get_brightness()
@@ -201,7 +163,6 @@ class ControllerService(QObject):
                 event_bus.controller_error.emit("Controller not connected")
                 return False
             
-            # Step 1: Save current working state as *.soo file
             from core.file_manager import FileManager
             from utils.app_data import get_app_data_dir
             from pathlib import Path
@@ -220,14 +181,12 @@ class ControllerService(QObject):
                     if file_manager.save_screen_to_file(current_screen, soo_file_path):
                         logger.info(f"Saved current state to {soo_file_path} before upload")
             
-            # Step 2: Convert *.soo format to SDK format
             program_dict = program.to_dict() if hasattr(program, 'to_dict') else program
             controller_type = "novastar" if isinstance(self.current_controller, NovaStarController) else "huidu"
             
             from core.program_converter import ProgramConverter
             sdk_program_dict = ProgramConverter.soo_to_sdk(program_dict, controller_type)
             
-            # Step 3: Upload to controller
             result = self.current_controller.upload_program(sdk_program_dict)
             
             if result:
@@ -289,7 +248,6 @@ class ControllerService(QObject):
                 self.get_connection_status() == ConnectionStatus.CONNECTED)
     
     def _import_controller_data_async(self):
-        """Import all controller data in background thread"""
         def import_data():
             try:
                 if not self.current_controller:
@@ -297,7 +255,6 @@ class ControllerService(QObject):
                 
                 logger.info("Starting full import from controller...")
                 
-                # Get screen_manager and program_manager from UI if available
                 screen_manager = None
                 program_manager = None
                 

@@ -12,18 +12,14 @@ logger = get_logger(__name__)
 
 
 class NTPSync:
-    """NTP time synchronization"""
-    
+
     NTP_SERVER = "it.pool.ntp.org"
     NTP_PORT = 123
     TIMEOUT = 3.0
     
     @staticmethod
     def has_internet_connectivity() -> bool:
-        """
-        Check if LAN has internet connectivity.
-        Returns True if internet is available, False otherwise.
-        """
+
         try:
             test_hosts = ["8.8.8.8", "1.1.1.1", "it.pool.ntp.org"]
             for host in test_hosts:
@@ -45,11 +41,7 @@ class NTPSync:
     
     @staticmethod
     def get_ntp_time(server: str = None) -> Optional[datetime]:
-        """
-        Get time from NTP server.
-        Only attempts NTP sync if internet connectivity is available.
-        Returns datetime object or None if failed.
-        """
+
         if not NTPSync.has_internet_connectivity():
             logger.warning("Skipping NTP sync - no internet connectivity detected")
             return None
@@ -91,11 +83,7 @@ class NTPSync:
     
     @staticmethod
     def sync_controller_time(controller, use_ntp: bool = False) -> bool:
-        """
-        Sync controller time with PC or NTP.
-        NTP sync only works if LAN has internet connectivity.
-        Returns True if successful.
-        """
+
         try:
             if use_ntp:
                 # Check internet connectivity before attempting NTP sync

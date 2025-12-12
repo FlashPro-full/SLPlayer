@@ -28,15 +28,14 @@ class NovaStarController(BaseController):
             import os
             sdk_root = get_app_data_dir() / "viplexcore"
             sdk_root.mkdir(parents=True, exist_ok=True)
-            # Use resolved absolute path with forward slashes to avoid "C" folder issue
+
             sdk_root_str = str(sdk_root.resolve()).replace('\\', '/')
             credentials = {
                 "company": "Starled Italia",
                 "phone": "+39 095 328 6309",
                 "email": "info@starled-italia.com"
             }
-            # Save current working directory and temporarily change to SDK root
-            # to prevent SDK from creating files in project directory
+
             original_cwd = os.getcwd()
             try:
                 os.chdir(str(sdk_root))
@@ -50,8 +49,7 @@ class NovaStarController(BaseController):
             else:
                 logger.warning(f"ViplexCore SDK init returned error code {result} (checkParamvalid warning may appear)")
                 logger.debug(f"SDK root: {sdk_root_str}, Credentials: {credentials}")
-                # Some SDK operations may still work despite init warning
-                # Mark as initialized to allow operations to proceed
+
                 self._initialized = True
                 logger.info("Continuing with SDK operations despite init warning")
                 return True
@@ -60,26 +58,15 @@ class NovaStarController(BaseController):
             return False
     
     def connect(self) -> bool:
-        """
-        Connect to NovaStar controller.
-        
-        Based on SDK demo code:
-        1. First search for the controller by IP to get its SN (serial number)
-        2. Then login using the SN, username, and password
-        3. SN is required for all subsequent operations
-        """
         if self.status == ConnectionStatus.CONNECTED:
             return True
         if not self._ensure_initialized():
             return False
         self.set_status(ConnectionStatus.CONNECTING)
         try:
-            # First, search for the controller by IP to get its SN
-            # Based on SDK: nvSearchAppointIpAsync searches specific IP and returns controller info including SN
             self.sdk.search_appoint_ip_async(self.ip_address, "search_ip")
             search_result = self.sdk.get_callback_result("search_ip", timeout=3.0)
             
-            # Extract SN from search result if available
             if search_result and search_result.get("code") == 0:
                 try:
                     data_str = search_result.get("data", "")
@@ -93,13 +80,10 @@ class NovaStarController(BaseController):
                 except:
                     pass
             
-            # If we don't have SN yet, try using IP as SN (some controllers may work this way)
             if not self._device_sn:
                 self._device_sn = self.ip_address
                 logger.debug(f"Using IP as SN: {self._device_sn}")
             
-            # Login using SN (required by SDK)
-            # Based on SDK demo: {"sn":"","username":"admin","password":"123456","rememberPwd":1,"loginType":0}
             login_params = {
                 "sn": self._device_sn,
                 "username": "admin",
@@ -111,7 +95,6 @@ class NovaStarController(BaseController):
             login_result = self.sdk.get_callback_result("login", timeout=5.0)
             
             if login_result and login_result.get("code") == 0:
-                # Login successful, get device info
                 info = self.get_device_info()
                 if info:
                     self.set_status(ConnectionStatus.CONNECTED)
@@ -143,9 +126,6 @@ class NovaStarController(BaseController):
         if not self._device_sn:
             controller_id = f"NS-{self.ip_address.replace('.', '-')}"
             self.device_info = {
-                "name": "NovaStar Controller",
-                "model": "Unknown",
-                "version": "3.6.3",
                 "ip": self.ip_address,
                 "controller_id": controller_id,
                 "controllerId": controller_id,
@@ -160,22 +140,18 @@ class NovaStarController(BaseController):
                 data = json.loads(result.get("data", "{}"))
                 controller_id = f"NS-{self.ip_address.replace('.', '-')}"
                 self.device_info = {
-                    "name": "NovaStar Controller",
-                    "model": data.get("model", "Unknown"),
-                    "version": "3.6.3",
                     "ip": self.ip_address,
                     "controller_id": controller_id,
                     "controllerId": controller_id,
                     "serial_number": self._device_sn
                 }
+                if data.get("model"):
+                    self.device_info["model"] = data.get("model")
                 return self.device_info
         except Exception as e:
             logger.warning(f"Could not get detailed device info: {e}")
         controller_id = f"NS-{self.ip_address.replace('.', '-')}"
         self.device_info = {
-            "name": "NovaStar Controller",
-            "model": "Unknown",
-            "version": "3.6.3",
             "ip": self.ip_address,
             "controller_id": controller_id
         }
@@ -557,14 +533,11 @@ class NovaStarController(BaseController):
                 return False
             
             if brightness_settings and brightness_settings.get("time_ranges"):
-                # Handle time-based brightness schedules if SDK supports it
                 time_ranges = brightness_settings.get("time_ranges", [])
                 for time_range in time_ranges:
-                    # Store time-based brightness settings (controller may handle automatically)
                     pass
             
             if brightness_settings and brightness_settings.get("sensor", {}).get("enabled"):
-                # Sensor-based brightness handled by controller automatically
                 pass
             
             brightness_params = {
@@ -592,7 +565,6 @@ class NovaStarController(BaseController):
         return None
     
     def set_power_schedule(self, schedule: Dict) -> bool:
-        """Set power schedule. Accepts schedule dict with daily schedules."""
         try:
             if not self._device_sn or not hasattr(self.sdk, 'set_timing_power_switch_status'):
                 return False
@@ -618,7 +590,6 @@ class NovaStarController(BaseController):
                         logger.warning(f"Failed to set schedule for {day}")
                 return True
             elif isinstance(schedule, dict):
-                # Handle single schedule or dict format
                 if "on_time" in schedule and "off_time" in schedule:
                     schedule_params = {
                         "sn": self._device_sn,

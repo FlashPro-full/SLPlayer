@@ -9,7 +9,6 @@ from typing import Optional, Tuple
 from PyQt5.QtWidgets import QApplication, QMessageBox
 
 from core.license_manager import LicenseManager
-from core.license_verifier import LicenseVerifier
 from utils.device_id import get_device_id
 from utils.logger import get_logger
 
@@ -21,7 +20,6 @@ class StartupService:
     
     def __init__(self):
         self.license_manager = LicenseManager()
-        self.verifier = LicenseVerifier()
         self.device_id = get_device_id()
     
     def verify_license_at_startup(self) -> Tuple[Optional[str], bool]:
@@ -40,12 +38,12 @@ class StartupService:
             if license_dir.exists():
                 for license_file_path in license_dir.glob("*.slp"):
                     try:
-                        license_data = self.verifier.parse_license_file(license_file_path)
+                        license_data = self.license_manager.verifier.parse_license_file(license_file_path)
                         if not license_data:
                             logger.warning(f"Could not parse license file: {license_file_path.name}")
                             continue
                         
-                        if not self.verifier.verify_signature(license_data['payload'], license_data['signature']):
+                        if not self.license_manager.verifier.verify_signature(license_data['payload'], license_data['signature']):
                             logger.warning(f"Invalid signature in license file: {license_file_path.name}")
                             invalid_licenses.append(license_file_path.stem)
                             continue

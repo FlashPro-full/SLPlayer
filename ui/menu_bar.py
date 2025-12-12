@@ -15,7 +15,6 @@ class MenuBar(QMenuBar):
     save_program_requested = pyqtSignal(str)
     exit_requested = pyqtSignal()
     
-    screen_settings_requested = pyqtSignal()
     sync_settings_requested = pyqtSignal()
     
     clear_program_requested = pyqtSignal()
@@ -112,10 +111,6 @@ class MenuBar(QMenuBar):
         setting_menu = self.addMenu(tr("menu.setting"))
         self.menus["setting"] = setting_menu
         
-        screen_action = QAction(tr("action.screen_setting"), self)
-        screen_action.triggered.connect(self.screen_settings_requested.emit)
-        setting_menu.addAction(screen_action)
-        self.actions["setting.screen"] = screen_action
         
         sync_action = QAction(tr("action.sync_setting"), self)
         sync_action.triggered.connect(self.sync_settings_requested.emit)
@@ -225,20 +220,7 @@ class MenuBar(QMenuBar):
         self.actions["help.about"] = about_action
     
     def on_display_settings(self):
-        try:
-            from ui.screen_settings_dialog import ScreenSettingsDialog
-            dlg = ScreenSettingsDialog(self)
-            if dlg.exec():
-                main_window = self.parent()
-                if main_window and hasattr(main_window, 'program_manager'):
-                    program = main_window.program_manager.current_program
-                    if program:
-                        rotate = int(dlg.rotate_combo.currentText() if dlg.rotate_combo.currentText().isdigit() else 0)
-                        if "screen" not in program.properties:
-                            program.properties["screen"] = {}
-                        program.properties["screen"]["rotate"] = rotate
-        except Exception as e:
-            logger.error(f"Error in on_display_settings: {e}", exc_info=True)
+        pass
     
     def set_language_checked(self, code: str):
         for c, act in self.lang_actions.items():

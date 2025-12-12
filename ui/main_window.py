@@ -124,7 +124,6 @@ class MainWindow(QtWidgets.QMainWindow):
         self.menu_bar.open_program_requested.connect(self._on_open_file_requested)
         self.menu_bar.new_program_requested.connect(self._on_new_program_from_menu)
         self.menu_bar.new_screen_requested.connect(self._on_new_screen_from_menu)
-        self.menu_bar.screen_settings_requested.connect(self._on_screen_settings_requested)
         self.menu_bar.sync_settings_requested.connect(self._on_sync_settings_requested)
         self.menu_bar.discover_controllers_requested.connect(self._on_discover_controllers_requested)
         self.menu_bar.login_requested.connect(self._on_login_requested)
@@ -539,8 +538,8 @@ class MainWindow(QtWidgets.QMainWindow):
             self.screen_list_panel.add_program_to_screen(screen_name)
     
     def _on_new_screen_from_menu(self):
-        self._pending_new_screen = True
-        self.open_screen_settings_dialog()
+        if hasattr(self, 'screen_list_panel'):
+            self.screen_list_panel.add_new_screen()
     
     def _on_new_program_from_toolbar(self):
         if hasattr(self, 'screen_list_panel'):
@@ -549,20 +548,14 @@ class MainWindow(QtWidgets.QMainWindow):
             self.screen_list_panel.add_program_to_screen(screen_name)
     
     def _on_new_screen_from_toolbar(self):
-        self._pending_new_screen = True
-        self.open_screen_settings_dialog()
+        if hasattr(self, 'screen_list_panel'):
+            self.screen_list_panel.add_new_screen()
 
     def open_screen_settings_on_startup(self):
-        self._pending_new_screen = True
-        self.open_screen_settings_dialog()
+        pass
     
     def _on_screen_settings_requested(self):
-        if not self.screen_manager or not self.screen_manager.current_screen:
-            from PyQt5.QtWidgets import QMessageBox
-            QMessageBox.warning(self, "No Screen Selected", "Please select a screen first.")
-            return
-        
-        self.open_screen_settings_dialog(load_current_screen=True)
+        pass
     
     def _startup_controller_discovery(self):
         """Automatically discover and connect to controllers on application startup"""
@@ -1027,68 +1020,16 @@ class MainWindow(QtWidgets.QMainWindow):
             QMessageBox.critical(self, "Sync Error", f"An error occurred during sync:\n{str(e)}")
     
     def open_screen_settings_dialog(self, load_current_screen: bool = False):
-        try:
-            from ui.screen_settings_dialog import ScreenSettingsDialog
-            from PyQt5.QtWidgets import QDialog
-            from core.screen_config import get_screen_config
-            
-            dialog = ScreenSettingsDialog(self)
-            
-            if load_current_screen and self.screen_manager and self.screen_manager.current_screen:
-                screen = self.screen_manager.current_screen
-                screen_config = get_screen_config()
-                
-                brand = screen_config.get("brand", "") if screen_config else ""
-                model = screen_config.get("model", "") if screen_config else ""
-                rotate = screen_config.get("rotate", 0) if screen_config else 0
-                
-                dialog.load_screen_parameters(
-                    brand=brand,
-                    model=model,
-                    width=screen.width,
-                    height=screen.height,
-                    rotate=rotate
-                )
-            
-            result = dialog.exec()
-            if result == QDialog.Accepted:
-                if load_current_screen and self.screen_manager and self.screen_manager.current_screen:
-                    screen = self.screen_manager.current_screen
-                    brand = dialog.selected_series()
-                    model = dialog.selected_model()
-                    width, height = dialog.selected_size()
-                    rotate = dialog.selected_rotate()
-                    
-                    screen.width = width
-                    screen.height = height
-                    screen.modified = datetime.now().isoformat()
-                    
-                    from core.screen_config import set_screen_config
-                    set_screen_config(brand, model, width, height, rotate, screen.name)
-                    
-                    if screen.file_path:
-                        self.file_manager.save_screen_to_file(screen, screen.file_path, self.properties_panel)
-                    
-                    if hasattr(self, 'screen_list_panel'):
-                        self.screen_list_panel.refresh_screens(debounce=False)
-                    if hasattr(self, 'content_widget'):
-                        self.content_widget.update()
-                    if hasattr(self, 'properties_panel'):
-                        self.properties_panel.set_screen(
-                            screen.name,
-                            screen.programs,
-                            self.program_manager,
-                            self.screen_manager
-                        )
-            else:
-                if self._pending_new_screen:
-                    self._pending_new_screen = False
-        except Exception as e:
-            logger.error(f"Error opening screen settings dialog: {e}", exc_info=True)
-            if self._pending_new_screen:
-                self._pending_new_screen = False       
+        pass
 
-    def closeEvent(self, event: QtGui.QCloseEvent):
+    def showEvent(self, event):
+        super().showEvent(event)
+        if hasattr(self, '_device_dialog') and self._device_dialog:
+            self._device_dialog.hide()
+            if hasattr(self._device_dialog, 'select_btn'):
+                self._device_dialog.select_btn.setEnabled(False)
+    
+    def closeEvent(self, event):
         try:
             if self.screen_manager and self.screen_manager.screens:
                 saved_count = self.file_manager.save_all_screens()
@@ -1101,6 +1042,11 @@ class MainWindow(QtWidgets.QMainWindow):
             _stop_api_server()
         except Exception as e:
             logger.error(f"Error stopping API server on close: {e}")
+        
+        if hasattr(self, '_device_dialog') and self._device_dialog:
+            if hasattr(self._device_dialog, 'select_btn'):
+                self._device_dialog.select_btn.setEnabled(True)
+            self._device_dialog.show()
         
         event.accept()
 

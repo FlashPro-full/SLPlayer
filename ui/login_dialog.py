@@ -54,72 +54,8 @@ class LicenseDialog(QDialog):
         self.init_ui()
         self.load_saved_email()
         
-        if controller_id is None:
-            QTimer.singleShot(100, self._auto_scan_and_connect)
-        elif controller_id:
-            self.check_license_status()
-    
-    def _auto_scan_and_connect(self):
-        if hasattr(self, 'controller_id_label'):
-            self.controller_id_label.setText("Scanning network...")
-            self.controller_id_label.setStyleSheet("font-weight: normal; color: #666; font-size: 11pt; padding: 8px; background-color: #FFF9C4; border: 1px solid #FBC02D; border-radius: 4px;")
-        
-        controller_id = self._discover_controller_id()
-        
         if controller_id:
-            self.controller_id = controller_id
-            if hasattr(self, 'controller_id_label'):
-                self.controller_id_label.setText(controller_id)
-                self.controller_id_label.setStyleSheet("font-weight: bold; color: #2196F3; font-size: 12pt; padding: 8px; background-color: #F5F5F5; border: 1px solid #CCC; border-radius: 4px;")
-            self._update_ui_for_controller()
             self.check_license_status()
-            if hasattr(self, 'refresh_btn'):
-                ToastManager.success(self, f"Connected to controller: {controller_id}", duration=2000)
-        else:
-            self.controller_id = None
-            if hasattr(self, 'controller_id_label'):
-                self.controller_id_label.setText("Not connected - No controller found on network")
-                self.controller_id_label.setStyleSheet("font-weight: normal; color: #666; font-size: 11pt; padding: 8px; background-color: #F5F5F5; border: 1px solid #CCC; border-radius: 4px; font-style: italic;")
-            self._update_ui_for_controller()
-    
-    def _discover_controller_id(self) -> Optional[str]:
-        try:
-            logger.info("Scanning network for controllers...")
-            
-            discovered = self.controller_service.discover_controllers(timeout=20)
-            
-            if discovered:
-                first_controller = discovered[0]
-                logger.info(f"Found controller: {first_controller.ip}:{first_controller.port} ({first_controller.controller_type})")
-                
-                success = self.controller_service.connect_to_controller(
-                    first_controller.ip,
-                    first_controller.port,
-                    first_controller.controller_type,
-                    first_controller
-                )
-                
-                if success and self.controller_service.current_controller:
-                    device_info = self.controller_service.get_device_info()
-                    if device_info:
-                        logger.info(f"Retrieved all controller information: {device_info}")
-                    
-                    controller_id = self.controller_service.current_controller.get_controller_id()
-                    if controller_id:
-                        logger.info(f"Retrieved controller ID: {controller_id}")
-                        return controller_id
-                    else:
-                        logger.warning("Connected to controller but could not get controller ID")
-                        self.controller_service.disconnect()
-                else:
-                    logger.warning(f"Failed to connect to discovered controller at {first_controller.ip}:{first_controller.port}")
-            else:
-                logger.info("No controllers found on network")
-                
-        except Exception as e:
-            logger.exception(f"Error discovering controller ID: {e}")
-        
-        return None
     
     def init_ui(self):
         layout = QVBoxLayout(self)
@@ -130,7 +66,7 @@ class LicenseDialog(QDialog):
         
 
         title_label = QLabel("License Activation")
-        title_label.setStyleSheet("font-size: 16pt; font-weight: bold; color: #333;")
+        title_label.setStyleSheet("font-size: 16pt; font-weight: bold; color: #FFFFFF;")
         layout.addWidget(title_label)
         
         layout.addSpacing(10)
@@ -148,7 +84,7 @@ class LicenseDialog(QDialog):
             device_layout.addWidget(device_label)
             
             device_id_label = QLabel(current_device_id)
-            device_id_label.setStyleSheet("font-weight: bold; color: #4CAF50; font-size: 11pt; padding: 8px; background-color: #F5F5F5; border: 1px solid #CCC; border-radius: 4px; font-family: monospace;")
+            device_id_label.setStyleSheet("font-weight: bold; color: #4CAF50; font-size: 11pt; padding: 8px; background-color: #3B3B3B; border: 1px solid #555555; border-radius: 4px; font-family: monospace;")
             device_layout.addWidget(device_id_label)
             
             layout.addLayout(device_layout)
@@ -164,27 +100,15 @@ class LicenseDialog(QDialog):
         controller_label = QLabel("Controller ID:")
         controller_layout.addWidget(controller_label)
         
-        # Add refresh button to rescan for controllers
-        refresh_layout = QHBoxLayout()
-        refresh_layout.setContentsMargins(0, 0, 0, 0)
-        
         if self.controller_id:
             controller_id_label = QLabel(self.controller_id)
-            controller_id_label.setStyleSheet("font-weight: bold; color: #2196F3; font-size: 12pt; padding: 8px; background-color: #F5F5F5; border: 1px solid #CCC; border-radius: 4px;")
+            controller_id_label.setStyleSheet("font-weight: bold; color: #4A90E2; font-size: 12pt; padding: 8px; background-color: #3B3B3B; border: 1px solid #555555; border-radius: 4px;")
         else:
             controller_id_label = QLabel("Not connected - No controller found on network")
-            controller_id_label.setStyleSheet("font-weight: normal; color: #666; font-size: 11pt; padding: 8px; background-color: #F5F5F5; border: 1px solid #CCC; border-radius: 4px; font-style: italic;")
+            controller_id_label.setStyleSheet("font-weight: normal; color: #888888; font-size: 11pt; padding: 8px; background-color: #3B3B3B; border: 1px solid #555555; border-radius: 4px; font-style: italic;")
         
-        refresh_layout.addWidget(controller_id_label)
-        
-        refresh_btn = QPushButton("Scan")
-        refresh_btn.setMaximumWidth(80)
-        refresh_btn.setToolTip("Scan network for connected controllers")
-        refresh_btn.clicked.connect(lambda: self._refresh_controller_id(controller_id_label))
-        refresh_layout.addWidget(refresh_btn)
-        
-        controller_layout.addLayout(refresh_layout)
-        self.controller_id_label = controller_id_label  # Store reference for refresh
+        controller_layout.addWidget(controller_id_label)
+        self.controller_id_label = controller_id_label
         layout.addLayout(controller_layout)
         layout.addSpacing(10)
         
@@ -214,7 +138,7 @@ class LicenseDialog(QDialog):
             
             self.activation_status = QLabel("")
             self.activation_status.setWordWrap(True)
-            self.activation_status.setStyleSheet("color: #666; font-size: 10pt;")
+            self.activation_status.setStyleSheet("color: #CCCCCC; font-size: 10pt;")
             self.activation_section.addWidget(self.activation_status)
             
 
@@ -232,7 +156,7 @@ class LicenseDialog(QDialog):
                 "3. Then return here to activate your license"
             )
             no_controller_info.setWordWrap(True)
-            no_controller_info.setStyleSheet("color: #666; font-size: 10pt; padding: 10px; background-color: #F5F5F5; border: 1px solid #CCC; border-radius: 4px;")
+            no_controller_info.setStyleSheet("color: #CCCCCC; font-size: 10pt; padding: 10px; background-color: #3B3B3B; border: 1px solid #555555; border-radius: 4px;")
             layout.addWidget(no_controller_info)
         
 
@@ -261,42 +185,48 @@ class LicenseDialog(QDialog):
 
         self.setStyleSheet("""
             QDialog {
-                background-color: #FFFFFF;
+                background-color: #2B2B2B;
+            }
+            QWidget {
+                background-color: #2B2B2B;
+                color: #FFFFFF;
             }
             QLabel {
-                color: #333;
+                color: #FFFFFF;
                 font-size: 11pt;
             }
             QLineEdit {
                 padding: 8px;
-                border: 1px solid #CCC;
+                border: 1px solid #555555;
                 border-radius: 4px;
                 font-size: 11pt;
+                background-color: #3B3B3B;
+                color: #FFFFFF;
             }
             QLineEdit:focus {
-                border: 2px solid #2196F3;
+                border: 2px solid #4A90E2;
             }
             QPushButton {
                 padding: 8px 20px;
                 border: none;
                 border-radius: 4px;
                 font-size: 11pt;
-                background-color: #2196F3;
-                color: white;
+                background-color: #4A90E2;
+                color: #FFFFFF;
             }
             QPushButton:hover {
-                background-color: #1976D2;
+                background-color: #5AA0F2;
             }
             QPushButton:pressed {
-                background-color: #1565C0;
+                background-color: #3A80D2;
             }
             QPushButton:disabled {
-                background-color: #CCC;
-                color: #666;
+                background-color: #555555;
+                color: #888888;
             }
             QCheckBox {
                 font-size: 10pt;
-                color: #666;
+                color: #FFFFFF;
             }
         """)
     
@@ -327,7 +257,7 @@ class LicenseDialog(QDialog):
             
             if license_manager.has_valid_license(self.controller_id):
                 self.activation_status.setText("✓ License already activated")
-                self.activation_status.setStyleSheet("color: green; font-size: 10pt; font-weight: bold;")
+                self.activation_status.setStyleSheet("color: #4CAF50; font-size: 10pt; font-weight: bold;")
                 self.activate_btn.setEnabled(False)
                 self.license_valid = True
                 
@@ -336,7 +266,7 @@ class LicenseDialog(QDialog):
             else:
 
                 self.activation_status.setText("License not activated. Enter your email and click 'Activate License' to activate online.")
-                self.activation_status.setStyleSheet("color: orange; font-size: 10pt;")
+                self.activation_status.setStyleSheet("color: #FF9800; font-size: 10pt;")
         except Exception as e:
             logger.warning(f"Error checking license status: {e}")
 
@@ -370,7 +300,7 @@ class LicenseDialog(QDialog):
         self.activate_btn.setEnabled(False)
         self.activation_loading.start()
         self.activation_status.setText("Activating license...")
-        self.activation_status.setStyleSheet("color: #666; font-size: 10pt;")
+        self.activation_status.setStyleSheet("color: #CCCCCC; font-size: 10pt;")
         
         try:
             from core.license_manager import LicenseManager
@@ -406,7 +336,7 @@ class LicenseDialog(QDialog):
 
                 if license_manager.verify_license_offline(self.controller_id, device_id):
                     self.activation_status.setText("✓ License activated successfully!")
-                    self.activation_status.setStyleSheet("color: green; font-size: 10pt; font-weight: bold;")
+                    self.activation_status.setStyleSheet("color: #4CAF50; font-size: 10pt; font-weight: bold;")
                     self.activate_btn.setEnabled(False)
                     self.license_valid = True
                     
@@ -421,7 +351,7 @@ class LicenseDialog(QDialog):
                 else:
 
                     self.activation_status.setText("✗ License verification failed")
-                    self.activation_status.setStyleSheet("color: red; font-size: 10pt;")
+                    self.activation_status.setStyleSheet("color: #F44336; font-size: 10pt;")
                     ToastManager.error(
                         self,
                         "License was activated but verification failed. Please contact support.",
@@ -431,7 +361,7 @@ class LicenseDialog(QDialog):
             except Exception as e:
                 logger.exception(f"Error verifying license after activation: {e}")
                 self.activation_status.setText("✗ License verification error")
-                self.activation_status.setStyleSheet("color: red; font-size: 10pt;")
+                self.activation_status.setStyleSheet("color: #F44336; font-size: 10pt;")
                 ToastManager.error(
                     self,
                     f"Error verifying license: {e}",
@@ -475,23 +405,23 @@ class LicenseDialog(QDialog):
             elif error_code == 'LICENSE_REVOKED':
                 ToastManager.error(self, "License is revoked. Contact Starled Italia.", duration=5000)
                 self.activation_status.setText("✗ License is revoked")
-                self.activation_status.setStyleSheet("color: red; font-size: 10pt;")
+                self.activation_status.setStyleSheet("color: #F44336; font-size: 10pt;")
             elif error_code == 'NETWORK_ERROR':
                 ToastManager.error(self, f"Network error: {error_message}", duration=5000)
                 self.activation_status.setText(f"✗ Network error: {error_message}")
-                self.activation_status.setStyleSheet("color: red; font-size: 10pt;")
+                self.activation_status.setStyleSheet("color: #F44336; font-size: 10pt;")
             elif error_code == 'SERVER_KEY_MISSING':
                 ToastManager.error(self, "Server configuration error. Contact support.", duration=5000)
                 self.activation_status.setText("✗ Server error")
-                self.activation_status.setStyleSheet("color: red; font-size: 10pt;")
+                self.activation_status.setStyleSheet("color: #F44336; font-size: 10pt;")
             elif error_code == 'MISSING_PARAMS':
                 ToastManager.warning(self, "Missing required information. Please check your input.", duration=4000)
                 self.activation_status.setText("✗ Missing information")
-                self.activation_status.setStyleSheet("color: red; font-size: 10pt;")
+                self.activation_status.setStyleSheet("color: #F44336; font-size: 10pt;")
             else:
                 ToastManager.error(self, f"Activation failed: {error_message}", duration=5000)
                 self.activation_status.setText(f"✗ Activation failed: {error_message}")
-                self.activation_status.setStyleSheet("color: red; font-size: 10pt;")
+                self.activation_status.setStyleSheet("color: #F44336; font-size: 10pt;")
     
     def request_transfer(self):
         email = self.email_input.text().strip()
@@ -543,35 +473,6 @@ class LicenseDialog(QDialog):
     def is_license_valid(self) -> bool:
         return self.license_valid
     
-    def _refresh_controller_id(self, label_widget: QLabel):
-        try:
-            if self.controller_service.current_controller:
-                self.controller_service.disconnect()
-            
-            label_widget.setText("Scanning network...")
-            label_widget.setStyleSheet("font-weight: normal; color: #666; font-size: 11pt; padding: 8px; background-color: #FFF9C4; border: 1px solid #FBC02D; border-radius: 4px;")
-            
-            controller_id = self._discover_controller_id()
-            
-            if controller_id:
-                self.controller_id = controller_id
-                label_widget.setText(controller_id)
-                label_widget.setStyleSheet("font-weight: bold; color: #2196F3; font-size: 12pt; padding: 8px; background-color: #F5F5F5; border: 1px solid #CCC; border-radius: 4px;")
-                self.check_license_status()
-                self._update_ui_for_controller()
-                ToastManager.success(self, f"Found controller: {controller_id}", duration=2000)
-            else:
-                self.controller_id = None
-                label_widget.setText("Not connected - No controller found on network")
-                label_widget.setStyleSheet("font-weight: normal; color: #666; font-size: 11pt; padding: 8px; background-color: #F5F5F5; border: 1px solid #CCC; border-radius: 4px; font-style: italic;")
-                self._update_ui_for_controller()
-                ToastManager.warning(self, "No controllers found on network", duration=3000)
-                
-        except Exception as e:
-            logger.exception(f"Error refreshing controller ID: {e}")
-            label_widget.setText("Error scanning network")
-            label_widget.setStyleSheet("font-weight: normal; color: #D32F2F; font-size: 11pt; padding: 8px; background-color: #FFEBEE; border: 1px solid #D32F2F; border-radius: 4px;")
-            ToastManager.error(self, f"Error scanning: {str(e)}", duration=3000)
     
     def _update_ui_for_controller(self):
         """Update UI elements based on whether controller is connected"""
@@ -585,7 +486,7 @@ class LicenseDialog(QDialog):
                     self.activate_btn.setEnabled(True)
                 if hasattr(self, 'activation_status'):
                     self.activation_status.setText("License not activated. Enter your email and click 'Activate License' to activate online.")
-                    self.activation_status.setStyleSheet("color: orange; font-size: 10pt;")
+                    self.activation_status.setStyleSheet("color: #FF9800; font-size: 10pt;")
 
 
 LoginDialog = LicenseDialog

@@ -63,16 +63,7 @@ class LicenseVerifier:
             self.public_key = None
     
     def verify_signature(self, payload: str, signature: str) -> bool:
-        """
-        Verify RSA signature of payload.
-        
-        Args:
-            payload: Base64-encoded JSON payload
-            signature: Base64-encoded RSA signature
-        
-        Returns:
-            True if signature is valid, False otherwise
-        """
+
         if not self.public_key:
             logger.error("Public key not loaded, cannot verify signature")
             return False

@@ -19,21 +19,76 @@ class HuiduController(BaseController):
     
     def __init__(self, ip_address: str, port: int = DEFAULT_PORT, sdk_key: str = "", sdk_secret: str = ""):
         super().__init__(ControllerType.HUIDU, ip_address, port)
-        host = f"http://{ip_address}:{port}"
+        # Validate IP address format - if it contains ":" and is not a valid IP, treat as serial params
+        # Serial devices should always use 127.0.0.1 for the API server
+        if ":" in ip_address and not ip_address.startswith(("http://", "https://")):
+            # Check if it's a valid IP:port format or serial params like "1:9600"
+            ip_clean = ip_address.split(':')[0].strip()
+            try:
+                ip_parts = ip_clean.split('.')
+                is_valid_ip = len(ip_parts) == 4 and all(0 <= int(p) <= 255 for p in ip_parts)
+            except (ValueError, AttributeError):
+                is_valid_ip = False
+            
+            if not is_valid_ip and ip_clean not in ("127.0.0.1", "127.0.0.1"):
+                # This is serial params, not an IP address - use 127.0.0.1
+                from controllers.huidu_sdk import DEFAULT_HOST
+                host = DEFAULT_HOST
+            else:
+                # Valid IP address, construct host normally
+                host = f"http://{ip_address}:{port}"
+        else:
+            # Normal IP address without port, construct host
+            host = f"http://{ip_address}:{port}"
         self.sdk = HuiduSDK(host, sdk_key, sdk_secret)
         self.network_manager = NetworkManager()
         self._screen_created = False
         self._current_program_id: Optional[int] = None
         self._current_area_id: Optional[int] = None
     
+    def _is_valid_ip(self, ip_str: str) -> bool:
+        """Check if a string is a valid IP address"""
+        if not ip_str:
+            return False
+        # Handle IP:port format
+        ip_clean = ip_str.split(':')[0].strip() if ":" in ip_str and not ip_str.startswith(("http://", "https://")) else ip_str.strip()
+        if ip_clean in ("127.0.0.1", "127.0.0.1"):
+            return True
+        try:
+            ip_parts = ip_clean.split('.')
+            return len(ip_parts) == 4 and all(0 <= int(p) <= 255 for p in ip_parts)
+        except (ValueError, AttributeError):
+            return False
+    
     def connect(self) -> bool:
         if self.status == ConnectionStatus.CONNECTED:
             return True
         self.set_status(ConnectionStatus.CONNECTING)
         try:
-            self.sdk.initialize(f"http://{self.ip_address}:{self.port}", self.sdk.sdk_key, self.sdk.sdk_secret)
+            # Use 127.0.0.1 for serial devices (API server handles communication)
+            # For network devices, use the actual IP address
+            if self.ip_address == "127.0.0.1" or self.ip_address == "127.0.0.1":
+                host = f"http://{self.ip_address}:{self.port}"
+            else:
+                # Check if ip_address is a valid IP (not serial params)
+                ip_clean = self.ip_address.split(':')[0].strip()
+                try:
+                    ip_parts = ip_clean.split('.')
+                    is_valid_ip = len(ip_parts) == 4 and all(0 <= int(p) <= 255 for p in ip_parts)
+                except (ValueError, AttributeError):
+                    is_valid_ip = False
+                
+                if is_valid_ip:
+                    host = f"http://{self.ip_address}:{self.port}"
+                else:
+                    # Serial params, use 127.0.0.1
+                    host = "http://127.0.0.1:30080"
             
-            is_online = self.sdk.is_card_online(self.ip_address)
+            self.sdk.initialize(host, self.sdk.sdk_key, self.sdk.sdk_secret)
+            
+            # For serial devices, check via 127.0.0.1
+            check_ip = "127.0.0.1" if self.ip_address == "127.0.0.1" or not self._is_valid_ip(self.ip_address) else self.ip_address
+            is_online = self.sdk.is_card_online(check_ip)
             if not is_online:
                 logger.warning(f"Huidu controller at {self.ip_address} is_card_online check failed, but attempting connection anyway")
             
@@ -79,9 +134,6 @@ class HuiduController(BaseController):
             controller_id = f"HD-{self.ip_address.replace('.', '-')}"
             
             device_info = {
-                "name": "Huidu Controller",
-                "model": "Gen6",
-                "version": "2.0.2",
                 "ip": self.ip_address,
                 "port": self.port,
                 "controller_id": controller_id,
@@ -103,8 +155,6 @@ class HuiduController(BaseController):
                     "card_type": params.get("card_type", 0),
                     "display_resolution": f"{params.get('width', 64)}x{params.get('height', 32)}"
                 })
-                if params.get("card_type"):
-                    device_info["model"] = f"Gen6-{params.get('card_type')}"
             
             device_property = self.sdk.get_device_property()
             if device_property.get("message") == "ok":
@@ -130,19 +180,12 @@ class HuiduController(BaseController):
             if network_config:
                 device_info["network"] = network_config
             
-            brightness = self.get_brightness()
-            if brightness is not None:
-                device_info["brightness"] = brightness
-            
             self.device_info = device_info
             return self.device_info
         except Exception as e:
             logger.error(f"Error getting device info: {e}", exc_info=True)
             controller_id = f"HD-{self.ip_address.replace('.', '-')}"
             self.device_info = {
-                "name": "Huidu Controller",
-                "model": "Gen6",
-                "version": "2.0.2",
                 "ip": self.ip_address,
                 "port": self.port,
                 "controller_id": controller_id
@@ -335,9 +378,18 @@ class HuiduController(BaseController):
     
     def get_brightness(self) -> Optional[int]:
         try:
-            device_info = self.get_device_info()
-            if device_info:
-                return device_info.get("brightness")
+            device_property = self.sdk.get_device_property()
+            if device_property.get("message") == "ok":
+                data_array = device_property.get("data", [])
+                if data_array and len(data_array) > 0:
+                    device_data = data_array[0].get("data", {})
+                    if device_data and "luminance" in device_data:
+                        try:
+                            return int(device_data["luminance"])
+                        except:
+                            pass
+            if self.device_info:
+                return self.device_info.get("brightness")
         except Exception:
             pass
         return None

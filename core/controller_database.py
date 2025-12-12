@@ -7,23 +7,17 @@ from utils.app_data import get_app_data_dir
 
 logger = get_logger(__name__)
 
-
 class ControllerDatabase:
 
     def __init__(self, db_path: Optional[Path] = None):
         if db_path is None:
-            # Prefer saving controllers.db in the application root (same level folder),
-            # fall back to AppData if not writable.
             try:
-                app_root = Path(__file__).resolve().parents[1]  # project root
+                app_root = Path(__file__).resolve().parents[1]
                 preferred = app_root / "controllers.db"
-                # Ensure we can create the file or its directory
                 app_root.mkdir(parents=True, exist_ok=True)
-                # Try touching the file to verify write permission
                 preferred.touch(exist_ok=True)
                 db_path = preferred
             except Exception:
-                # Fallback to user AppData
                 db_path = get_app_data_dir() / "controllers.db"
         
         self.db_path = db_path
@@ -35,7 +29,6 @@ class ControllerDatabase:
             conn = sqlite3.connect(str(self.db_path))
             cursor = conn.cursor()
             
-            # Create controllers table
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS controllers (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -77,21 +70,6 @@ class ControllerDatabase:
                 WHERE status IS NULL OR status = ''
             """)
 
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS controller_models (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    brand TEXT NOT NULL,                 -- e.g., 'NovaStar', 'Huidu'
-                    model TEXT NOT NULL,                 -- e.g., 'HD-C15', 'T6'
-                    suggested_range TEXT,
-                    max_width INTEGER,
-                    max_height INTEGER,
-                    storage_capacity TEXT,
-                    gray_scale TEXT,
-                    communication_interface TEXT,
-                    other TEXT,
-                    UNIQUE(brand, model)
-                )
-            """)
 
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS screen_parameters (
@@ -128,8 +106,6 @@ class ControllerDatabase:
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_last_connected ON controllers(last_connected)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_is_active ON controllers(is_active)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_status ON controllers(status)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_models_brand ON controller_models(brand)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_models_brand_model ON controller_models(brand, model)")
             
             conn.commit()
             conn.close()
@@ -237,10 +213,8 @@ class ControllerDatabase:
     
     def add_controller_from_license(self, controller_id: str, license_data: Optional[Dict] = None) -> bool:
         try:
-            # Check if controller already exists
             existing = self.get_controller(controller_id)
             if existing:
-                # Update status if needed
                 if existing.get('status') != 'license_only':
                     conn = sqlite3.connect(str(self.db_path))
                     cursor = conn.cursor()
@@ -268,20 +242,8 @@ class ControllerDatabase:
                 ctrl_id_upper = controller_id.upper()
                 if 'HD-' in ctrl_id_upper or 'HUIDU' in ctrl_id_upper:
                     controller_type = 'Huidu'
-                    for m in ['HD-M30', 'HD-C15', 'HD-C16', 'HD-C20', 'HD-C30', 'HD-M50', 'HD-M60', 'HD-A10', 'HD-A20']:
-                        if m in ctrl_id_upper:
-                            model = m
-                            break
-                    if not model:
-                        model = 'HD-C15'
                 elif 'NOVASTAR' in ctrl_id_upper or 'T' in ctrl_id_upper or 'MCTRL' in ctrl_id_upper:
                     controller_type = 'NovaStar'
-                    for m in ['T3', 'T6', 'T8', 'TB3', 'MCTRL300', 'MCTRL600', 'MCTRL660', 'MCTRL4K']:
-                        if m in ctrl_id_upper:
-                            model = m
-                            break
-                    if not model:
-                        model = 'T3'
             
             if not device_name:
                 device_name = model or controller_id
@@ -441,81 +403,20 @@ class ControllerDatabase:
                 "by_type": {}
             }
 
-    def upsert_controller_model(self, brand: str, model: str, specs: Dict[str, Any]) -> bool:
-        try:
-            conn = sqlite3.connect(str(self.db_path))
-            cursor = conn.cursor()
-            cursor.execute("""
-                INSERT INTO controller_models
-                    (brand, model, suggested_range, max_width, max_height, storage_capacity, gray_scale, communication_interface, other)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(brand, model) DO UPDATE SET
-                    suggested_range=excluded.suggested_range,
-                    max_width=excluded.max_width,
-                    max_height=excluded.max_height,
-                    storage_capacity=excluded.storage_capacity,
-                    gray_scale=excluded.gray_scale,
-                    communication_interface=excluded.communication_interface,
-                    other=excluded.other
-            """, (
-                brand, model,
-                specs.get("range"), specs.get("max_w"), specs.get("max_h"),
-                specs.get("storage"), specs.get("gray"), specs.get("iface"), specs.get("other")
-            ))
-            conn.commit()
-            conn.close()
-            return True
-        except Exception as e:
-            logger.exception(f"Error upserting controller model: {e}")
-            return False
 
-    def get_models_by_brand(self, brand: str) -> List[Dict[str, Any]]:
-        try:
-            conn = sqlite3.connect(str(self.db_path))
-            conn.row_factory = sqlite3.Row
-            cursor = conn.cursor()
-            cursor.execute("SELECT * FROM controller_models WHERE brand = ? ORDER BY model", (brand,))
-            rows = cursor.fetchall()
-            conn.close()
-            return [dict(r) for r in rows]
-        except Exception as e:
-            logger.exception(f"Error getting models by brand: {e}")
-            return []
-
-    def get_model_spec(self, brand: str, model: str) -> Optional[Dict[str, Any]]:
-        try:
-            conn = sqlite3.connect(str(self.db_path))
-            conn.row_factory = sqlite3.Row
-            cursor = conn.cursor()
-            cursor.execute("SELECT * FROM controller_models WHERE brand = ? AND model = ?", (brand, model))
-            row = cursor.fetchone()
-            conn.close()
-            return dict(row) if row else None
-        except Exception as e:
-            logger.exception(f"Error getting model spec: {e}")
-            return None
-
-    def seed_models_if_empty(self, seeds: Dict[str, Dict[str, Any]]) -> None:
-        try:
-            conn = sqlite3.connect(str(self.db_path))
-            cursor = conn.cursor()
-            cursor.execute("SELECT COUNT(*) FROM controller_models")
-            count = cursor.fetchone()[0] or 0
-            conn.close()
-            if count > 0:
-                return
-            for (brand, model), specs in seeds.items():
-                self.upsert_controller_model(brand, model, specs)
-            logger.info("Seeded controller_models table with default entries")
-        except Exception as e:
-            logger.exception(f"Error seeding controller models: {e}")
-
-    # -------- Screen parameters (user selections) --------
     def save_screen_parameters(self, params: Dict[str, Any]) -> bool:
         try:
             conn = sqlite3.connect(str(self.db_path))
             cursor = conn.cursor()
             now = datetime.now().isoformat()
+            width_val = params.get("width")
+            height_val = params.get("height")
+            rotate_val = params.get("rotate")
+            
+            width = int(width_val) if width_val is not None and isinstance(width_val, (int, str)) else None
+            height = int(height_val) if height_val is not None and isinstance(height_val, (int, str)) else None
+            rotate = int(rotate_val) if rotate_val is not None and isinstance(rotate_val, (int, str)) else None
+            
             cursor.execute("""
                 INSERT INTO screen_parameters (created_at, brand, model, width, height, rotate, controller_id)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -523,9 +424,9 @@ class ControllerDatabase:
                 now,
                 params.get("brand"),
                 params.get("model"),
-                int(params.get("width")) if params.get("width") is not None else None,
-                int(params.get("height")) if params.get("height") is not None else None,
-                int(params.get("rotate")) if params.get("rotate") is not None else None,
+                width,
+                height,
+                rotate,
                 params.get("controller_id"),
             ))
             conn.commit()
@@ -536,7 +437,6 @@ class ControllerDatabase:
             return False
     
     def save_controller_settings(self, controller_id: str, settings: Dict, screen_name: Optional[str] = None) -> bool:
-        """Save time/power/brightness settings for a specific controller/screen"""
         try:
             import json
             conn = sqlite3.connect(str(self.db_path))
@@ -581,7 +481,6 @@ class ControllerDatabase:
             return False
     
     def get_controller_settings(self, controller_id: str, screen_name: Optional[str] = None) -> Optional[Dict]:
-        """Get time/power/brightness settings for a specific controller/screen"""
         try:
             import json
             conn = sqlite3.connect(str(self.db_path))

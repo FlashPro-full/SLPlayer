@@ -143,7 +143,6 @@ class HttpApi:
         return response_string
 
     def _post(self, url: str, body: str, timeout_ms: int = 0) -> str:
-        print(json.dumps(body, indent=2))
         response_string = None
         err_string = None
 
@@ -176,7 +175,6 @@ class HttpApi:
         return response_string
 
     def _get(self, url: str) -> str:
-        print(json.dumps(url, indent=2))
         response_string = None
         err_string = None
 

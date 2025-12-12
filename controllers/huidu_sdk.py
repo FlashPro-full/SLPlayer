@@ -11,30 +11,24 @@ logger = get_logger(__name__)
 
 _api_server_process = None
 
-# Try multiple possible SDK paths (similar to NovaStar SDK path resolution)
 def _get_sdk_path():
-    """Get Huidu SDK path, checking multiple possible locations"""
-    # Get base path (works for both script and executable)
     if getattr(sys, 'frozen', False):
         base_path = Path(sys.executable).parent
     else:
         base_path = Path(__file__).parent.parent
     
     possible_paths = [
-        Path(__file__).parent.parent / "cn.huidu.device.sdk-master" / "python",  # Relative to source
-        base_path / "cn.huidu.device.sdk-master" / "python",  # Relative to base
-        base_path / "publish",  # Publish folder (deployment) - contains huidu_sdk/sdk
-        base_path / "_internal" / "publish",  # _internal folder (PyInstaller onedir mode)
+        Path(__file__).parent.parent / "cn.huidu.device.sdk-master" / "python",
+        base_path / "cn.huidu.device.sdk-master" / "python",
+        base_path / "publish",
+        base_path / "_internal" / "publish",
     ]
     
     for sdk_path in possible_paths:
-        # Check if sdk folder exists directly or in huidu_sdk subfolder (publish folder structure)
         if sdk_path.exists():
             if (sdk_path / "sdk").exists():
                 return sdk_path
             elif (sdk_path / "huidu_sdk").exists() and (sdk_path / "huidu_sdk" / "sdk").exists():
-                # For publish folder structure: publish/huidu_sdk/sdk
-                # Return publish/huidu_sdk so imports work as "from sdk.Device import Device"
                 return sdk_path / "huidu_sdk"
     
     return None
@@ -93,10 +87,9 @@ except Exception as e:
 
 DEFAULT_SDK_KEY = "a718fbe8aaa8aeef"
 DEFAULT_SDK_SECRET = "8fd529ef3f88986d40e6ef8d4d7f2d0c"
-DEFAULT_HOST = "http://localhost:30080"
+DEFAULT_HOST = "http://127.0.0.1:30080"
 
 def _get_api_server_path() -> Optional[Path]:
-    """Get path to the API server executable"""
     if getattr(sys, 'frozen', False):
         base_path = Path(sys.executable).parent
     else:
@@ -114,7 +107,6 @@ def _get_api_server_path() -> Optional[Path]:
     return None
 
 def _is_port_open(host: str, port: int, timeout: float = 1.0) -> bool:
-    """Check if a port is open on a host"""
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.settimeout(timeout)
@@ -125,7 +117,6 @@ def _is_port_open(host: str, port: int, timeout: float = 1.0) -> bool:
         return False
 
 def _start_api_server() -> bool:
-    """Start the Huidu API server executable"""
     global _api_server_process
     
     if _api_server_process is not None:
@@ -150,8 +141,8 @@ def _start_api_server() -> bool:
         
         max_retries = 10
         for i in range(max_retries):
-            if _is_port_open("localhost", 30080, timeout=0.5):
-                logger.info("API server is ready on localhost:30080")
+            if _is_port_open("127.0.0.1", 30080, timeout=0.5):
+                logger.info("API server is ready on 127.0.0.1:30080")
                 return True
             time.sleep(0.5)
         
@@ -163,37 +154,63 @@ def _start_api_server() -> bool:
         return False
 
 def _stop_api_server() -> bool:
-    """Stop the Huidu API server executable"""
     global _api_server_process
     
-    if _api_server_process is None:
-        return True
-    
     try:
-        if _api_server_process.poll() is None:
-            logger.info("Stopping API server...")
-            _api_server_process.terminate()
-            
+        if _api_server_process is not None:
             try:
-                _api_server_process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                logger.warning("API server did not terminate, forcing kill...")
-                _api_server_process.kill()
-                _api_server_process.wait()
+                if _api_server_process.poll() is None:
+                    logger.info("Stopping tracked API server...")
+                    _api_server_process.terminate()
+                    
+                    try:
+                        _api_server_process.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        logger.warning("API server did not terminate, forcing kill...")
+                        _api_server_process.kill()
+                        _api_server_process.wait()
+            except Exception as e:
+                logger.warning(f"Error stopping tracked API server: {e}")
             
-            logger.info("API server stopped")
+            _api_server_process = None
         
-        _api_server_process = None
+        logger.info("Stopping all cn.huidu.device.api.exe processes...")
+        if os.name == 'nt':
+            try:
+                result = subprocess.run(
+                    ['taskkill', '/F', '/IM', 'cn.huidu.device.api.exe'],
+                    capture_output=True,
+                    text=True,
+                    timeout=10
+                )
+                if result.returncode == 0:
+                    logger.info("All API server processes stopped")
+                elif "not found" in result.stdout.lower() or "not found" in result.stderr.lower():
+                    logger.debug("No API server processes found")
+                else:
+                    logger.warning(f"Error stopping API server processes: {result.stderr}")
+            except subprocess.TimeoutExpired:
+                logger.warning("Timeout stopping API server processes")
+            except Exception as e:
+                logger.error(f"Error stopping API server processes: {e}")
+        else:
+            try:
+                result = subprocess.run(
+                    ['pkill', '-f', 'cn.huidu.device.api'],
+                    capture_output=True,
+                    text=True,
+                    timeout=10
+                )
+                if result.returncode == 0:
+                    logger.info("All API server processes stopped")
+                else:
+                    logger.debug("No API server processes found")
+            except Exception as e:
+                logger.error(f"Error stopping API server processes: {e}")
+        
         return True
     except Exception as e:
-        logger.error(f"Error stopping API server: {e}")
-        try:
-            if _api_server_process and _api_server_process.poll() is None:
-                _api_server_process.kill()
-                _api_server_process.wait()
-        except Exception:
-            pass
-        _api_server_process = None
+        logger.error(f"Error in _stop_api_server: {e}")
         return False
 
 class HuiduSDK:
@@ -205,7 +222,6 @@ class HuiduSDK:
         
         if not host:
             host = DEFAULT_HOST
-            _start_api_server()
         
         self.host = host
         self.sdk_key = sdk_key or DEFAULT_SDK_KEY
@@ -226,7 +242,7 @@ class HuiduSDK:
             if not host.endswith("/"):
                 host = host.rstrip("/")
             
-            if "localhost" in host or "127.0.0.1" in host:
+            if "127.0.0.1" in host or "127.0.0.1" in host:
                 _start_api_server()
             
             Config.init_sdk(host, sdk_key, sdk_secret)
@@ -251,6 +267,9 @@ class HuiduSDK:
         
         ip_clean = ip_address.split(':')[0].strip()
         
+        if ip_clean in ("127.0.0.1", "127.0.0.1"):
+            return True
+        
         try:
             ip_parts = ip_clean.split('.')
             if len(ip_parts) != 4 or not all(0 <= int(p) <= 255 for p in ip_parts):
@@ -261,7 +280,7 @@ class HuiduSDK:
             return False
         
         if not self._initialized:
-            if ip_clean == "localhost" or ip_clean == "127.0.0.1":
+            if ip_clean == "127.0.0.1" or ip_clean == "127.0.0.1":
                 host = DEFAULT_HOST
             else:
                 host = f"http://{ip_clean}:{self.DEFAULT_PORT}"
@@ -295,19 +314,30 @@ class HuiduSDK:
     def get_screen_params(self, ip_address: str = None, send_type: int = 0) -> Optional[Dict]:
         if not self._initialized:
             if ip_address:
-                # Validate and clean IP address
+                # Check if it's a valid IP address (not serial params like "1:9600")
                 ip_clean = ip_address.split(':')[0].strip()
+                
+                # Validate IP format (4 parts, each 0-255)
+                is_valid_ip = False
                 try:
                     ip_parts = ip_clean.split('.')
-                    if len(ip_parts) != 4 or not all(0 <= int(p) <= 255 for p in ip_parts):
-                        return None
+                    if len(ip_parts) == 4 and all(0 <= int(p) <= 255 for p in ip_parts):
+                        is_valid_ip = True
                 except (ValueError, AttributeError):
-                    return None
+                    pass
                 
-                if ip_clean == "localhost" or ip_clean == "127.0.0.1":
+                # Handle 127.0.0.1
+                if ip_clean == "127.0.0.1" or ip_clean == "127.0.0.1":
                     host = DEFAULT_HOST
-                else:
+                    is_valid_ip = True
+                
+                # Only proceed if we have a valid IP address
+                if not is_valid_ip:
+                    # Invalid IP format (likely serial params), use 127.0.0.1 instead
+                    host = DEFAULT_HOST
+                elif is_valid_ip and ip_clean != "127.0.0.1" and ip_clean != "127.0.0.1":
                     host = f"http://{ip_clean}:{self.DEFAULT_PORT}"
+                
                 try:
                     self.initialize(host, self.sdk_key, self.sdk_secret)
                 except:
@@ -334,7 +364,7 @@ class HuiduSDK:
                             break
             
             if not device_ids:
-                device_ids = []
+                return None
             
             result = self.device.get_device_property(device_ids)
             if result.get("message") == "ok":
@@ -509,7 +539,6 @@ class HuiduSDK:
             return {"message": "error", "data": "SDK not initialized"}
         
         if not device_ids:
-            device_ids = []
             result = self.device.get_online_devices()
             if result.get("message") == "ok":
                 devices = result.get("data", [])
@@ -519,7 +548,7 @@ class HuiduSDK:
             return {"message": "error", "data": "No device IDs available"}
         
         try:
-            return self.device.get_device_property(device_ids)
+            return self.device.get_device_property(device_ids, None)
         except Exception as e:
             logger.error(f"Error getting device property: {e}")
             return {"message": "error", "data": str(e)}

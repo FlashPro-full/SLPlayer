@@ -38,9 +38,10 @@ class DeviceSelectionDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Select Device")
-        self.setModal(True)
-        self.setMinimumWidth(700)
+        self.setModal(False)
+        self.setMinimumWidth(900)
         self.setMinimumHeight(500)
+        self.setWindowFlags(Qt.Window | Qt.WindowMinimizeButtonHint | Qt.WindowCloseButtonHint)
         
         self.controller_service = ControllerService()
         self.device_db = get_controller_database()
@@ -49,10 +50,15 @@ class DeviceSelectionDialog(QDialog):
         self.selected_port = None
         self.selected_type = None
         self.discovery_thread = None
+        self.is_admin = False
+        self.main_window = None
         
         self.init_ui()
         self.load_devices_from_database()
         self.start_discovery()
+    
+    def set_main_window(self, main_window):
+        self.main_window = main_window
     
     def init_ui(self):
         layout = QVBoxLayout(self)
@@ -81,9 +87,9 @@ class DeviceSelectionDialog(QDialog):
         layout.addWidget(status_group)
         
         self.table = QTableWidget()
-        self.table.setColumnCount(4)
+        self.table.setColumnCount(5)
         self.table.setHorizontalHeaderLabels([
-            "Name (Device ID)", "IP Address", "Resolution", "Connection Status"
+            "Name (Device ID)", "IP Address", "Resolution", "Connection Status", "License"
         ])
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.table.setSelectionBehavior(QTableWidget.SelectRows)
@@ -101,9 +107,11 @@ class DeviceSelectionDialog(QDialog):
         
         button_layout.addStretch()
         
-        cancel_btn = QPushButton("Cancel")
-        cancel_btn.clicked.connect(self.reject)
-        button_layout.addWidget(cancel_btn)
+        
+        self.license_btn = QPushButton("License")
+        self.license_btn.setEnabled(False)
+        self.license_btn.clicked.connect(self.on_license)
+        button_layout.addWidget(self.license_btn)
         
         self.select_btn = QPushButton("Edit")
         self.select_btn.setDefault(True)
@@ -294,6 +302,15 @@ class DeviceSelectionDialog(QDialog):
                 status_item.setForeground(QColor(255, 0, 0))
             self.table.setItem(row, 3, status_item)
             
+            from core.license_manager import LicenseManager
+            license_manager = LicenseManager()
+            license_file = license_manager.get_license_file_path(device_id)
+            license_status = "Yes" if license_file.exists() else "No"
+            license_item = QTableWidgetItem(license_status)
+            if license_status == "Yes":
+                license_item.setForeground(QColor(0, 255, 0))
+            self.table.setItem(row, 4, license_item)
+            
             self.table.setRowHeight(row, 30)
     
     def check_connection_statuses(self):
@@ -326,6 +343,15 @@ class DeviceSelectionDialog(QDialog):
                         if resolution:
                             resolution_item = QTableWidgetItem(str(resolution))
                             self.table.setItem(row, 2, resolution_item)
+                        
+                        from core.license_manager import LicenseManager
+                        license_manager = LicenseManager()
+                        license_file = license_manager.get_license_file_path(device_id)
+                        license_status = "Yes" if license_file.exists() else "No"
+                        license_item = QTableWidgetItem(license_status)
+                        if license_status == "Yes":
+                            license_item.setForeground(QColor(0, 255, 0))
+                        self.table.setItem(row, 4, license_item)
                     else:
                         if status_item:
                             status_item.setText("Off")
@@ -340,38 +366,27 @@ class DeviceSelectionDialog(QDialog):
     def on_selection_changed(self):
         selected_rows = self.table.selectionModel().selectedRows()
         if selected_rows:
-            row = selected_rows[0].row()
-            status_item = self.table.item(row, 3)
-            if status_item and status_item.text().lower() == "on":
-                self.select_btn.setEnabled(True)
-            else:
-                self.select_btn.setEnabled(False)
+            self.select_btn.setEnabled(True)
+            self.license_btn.setEnabled(True)
         else:
             self.select_btn.setEnabled(False)
+            self.license_btn.setEnabled(False)
     
     def on_table_double_click(self, index):
-        row = index.row()
-        status_item = self.table.item(row, 3)
-        if status_item and status_item.text().lower() == "on":
-            self.on_select()
+        self.on_select()
     
     def on_select(self):
         selected_rows = self.table.selectionModel().selectedRows()
         if not selected_rows:
-            QMessageBox.warning(self, "No Selection", "Please select a device with connection status 'On'.")
+            QMessageBox.warning(self, "No Selection", "Please select a device.")
             return
         
         row = selected_rows[0].row()
         
         device_id_item = self.table.item(row, 0)
         ip_item = self.table.item(row, 1)
-        status_item = self.table.item(row, 3)
         
-        if not device_id_item or not ip_item or not status_item:
-            return
-        
-        if status_item.text().lower() != "on":
-            QMessageBox.warning(self, "Device Not Connected", "Please select a device with connection status 'On' to edit programs.")
+        if not device_id_item or not ip_item:
             return
         
         device_id = device_id_item.text()
@@ -385,15 +400,56 @@ class DeviceSelectionDialog(QDialog):
             port = 30080
             controller_type = 'huidu'
         
+        from core.license_manager import LicenseManager
+        license_manager = LicenseManager()
+        license_file = license_manager.get_license_file_path(device_id)
+        
+        if not license_file.exists() and not self.is_admin:
+            from ui.password_dialog import PasswordDialog
+            password_dialog = PasswordDialog(parent=self)
+            result = password_dialog.exec()
+            
+            if result and password_dialog.is_password_correct():
+                self.is_admin = True
+            else:
+                return
+        
         self.selected_controller_id = device_id
         self.selected_ip = ip
         self.selected_port = port
         self.selected_type = controller_type
         
         self.device_selected.emit(ip, port, controller_type, device_id)
-        self.accept()
+    
+    def on_license(self):
+        selected_rows = self.table.selectionModel().selectedRows()
+        if not selected_rows:
+            QMessageBox.warning(self, "No Selection", "Please select a device.")
+            return
+        
+        row = selected_rows[0].row()
+        
+        device_id_item = self.table.item(row, 0)
+        
+        if not device_id_item:
+            return
+        
+        device_id = device_id_item.text()
+        
+        controller_info = self.device_db.get_controller(device_id)
+        if not controller_info:
+            QMessageBox.warning(self, "Device Not Found", "Device information not found in database.")
+            return
+        
+        from ui.login_dialog import LoginDialog
+        login_dialog = LoginDialog(controller_id=device_id, parent=self)
+        result = login_dialog.exec()
+        
+        if result:
+            self.load_devices_from_database()
     
     def closeEvent(self, event):
+        from PyQt5.QtWidgets import QApplication
         try:
             if self.discovery_thread:
                 try:
@@ -406,5 +462,6 @@ class DeviceSelectionDialog(QDialog):
                     pass
         except Exception:
             pass
+        QApplication.quit()
         event.accept()
 
