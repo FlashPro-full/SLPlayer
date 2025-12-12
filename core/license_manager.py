@@ -287,6 +287,11 @@ class LicenseManager:
                 f.write("-----END SLPLAYER LICENSE-----\n")
             
             logger.info(f"License file saved: {license_file}")
+            
+            from core.controller_database import get_controller_database
+            db = get_controller_database()
+            db.update_license_info(controller_id)
+            
             return True
         except Exception as e:
             logger.exception(f"Error saving license file: {e}")

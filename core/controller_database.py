@@ -11,14 +11,18 @@ class ControllerDatabase:
 
     def __init__(self, db_path: Optional[Path] = None):
         if db_path is None:
-            try:
-                app_root = Path(__file__).resolve().parents[1]
-                preferred = app_root / "controllers.db"
-                app_root.mkdir(parents=True, exist_ok=True)
-                preferred.touch(exist_ok=True)
-                db_path = preferred
-            except Exception:
+            import sys
+            if getattr(sys, 'frozen', False):
                 db_path = get_app_data_dir() / "controllers.db"
+            else:
+                try:
+                    app_root = Path(__file__).resolve().parents[1]
+                    preferred = app_root / "controllers.db"
+                    app_root.mkdir(parents=True, exist_ok=True)
+                    preferred.touch(exist_ok=True)
+                    db_path = preferred
+                except Exception:
+                    db_path = get_app_data_dir() / "controllers.db"
         
         self.db_path = db_path
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -49,6 +53,8 @@ class ControllerDatabase:
                     last_disconnected TEXT,
                     is_active INTEGER DEFAULT 1,
                     status TEXT DEFAULT 'disconnected',
+                    has_license INTEGER DEFAULT 0,
+                    license_file_name TEXT,
                     notes TEXT
                 )
             """)
@@ -56,6 +62,18 @@ class ControllerDatabase:
             try:
                 cursor.execute("ALTER TABLE controllers ADD COLUMN status TEXT DEFAULT 'disconnected'")
                 logger.info("Added status column to controllers table")
+            except sqlite3.OperationalError:
+                pass
+            
+            try:
+                cursor.execute("ALTER TABLE controllers ADD COLUMN has_license INTEGER DEFAULT 0")
+                logger.info("Added has_license column to controllers table")
+            except sqlite3.OperationalError:
+                pass
+            
+            try:
+                cursor.execute("ALTER TABLE controllers ADD COLUMN license_file_name TEXT")
+                logger.info("Added license_file_name column to controllers table")
             except sqlite3.OperationalError:
                 pass
             
@@ -116,6 +134,12 @@ class ControllerDatabase:
     def add_or_update_controller(self, controller_id: str, ip_address: str, port: int,
                                  controller_type: str, device_info: Optional[Dict] = None) -> bool:
         try:
+            from core.license_manager import LicenseManager
+            license_manager = LicenseManager()
+            license_file = license_manager.get_license_file_path(controller_id)
+            has_license = 1 if license_file.exists() else 0
+            license_file_name = license_file.name if license_file.exists() else None
+            
             conn = sqlite3.connect(str(self.db_path))
             cursor = conn.cursor()
             
@@ -150,30 +174,31 @@ class ControllerDatabase:
                         last_connected = ?,
                         connection_count = ?,
                         is_active = 1,
-                        status = 'connected'
+                        has_license = ?,
+                        license_file_name = ?
                     WHERE controller_id = ?
                 """, (
                     ip_address, port, controller_type, device_name,
                     mac_address, firmware_version, display_resolution,
-                    model, serial_number, now, new_count, controller_id
+                    model, serial_number, now, new_count, has_license,
+                    license_file_name, controller_id
                 ))
                 
                 logger.info(f"Updated controller {controller_id} in database (connection #{new_count})")
             else:
-                status = 'connected' if ip_address != '0.0.0.0' else 'license_only'
-                
                 cursor.execute("""
                     INSERT INTO controllers (
                         controller_id, ip_address, port, controller_type,
                         device_name, mac_address, firmware_version,
                         display_resolution, model, serial_number,
-                        first_connected, last_connected, connection_count, is_active, status
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, ?)
+                        first_connected, last_connected, connection_count, is_active,
+                        has_license, license_file_name
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, ?, ?)
                 """, (
                     controller_id, ip_address, port, controller_type,
                     device_name, mac_address, firmware_version,
                     display_resolution, model, serial_number,
-                    now, now, status
+                    now, now, has_license, license_file_name
                 ))
                 
                 logger.info(f"Added new controller {controller_id} to database")
@@ -194,10 +219,6 @@ class ControllerDatabase:
             cursor.execute("""
                 UPDATE controllers 
                 SET is_active = 0,
-                    status = CASE
-                        WHEN ip_address = '0.0.0.0' THEN 'license_only'
-                        ELSE 'disconnected'
-                    END,
                     last_disconnected = ?
                 WHERE controller_id = ?
             """, (now, controller_id))
@@ -209,6 +230,32 @@ class ControllerDatabase:
             return True
         except Exception as e:
             logger.exception(f"Error marking controller as disconnected: {e}")
+            return False
+    
+    def update_license_info(self, controller_id: str) -> bool:
+        try:
+            from core.license_manager import LicenseManager
+            license_manager = LicenseManager()
+            license_file = license_manager.get_license_file_path(controller_id)
+            has_license = 1 if license_file.exists() else 0
+            license_file_name = license_file.name if license_file.exists() else None
+            
+            conn = sqlite3.connect(str(self.db_path))
+            cursor = conn.cursor()
+            
+            cursor.execute("""
+                UPDATE controllers 
+                SET has_license = ?,
+                    license_file_name = ?
+                WHERE controller_id = ?
+            """, (has_license, license_file_name, controller_id))
+            
+            conn.commit()
+            conn.close()
+            
+            return True
+        except Exception as e:
+            logger.exception(f"Error updating license info for controller {controller_id}: {e}")
             return False
     
     def add_controller_from_license(self, controller_id: str, license_data: Optional[Dict] = None) -> bool:
@@ -252,16 +299,22 @@ class ControllerDatabase:
             conn = sqlite3.connect(str(self.db_path))
             cursor = conn.cursor()
             
+            from core.license_manager import LicenseManager
+            license_manager = LicenseManager()
+            license_file = license_manager.get_license_file_path(controller_id)
+            has_license = 1 if license_file.exists() else 0
+            license_file_name = license_file.name if license_file.exists() else None
+            
             cursor.execute("""
                 INSERT INTO controllers (
                     controller_id, ip_address, port, controller_type,
                     device_name, model,
                     first_connected, last_connected, connection_count, 
-                    is_active, status
-                ) VALUES (?, '0.0.0.0', 0, ?, ?, ?, ?, ?, 0, 0, 'license_only')
+                    is_active, has_license, license_file_name
+                ) VALUES (?, '0.0.0.0', 0, ?, ?, ?, ?, 0, 0, ?, ?)
             """, (
                 controller_id, controller_type, device_name, model,
-                now, now
+                now, now, has_license, license_file_name
             ))
             
             conn.commit()

@@ -162,11 +162,11 @@ class NetworkConfigDialog(QDialog):
             if hasattr(self.controller, 'get_network_config'):
                 config = self.controller.get_network_config()
                 if config:
-                    # Handle different field name variations
-                    ip = config.get("ip") or config.get("ip_address") or config.get("ipAddress") or ""
-                    subnet = config.get("subnet") or config.get("subnet_mask") or config.get("subnetMask") or config.get("netmask") or ""
-                    gateway = config.get("gateway") or config.get("gateway_ip") or config.get("gatewayIp") or ""
-                    dhcp = config.get("dhcp") or config.get("dhcp_enabled") or False
+                    ip = config.get("eth.ip") or config.get("ip") or config.get("ip_address") or config.get("ipAddress") or ""
+                    subnet = config.get("eth.netmask") or config.get("subnet") or config.get("subnet_mask") or config.get("subnetMask") or config.get("netmask") or ""
+                    gateway = config.get("eth.gateway") or config.get("gateway") or config.get("gateway_ip") or config.get("gatewayIp") or ""
+                    dhcp_str = config.get("eth.dhcp") or config.get("dhcp") or config.get("dhcp_enabled") or ""
+                    dhcp = dhcp_str == "true" or dhcp_str == True if dhcp_str else False
                     
                     self.ip_address_edit.setText(ip)
                     self.subnet_mask_edit.setText(subnet)
@@ -178,9 +178,10 @@ class NetworkConfigDialog(QDialog):
             if hasattr(self.controller, 'get_wifi_config'):
                 wifi_config = self.controller.get_wifi_config()
                 if wifi_config:
-                    self.enable_wifi_check.setChecked(wifi_config.get("enabled", False))
-                    self.ssid_edit.setText(wifi_config.get("ssid", ""))
-                    # Note: Password is typically not returned for security reasons
+                    enabled = wifi_config.get("wifi.enabled") == "true" or wifi_config.get("wifi.enabled") == True if wifi_config.get("wifi.enabled") else wifi_config.get("enabled", False)
+                    ssid = wifi_config.get("wifi.ap.ssid") or wifi_config.get("wifi.ssid") or wifi_config.get("ssid", "")
+                    self.enable_wifi_check.setChecked(enabled)
+                    self.ssid_edit.setText(ssid)
             else:
                 logger.debug("Controller does not support Wi-Fi configuration")
             

@@ -1,20 +1,22 @@
 from PyQt5 import QtWidgets, QtGui, QtCore
 from PyQt5.QtCore import QSize, Qt, QUrl, QTimer
+from PyQt5.QtWidgets import QWidget
 from PyQt5.QtMultimedia import QMediaContent, QMediaPlayer
+from PyQt5.QtMultimedia import QMediaPlayer as QMP
 from PyQt5.QtMultimediaWidgets import QVideoWidget
 try:
     from PyQt5.QtWebEngineWidgets import QWebEngineView
     WEBENGINE_AVAILABLE = True
 except ImportError:
     WEBENGINE_AVAILABLE = False
-    QWebEngineView = None
-from typing import Optional, Dict
+    QWebEngineView = None # type: ignore
+from typing import Optional, Dict, TYPE_CHECKING, Any
 from core.screen_config import get_screen_config
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-if False:
+if TYPE_CHECKING:
     from core.screen_manager import ScreenManager
 
 
@@ -88,7 +90,7 @@ class ContentWidget(QtWidgets.QWidget):
         default_width = min(1920, screen_width)
         default_height = min(1080, screen_height)
         
-        element = {
+        element: Dict[str, Any] = {
             "id": element_id,
             "type": content_type,
             "name": default_name,
@@ -108,15 +110,17 @@ class ContentWidget(QtWidgets.QWidget):
             "file_path": ""
         }
         
+        properties: Dict[str, Any] = element.get("properties", {})
+        
         if content_type == "video":
-            element["properties"]["video_list"] = []
-            element["properties"]["frame"] = {
+            properties["video_list"] = []
+            properties["frame"] = {
                 "enabled": False,
                 "border": "---",
                 "effect": "---",
                 "speed": "---"
             }
-            element["properties"]["video_shot"] = {
+            properties["video_shot"] = {
                 "enabled": False,
                 "width": default_width,
                 "height": default_height,
@@ -124,8 +128,8 @@ class ContentWidget(QtWidgets.QWidget):
                 "end_time": "00:00:30"
             }
         elif content_type == "photo":
-            element["properties"]["photo_list"] = []
-            element["properties"]["animation"] = {
+            properties["photo_list"] = []
+            properties["animation"] = {
                 "entrance": "Random",
                 "exit": "Random",
                 "entrance_speed": "1 fast",
@@ -133,7 +137,7 @@ class ContentWidget(QtWidgets.QWidget):
                 "hold_time": 0.0
             }
         elif content_type == "text":
-            element["properties"]["text"] = {
+            properties["text"] = {
                 "content": "",
                 "format": {
                     "font_family": "MS Shell Dlg 2",
@@ -276,10 +280,10 @@ class ContentWidget(QtWidgets.QWidget):
         self._is_playing = playing
         for player in self._video_players.values():
             if playing:
-                if player.state() != QMediaPlayer.PlayingState:
+                if player.state() != QMediaPlayer.PlayingState:  # type: ignore
                     player.play()
             else:
-                if player.state() == QMediaPlayer.PlayingState:
+                if player.state() == QMediaPlayer.PlayingState:  # type: ignore
                     player.pause()
         
         if playing:
@@ -294,7 +298,7 @@ class ContentWidget(QtWidgets.QWidget):
     
     def _handle_video_error(self, element_id: str, error):
         try:
-            if error != QMediaPlayer.NoError:
+            if error != QMediaPlayer.NoError:  # type: ignore
                 logger.debug(f"Video player error for {element_id}: {error}")
         except Exception:
             pass
@@ -312,9 +316,9 @@ class ContentWidget(QtWidgets.QWidget):
             return
         
         try:
-            player = QMediaPlayer(None, QMediaPlayer.VideoSurface)
+            player = QMediaPlayer(None, QMediaPlayer.VideoSurface)  # type: ignore
             video_widget = QVideoWidget(self)
-            video_widget.setAttribute(Qt.WA_OpaquePaintEvent, False)
+            video_widget.setAttribute(Qt.WA_OpaquePaintEvent, False)  # type: ignore
             video_widget.setAutoFillBackground(False)
             video_widget.setStyleSheet("background-color: transparent;")
             video_widget.hide()
@@ -350,7 +354,7 @@ class ContentWidget(QtWidgets.QWidget):
                     if video_url.isLocalFile():
                         video_path = video_url.toLocalFile()
                         try:
-                            import cv2
+                            import cv2 #type: ignore
                             video_file = cv2.VideoCapture(video_path)
                             if video_file.isOpened():
                                 actual_width = int(video_file.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -391,7 +395,7 @@ class ContentWidget(QtWidgets.QWidget):
             
             if self._is_playing and element_id in self._video_players:
                 player = self._video_players[element_id]
-                if player.state() != QMediaPlayer.PlayingState:
+                if player.state() != QMediaPlayer.PlayingState:  # type: ignore
                     player.play()
     
     def _cleanup_video_players(self):
@@ -2991,7 +2995,6 @@ class ContentWidget(QtWidgets.QWidget):
         painter.end()
 
     def _on_property_changed(self, property_name: str, value):
-        """Handle property changes from properties panel"""
         self.update()
     
     def _update_clocks(self):

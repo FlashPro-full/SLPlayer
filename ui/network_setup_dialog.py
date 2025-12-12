@@ -24,7 +24,7 @@ class NetworkSetupDialog(QDialog):
         layout.setContentsMargins(20, 20, 20, 20)
         
         title = QLabel("Welcome to SLPlayer")
-        title.setStyleSheet("font-size: 18px; font-weight: bold; margin-bottom: 10px;")
+        title.setStyleSheet("font-size: 18px; font-weight: bold; margin-bottom: 10px; color: #FFFFFF;")
         layout.addWidget(title)
         
         instructions = QTextEdit()
@@ -38,7 +38,7 @@ class NetworkSetupDialog(QDialog):
 4. Click "Continue" to proceed to the main application.<br><br>
 <i>You can discover and connect to controllers from the Control menu after starting the application.</i>
         """)
-        instructions.setStyleSheet("background-color: #F5F5F5; border: 1px solid #CCCCCC; padding: 10px;")
+        instructions.setStyleSheet("background-color: #3B3B3B; border: 1px solid #555555; padding: 10px; color: #FFFFFF;")
         layout.addWidget(instructions)
         
         button_layout = QHBoxLayout()
@@ -50,6 +50,40 @@ class NetworkSetupDialog(QDialog):
         button_layout.addWidget(continue_btn)
         
         layout.addLayout(button_layout)
+        
+        self.setStyleSheet("""
+            QDialog {
+                background-color: #2B2B2B;
+            }
+            QWidget {
+                background-color: #2B2B2B;
+                color: #FFFFFF;
+            }
+            QLabel {
+                color: #FFFFFF;
+            }
+            QTextEdit {
+                background-color: #3B3B3B;
+                border: 1px solid #555555;
+                border-radius: 4px;
+                color: #FFFFFF;
+                padding: 10px;
+            }
+            QPushButton {
+                padding: 8px 20px;
+                border: none;
+                border-radius: 4px;
+                font-size: 11pt;
+                background-color: #4A90E2;
+                color: #FFFFFF;
+            }
+            QPushButton:hover {
+                background-color: #5AA0F2;
+            }
+            QPushButton:pressed {
+                background-color: #3A80D2;
+            }
+        """)
     
     def exec_(self):
         return super().exec_()

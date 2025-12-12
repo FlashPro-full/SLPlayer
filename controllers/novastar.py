@@ -508,7 +508,7 @@ class NovaStarController(BaseController):
             }
             self.sdk.set_time_async(time_params, "set_time")
             result = self.sdk.get_callback_result("set_time", timeout=3.0)
-            return result and result.get("code") == 0
+            return bool(result and isinstance(result, dict) and result.get("code") == 0)
         except Exception as e:
             logger.error(f"Error setting time: {e}")
             return False
@@ -546,7 +546,7 @@ class NovaStarController(BaseController):
             }
             self.sdk.set_brightness_async(brightness_params, "set_brightness")
             result = self.sdk.get_callback_result("set_brightness", timeout=3.0)
-            return result and result.get("code") == 0
+            return bool(result and isinstance(result, dict) and result.get("code") == 0)
         except Exception as e:
             logger.error(f"Error setting brightness: {e}")
             return False
@@ -599,7 +599,7 @@ class NovaStarController(BaseController):
                     }
                     self.sdk.set_timing_power_switch_status(schedule_params, "set_power_schedule")
                     result = self.sdk.get_callback_result("set_power_schedule", timeout=3.0)
-                    return result and result.get("code") == 0
+                    return bool(result and isinstance(result, dict) and result.get("code") == 0)
             return False
         except Exception as e:
             logger.error(f"Error setting power schedule: {e}")
@@ -633,7 +633,7 @@ class NovaStarController(BaseController):
             }
             self.sdk.set_network_config_async(network_params, "set_network")
             result = self.sdk.get_callback_result("set_network", timeout=3.0)
-            return result and result.get("code") == 0
+            return bool(result and isinstance(result, dict) and result.get("code") == 0)
         except Exception as e:
             logger.error(f"Error setting network config: {e}")
             return False
@@ -666,7 +666,9 @@ class NovaStarController(BaseController):
             }
             self.sdk.set_wifi_config_async(wifi_params, "set_wifi")
             result = self.sdk.get_callback_result("set_wifi", timeout=3.0)
-            return result and result.get("code") == 0
+            if result and isinstance(result, dict):
+                return result.get("code") == 0
+            return False
         except Exception as e:
             logger.error(f"Error setting wifi config: {e}")
             return False
@@ -678,7 +680,9 @@ class NovaStarController(BaseController):
             reboot_params = {"sn": self._device_sn}
             self.sdk.reboot_async(reboot_params, "reboot")
             result = self.sdk.get_callback_result("reboot", timeout=3.0)
-            return result and result.get("code") == 0
+            if result and isinstance(result, dict):
+                return result.get("code") == 0
+            return False
         except Exception as e:
             logger.error(f"Error rebooting controller: {e}")
             return False
@@ -693,7 +697,9 @@ class NovaStarController(BaseController):
             }
             self.sdk.delete_program_async(delete_params, "delete_program")
             result = self.sdk.get_callback_result("delete_program", timeout=3.0)
-            return result and result.get("code") == 0
+            if result and isinstance(result, dict):
+                return result.get("code") == 0
+            return False
         except Exception as e:
             logger.error(f"Error deleting program: {e}")
             return False

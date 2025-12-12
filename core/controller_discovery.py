@@ -1,6 +1,3 @@
-"""
-Controller auto-discovery module for finding LED display controllers on the network
-"""
 import socket
 import threading
 import time
@@ -11,17 +8,14 @@ from PyQt5.QtCore import QObject, pyqtSignal
 from utils.logger import get_logger
 from utils.app_data import get_app_data_dir
 
-
 logger = get_logger(__name__)
 
-
 class ControllerInfo:
-    """Information about a discovered controller"""
-    
+
     def __init__(self, ip: str, port: int, controller_type: str = "unknown", name: str = ""):
         self.ip = ip
         self.port = port
-        self.controller_type = controller_type  # "novastar", "huidu", "unknown"
+        self.controller_type = controller_type
         self.name = name or f"{controller_type}_{ip}"
         self.mac_address = ""
         self.firmware_version = ""
@@ -35,7 +29,6 @@ class ControllerInfo:
         self.media_files: List[str] = []
     
     def to_dict(self) -> Dict:
-        """Convert to dictionary"""
         return {
             "ip": self.ip,
             "port": self.port,
@@ -54,7 +47,6 @@ class ControllerInfo:
     
     @classmethod
     def from_dict(cls, data: Dict) -> 'ControllerInfo':
-        """Create from dictionary"""
         info = cls(data.get("ip", ""), data.get("port", 5200), 
                   data.get("controller_type", "unknown"), data.get("name", ""))
         info.mac_address = data.get("mac_address", "")
@@ -112,8 +104,7 @@ class ControllerDiscovery(QObject):
                 "phone": "+39 095 328 6309",
                 "email": "info@starled-italia.com"
             }
-            # Save current working directory and temporarily change to SDK root
-            # to prevent SDK from creating files in project directory
+
             original_cwd = os.getcwd()
             try:
                 os.chdir(str(sdk_root))
@@ -128,7 +119,6 @@ class ControllerDiscovery(QObject):
                 logger.warning(f"NovaStar SDK init returned error code {result} (checkParamvalid warning may appear - this is often non-fatal)")
                 logger.info(f"SDK root: {sdk_root_str}")
                 logger.debug(f"Credentials: {credentials}")
-                # Mark as initialized anyway - search can often work even if init shows warning
                 self._novastar_initialized = True
                 logger.info("Attempting NovaStar discovery (search may work despite init warning)")
                 return True
@@ -141,7 +131,9 @@ class ControllerDiscovery(QObject):
         try:
             from controllers.huidu_sdk import HuiduSDK, DEFAULT_HOST
             if self._huidu_sdk is None:
-                    self._huidu_sdk = HuiduSDK(DEFAULT_HOST)
+                self._huidu_sdk = HuiduSDK(DEFAULT_HOST)
+                if not self._huidu_sdk._initialized:
+                    self._huidu_sdk.initialize(DEFAULT_HOST)
             return True
         except Exception as e:
             logger.warning(f"Could not initialize Huidu SDK: {e}. Huidu discovery will be skipped.")
@@ -153,14 +145,13 @@ class ControllerDiscovery(QObject):
             logger.warning("NovaStar SDK initialization failed - skipping NovaStar discovery")
             return discovered
         
-        # Verify SDK is actually ready
         if not self._novastar_sdk or not self._novastar_sdk.dll:
             logger.error("NovaStar: SDK object or DLL is None - cannot perform search")
             return discovered
         
         try:
             all_terminals = []
-            seen_terminals = set()  # Track by sn+ip to avoid duplicates
+            seen_terminals = set()
             callback_lock = threading.Lock()
             callback_received = threading.Event()
             
@@ -199,7 +190,6 @@ class ControllerDiscovery(QObject):
                     except Exception as e:
                         logger.debug(f"Error parsing NovaStar callback data: {e}")
                 elif code == 65535:
-                    # Timeout - no controllers found in 4 seconds
                     logger.info("NovaStar search timeout - no controllers found on network")
                     callback_received.set()
                 else:
@@ -210,20 +200,16 @@ class ControllerDiscovery(QObject):
             from ctypes import WINFUNCTYPE
             ExportViplexCallback = WINFUNCTYPE(None, ctypes.c_uint16, ctypes.c_char_p)
             cb = ExportViplexCallback(search_callback)
-            # Keep callback reference to prevent garbage collection
             self._callback_refs.append(cb)
             
             logger.info("NovaStar: Starting UDP broadcast search (nvSearchTerminalAsync)")
-            # Clear any previous callback results
             callback_received.clear()
             all_terminals.clear()
             
-            # Verify SDK is initialized
             if not self._novastar_sdk or not self._novastar_sdk.dll:
                 logger.error("NovaStar: SDK not properly initialized")
                 return discovered
             
-            # Call the SDK search function - use W version for Unicode support
             try:
                 logger.debug(f"NovaStar: Calling nvSearchTerminalAsyncW with callback {cb}")
                 self._novastar_sdk.dll.nvSearchTerminalAsyncW(cb)
@@ -232,17 +218,13 @@ class ControllerDiscovery(QObject):
                 logger.error(f"NovaStar: Failed to call search function: {e}", exc_info=True)
                 return discovered
             
-            # Wait for callback or timeout (SDK timeout is 4 seconds, wait 4.5 to be safe)
-            # The callback can be called multiple times (once per controller found)
-            if not callback_received.wait(timeout=4.5):
-                logger.warning("NovaStar: Search timeout - no callback received within 4.5 seconds")
+            if not callback_received.wait(timeout=1.5):
+                logger.warning("NovaStar: Search timeout - no callback received within 1.5 seconds")
             
-            # Give a small additional time for any late callbacks
             time.sleep(0.5)
             
             logger.info(f"NovaStar: Search completed. Found {len(all_terminals)} terminal(s) in callback data")
             
-            # Process all discovered terminals
             for terminal in all_terminals:
                 try:
                     sn = terminal.get("sn", "")
@@ -253,7 +235,6 @@ class ControllerDiscovery(QObject):
                     if not ip:
                         continue
                     
-                    # Avoid duplicates
                     terminal_key = f"{sn}_{ip}"
                     if terminal_key in seen_terminals:
                         continue
@@ -283,7 +264,6 @@ class ControllerDiscovery(QObject):
                     discovered.append(controller_info)
                     logger.info(f"Found NovaStar controller: {ip}:{port} ({name}) - SN: {sn}")
                     
-                    # Read programs and media in background thread
                     threading.Thread(target=self._read_controller_data, args=(controller_info,), daemon=True).start()
                 except Exception as e:
                     logger.debug(f"Error processing NovaStar terminal: {e}")
@@ -298,7 +278,6 @@ class ControllerDiscovery(QObject):
         return discovered
     
     def _discover_novastar_mobile_ranges(self, ranges: List[Dict[str, str]]) -> List[ControllerInfo]:
-        """Discover NovaStar controllers in mobile network IP ranges (3G/4G/5G)"""
         discovered: List[ControllerInfo] = []
         if not self._init_novastar_sdk():
             return discovered
@@ -373,7 +352,6 @@ class ControllerDiscovery(QObject):
         return discovered
     
     def _discover_novastar_specific_ips(self, ip_list: List[str]) -> List[ControllerInfo]:
-        """Discover NovaStar controllers at specific IP addresses"""
         discovered: List[ControllerInfo] = []
         if not self._init_novastar_sdk():
             return discovered
@@ -441,10 +419,8 @@ class ControllerDiscovery(QObject):
     def _discover_huidu_controllers(self) -> List[ControllerInfo]:
         discovered: List[ControllerInfo] = []
         
-        # Only use network discovery (via API server)
         network_discovered = self._discover_huidu_network()
         discovered.extend(network_discovered)
-        
         return discovered
     
     def _discover_huidu_network(self) -> List[ControllerInfo]:
@@ -473,62 +449,109 @@ class ControllerDiscovery(QObject):
             if "127.0.0.1" in str(DEFAULT_HOST):
                 max_wait = 10.0
                 waited = 0.0
-                while not _is_port_open("127.0.0.1", 30080, timeout=0.5) and waited < max_wait:
+                while not _is_port_open("127.0.0.1", 30080, timeout=0.5) and waited < max_wait and not self.stop_event.is_set():
                     time.sleep(0.5)
                     waited += 0.5
                 if waited >= max_wait:
                     logger.warning("API server not ready after waiting, continuing anyway")
             
+            if self.stop_event.is_set():
+                return discovered
+            
+            if not sdk._initialized:
+                try:
+                    sdk.initialize(sdk.host, sdk.sdk_key, sdk.sdk_secret)
+                except Exception as e:
+                    logger.error(f"Failed to initialize SDK: {e}")
+                    return discovered
+            
+            if not sdk.device:
+                logger.error("SDK device not available")
+                return discovered
+            
+            db = get_controller_database()
+            
+            db_controllers = db.get_all_controllers(active_only=False)
+            db_device_ids = {ctrl.get("controller_id"): ctrl for ctrl in db_controllers if ctrl.get("controller_type") == "Huidu"}
+            logger.debug(f"Loaded {len(db_device_ids)} Huidu devices from local database")
+            
+            if self.stop_event.is_set():
+                return discovered
+            
             try:
-                # Step 1: Get online devices
                 result = sdk.device.get_online_devices()
                 if result.get("message") != "ok":
                     logger.debug("No online devices found")
                     return discovered
                 
-                devices = result.get("data", [])
-                if not devices or not isinstance(devices, list):
+                online_devices = result.get("data", [])
+                if not online_devices or not isinstance(online_devices, list):
                     logger.debug("No online devices found")
                     return discovered
                 
-                logger.info(f"Found {len(devices)} online device(s)")
+                logger.info(f"Found {len(online_devices)} online device(s)")
                 
-                db = get_controller_database()
+                online_device_ids = set()
+
+                from controllers.huidu_sdk import validate_device_id
                 
-                # Step 2: Compare with local database and process new devices
-                for device_id in devices:
+                for device_id in online_devices:
                     if self.stop_event.is_set():
                         break
                     
                     if not isinstance(device_id, str):
                         continue
                     
-                    # Check if device already exists in database
-                    existing_controller = db.get_controller(device_id)
+                    if not validate_device_id(device_id):
+                        logger.debug(f"Skipping device {device_id}: Not an engineering card (must contain 'D' in ID)")
+                        continue
                     
-                    if existing_controller:
-                        # Device exists in DB, create ControllerInfo from DB data
-                        device_ip = existing_controller.get("ip_address", "127.0.0.1")
-                        device_name = existing_controller.get("device_name", f"Huidu_{device_id}")
-                        display_resolution = existing_controller.get("display_resolution", "64x32")
-                        firmware_version = existing_controller.get("firmware_version", "")
-                        model = existing_controller.get("model", "Huidu")
+                    online_device_ids.add(device_id)
+                    
+                    try:
+                        existing_controller = db_device_ids.get(device_id)
                         
-                        controller_info = ControllerInfo(device_ip, default_port, "huidu", device_name)
-                        controller_info.name = device_name
-                        controller_info.mac_address = device_id
-                        controller_info.firmware_version = firmware_version
-                        controller_info.model = model
-                        controller_info.display_resolution = display_resolution
-                        
-                        discovered.append(controller_info)
-                        logger.debug(f"Using existing device info from DB for {device_id}")
-                    else:
-                        # New device - get properties and save to DB
-                        try:
-                            property_result = sdk.get_device_property([device_id])
+                        if existing_controller:
+                            device_ip = existing_controller.get("ip_address", "127.0.0.1")
+                            device_name = existing_controller.get("device_name", f"Huidu_{device_id}")
+                            display_resolution = existing_controller.get("display_resolution", "64x32")
+                            firmware_version = existing_controller.get("firmware_version", "")
+                            model = existing_controller.get("model", "Huidu")
+                            
+                            device_info = {
+                                "name": device_name,
+                                "controller_id": device_id,
+                                "ip": device_ip,
+                                "port": default_port,
+                                "model": model,
+                                "version": firmware_version,
+                                "version.app": firmware_version,
+                                "display_resolution": display_resolution,
+                                "mac_address": device_id,
+                                "serial_number": device_id
+                            }
+                            
+                            db.add_or_update_controller(
+                                device_id,
+                                device_ip,
+                                default_port,
+                                "Huidu",
+                                device_info
+                            )
+                            
+                            controller_info = ControllerInfo(device_ip, default_port, "huidu", device_name)
+                            controller_info.name = device_name
+                            controller_info.mac_address = device_id
+                            controller_info.firmware_version = firmware_version
+                            controller_info.model = model
+                            controller_info.display_resolution = display_resolution
+                            
+                            discovered.append(controller_info)
+                            logger.debug(f"Updated existing device {device_id} as connected")
+                        else:
+                            property_result = sdk.get_device_property([device_id], None)
                             if property_result.get("message") != "ok":
-                                logger.debug(f"Failed to get properties for device {device_id}")
+                                logger.debug(f"Failed to get properties for device {device_id}: {property_result.get('data')}")
                                 continue
                             
                             data_array = property_result.get("data", [])
@@ -536,8 +559,21 @@ class ControllerDiscovery(QObject):
                                 logger.debug(f"No property data for device {device_id}")
                                 continue
                             
-                            device_data = data_array[0].get("data", {})
-                            if not device_data:
+                            first_item = data_array[0]
+                            if not isinstance(first_item, dict) or first_item.get("message") != "ok":
+                                logger.debug(f"Invalid response item for device {device_id}")
+                                continue
+                            
+                            item_id = first_item.get("id", "")
+                            if item_id != device_id:
+                                logger.debug(f"Device ID mismatch: expected {device_id}, got {item_id}")
+                                for item in data_array:
+                                    if isinstance(item, dict) and item.get("id") == device_id and item.get("message") == "ok":
+                                        first_item = item
+                                        break
+                            
+                            device_data = first_item.get("data", {})
+                            if not device_data or not isinstance(device_data, dict):
                                 logger.debug(f"Empty property data for device {device_id}")
                                 continue
                             
@@ -562,36 +598,23 @@ class ControllerDiscovery(QObject):
                                 logger.info(f"Found device IP from eth.ip: {device_ip} for device {device_id}")
                             
                             device_name = device_data.get("name", f"Huidu_{device_id}")
+                            
+                            device_info = device_data.copy()
+                            device_info["controller_id"] = device_id
+                            device_info["ip"] = device_ip
+                            device_info["port"] = default_port
+                            device_info["mac_address"] = device_id
+                            device_info["serial_number"] = device_id
+                            
                             screen_width = device_data.get("screen.width", "64")
                             screen_height = device_data.get("screen.height", "32")
-                            firmware_version = device_data.get("version.app", "")
-                            hardware_version = device_data.get("version.hardware", "")
-                            model = hardware_version or device_data.get("model", "Huidu")
-                            
                             controller_info = ControllerInfo(device_ip, default_port, "huidu", device_name)
                             controller_info.name = device_name
                             controller_info.mac_address = device_id
-                            controller_info.firmware_version = firmware_version
-                            controller_info.model = model
+                            controller_info.firmware_version = device_data.get("version.app", "")
+                            controller_info.model = device_data.get("version.hardware") or device_data.get("model", "Huidu")
                             controller_info.display_resolution = f"{screen_width}x{screen_height}"
                             
-                            device_info = {
-                                "name": device_name,
-                                "controller_id": device_id,
-                                "ip": device_ip,
-                                "port": default_port,
-                                "model": model,
-                                "version": firmware_version,
-                                "version.app": firmware_version,
-                                "version.hardware": hardware_version,
-                                "screen.width": screen_width,
-                                "screen.height": screen_height,
-                                "display_resolution": f"{screen_width}x{screen_height}",
-                                "mac_address": device_id,
-                                "serial_number": device_id
-                            }
-                            
-                            # Save new device to database
                             db.add_or_update_controller(
                                 device_id,
                                 device_ip,
@@ -602,8 +625,13 @@ class ControllerDiscovery(QObject):
                             
                             discovered.append(controller_info)
                             logger.info(f"Found new Huidu controller: {device_id} at {device_ip}:{default_port}")
-                        except Exception as e:
-                            logger.debug(f"Error processing new device {device_id}: {e}")
+                    except Exception as e:
+                        logger.debug(f"Error processing device {device_id}: {e}")
+                
+                for device_id, controller_data in db_device_ids.items():
+                    if device_id not in online_device_ids:
+                        db.mark_controller_disconnected(device_id)
+                        logger.debug(f"Marked device {device_id} as disconnected")
                 
                 if discovered:
                     logger.info(f"Huidu network discovery complete: Found {len(discovered)} controller(s)")
@@ -688,9 +716,8 @@ class ControllerDiscovery(QObject):
                         pass
             
             if not all_ranges:
-                # Fallback: try netifaces
                 try:
-                    import netifaces  # type: ignore
+                    import netifaces
                     seen_networks_netifaces = set()
                     for interface in netifaces.interfaces():
                         addrs = netifaces.ifaddresses(interface)
@@ -721,7 +748,6 @@ class ControllerDiscovery(QObject):
                     pass
             
             if not all_ranges:
-                # Final fallback: assume single network (gateway only)
                 all_ranges.append(["192.168.1.1"])
             
             return all_ranges
@@ -730,68 +756,11 @@ class ControllerDiscovery(QObject):
             logger.exception(f"Error getting network ranges: {e}")
             return [["192.168.1.1"]]
     
-    def _discover_huidu_serial(self) -> List[ControllerInfo]:
-        """Discover Huidu controllers via serial/USB ports"""
-        discovered: List[ControllerInfo] = []
-        try:
-            import serial.tools.list_ports
-            available_ports = serial.tools.list_ports.comports()
-            
-            for port_info in available_ports:
-                if self.stop_event.is_set():
-                    break
-                try:
-                    port_name = port_info.device
-                    port_num = None
-                    
-                    if port_name.upper().startswith('COM'):
-                        try:
-                            port_num = int(port_name.replace('COM', '').replace('com', ''))
-                        except ValueError:
-                            continue
-                    elif port_name.startswith('/dev/tty'):
-                        try:
-                            port_num_str = port_name.replace('/dev/ttyUSB', '').replace('/dev/ttyS', '').replace('/dev/ttyACM', '')
-                            port_num = int(port_num_str) if port_num_str.isdigit() else None
-                        except (ValueError, AttributeError):
-                            continue
-                    
-                    if port_num is None:
-                        continue
-                    
-                    serial_params = f"{port_num}:9600"
-                    try:
-                        if self._huidu_sdk and self._huidu_sdk.is_card_online("127.0.0.1", 1):
-                            # Serial ports use 127.0.0.1 for API server communication
-                            # Store serial params as a custom attribute, use 127.0.0.1 for IP
-                            controller_info = ControllerInfo("127.0.0.1", 30080, "huidu", f"Huidu_Serial_{port_name}")
-                            controller_info.name = f"Huidu_Serial_{port_name}"
-                            # Store serial params for later use
-                            controller_info.serial_params = serial_params  # type: ignore
-                            # For serial devices, query via 127.0.0.1 API server
-                            # Don't call get_screen_params with serial params - it expects IP addresses
-                            discovered.append(controller_info)
-                            logger.info(f"Found Huidu controller (Serial/USB): {port_name}")
-                            
-                            # Read programs and media in background thread
-                            threading.Thread(target=self._read_controller_data, args=(controller_info,), daemon=True).start()
-                    except Exception as e:
-                        logger.debug(f"Error checking serial port {port_name}: {e}")
-                except (ValueError, AttributeError) as e:
-                    logger.debug(f"Error parsing port name {port_info.device}: {e}")
-                    continue
-        except ImportError:
-            logger.debug("pyserial not available, skipping serial port discovery")
-        except Exception as e:
-            logger.warning(f"Error discovering Huidu serial controllers: {e}")
-        return discovered
-    
     def _discover_huidu_mobile_ranges(self, ranges: List[Dict[str, str]]) -> List[ControllerInfo]:
         discovered: List[ControllerInfo] = []
         return discovered
     
     def get_local_network_range(self) -> List[str]:
-        """Get local network IP ranges from all active interfaces"""
         try:
             import platform
             all_ranges = []
@@ -878,7 +847,6 @@ class ControllerDiscovery(QObject):
             return []
     
     def is_mobile_network_ip(self, ip: str) -> bool:
-        """Check if an IP address appears to be from a mobile network"""
         try:
             parts = ip.split('.')
             if len(parts) != 4:
@@ -899,7 +867,6 @@ class ControllerDiscovery(QObject):
             return False
     
     def scan_port(self, ip: str, port: int, timeout: float = 0.5) -> bool:
-        """Check if a port is open on an IP address"""
         try:
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             sock.settimeout(timeout)
@@ -910,21 +877,16 @@ class ControllerDiscovery(QObject):
             return False
     
     def identify_controller_type(self, ip: str, port: int) -> str:
-        """Try to identify controller type by port and response"""
-        # NovaStar controllers use port 5200 (from SDK tcpPort response)
         if port in self.NOVASTAR_PORTS:
-            # Try to connect and check response
             try:
                 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 sock.settimeout(1.0)
                 sock.connect((ip, port))
-                # Could send identification packet here
                 sock.close()
                 return "novastar"
             except (OSError, ConnectionError, TimeoutError):
                 pass
         
-        # Huidu controllers use port 30080 for HTTP API (from SDK documentation)
         if port in self.HUIDU_PORTS:
             try:
                 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -938,7 +900,6 @@ class ControllerDiscovery(QObject):
         return "unknown"
     
     def scan_ip(self, ip: str):
-        """Scan a single IP address for controllers"""
         if self.stop_event.is_set():
             return
         
@@ -950,7 +911,6 @@ class ControllerDiscovery(QObject):
                 controller_type = self.identify_controller_type(ip, port)
                 controller_info = ControllerInfo(ip, port, controller_type)
                 
-                # Check if we already found this controller
                 existing = next((c for c in self.discovered_controllers 
                                if c.ip == ip and c.port == port), None)
                 if not existing:
@@ -960,26 +920,6 @@ class ControllerDiscovery(QObject):
     
     def start_scan(self, ip_range: Optional[List[str]] = None, 
                    mobile_network_ranges: Optional[List[Dict[str, str]]] = None):
-        """
-        Start comprehensive scanning for controllers across all connection types.
-        
-        Supports multiple connection types:
-        - Wi-Fi: Uses UDP broadcast (NovaStar)
-        - Ethernet: Uses UDP broadcast (NovaStar)
-        - Huidu Network: Connects to API server on 127.0.0.1:30080
-        - 3G/4G/5G Mobile: Uses IP range search for known mobile network ranges (NovaStar only)
-        - Remote IPs: Can search specific IP addresses or ranges
-        
-        Discovery Process:
-        1. NovaStar Wi-Fi/Ethernet (UDP broadcast on local network)
-        2. Huidu Network (API server on 127.0.0.1:30080)
-        3. NovaStar Mobile Networks (3G/4G/5G IP ranges)
-        5. Specific IP addresses (if provided)
-        
-        Args:
-            ip_range: Optional list of specific IPs to scan (for remote/mobile controllers)
-            mobile_network_ranges: Optional list of dicts with 'ipStart' and 'ipEnd' for mobile network ranges
-        """
         if self.is_scanning:
             logger.warning("Discovery scan already in progress")
             return
@@ -995,7 +935,6 @@ class ControllerDiscovery(QObject):
                 logger.info("Connection types: Wi-Fi, Ethernet, Huidu Network, 3G/4G/5G")
                 logger.info("=" * 60)
                 
-                # Step 1: NovaStar Wi-Fi/Ethernet (UDP broadcast)
                 try:
                     logger.info("Step 1: Scanning NovaStar controllers (Wi-Fi/Ethernet)")
                     novastar_controllers = self._discover_novastar_controllers()
@@ -1015,30 +954,24 @@ class ControllerDiscovery(QObject):
                         except Exception as e:
                             logger.debug(f"Error reading data from NovaStar controller {controller.ip}: {e}")
                 
-                # Step 2: Huidu network discovery (via API server)
                 if not self.stop_event.is_set():
                     logger.info("Step 2: Scanning Huidu controllers (via API server)")
                     try:
-                        if self._init_huidu_sdk():
-                            huidu_controllers = self._discover_huidu_controllers()
-                            for controller in huidu_controllers:
-                                if self.stop_event.is_set():
-                                    break
-                                existing = next((c for c in self.discovered_controllers 
-                                               if c.ip == controller.ip and c.port == controller.port), None)
-                                if not existing:
-                                    self.discovered_controllers.append(controller)
-                                    self.controller_found.emit(controller)
-                        else:
-                            logger.info("Huidu SDK not available - skipping Huidu discovery")
+                        huidu_controllers = self._discover_huidu_controllers()
+                        for controller in huidu_controllers:
+                            if self.stop_event.is_set():
+                                break
+                            existing = next((c for c in self.discovered_controllers 
+                                           if c.ip == controller.ip and c.port == controller.port), None)
+                            if not existing:
+                                self.discovered_controllers.append(controller)
+                                self.controller_found.emit(controller)
                     except Exception as e:
                         logger.warning(f"Error during Huidu discovery: {e}. Continuing with other discovery methods...")
                 
-                # Mobile network ranges (3G/4G/5G)
                 if not self.stop_event.is_set() and mobile_network_ranges:
                     logger.info(f"Step 3: Scanning mobile network ranges (3G/4G/5G) - {len(mobile_network_ranges)} ranges")
                     try:
-                        # NovaStar mobile network discovery
                         novastar_mobile = self._discover_novastar_mobile_ranges(mobile_network_ranges)
                         for controller in novastar_mobile:
                             if self.stop_event.is_set():
@@ -1056,7 +989,6 @@ class ControllerDiscovery(QObject):
                         logger.warning(f"Error during NovaStar mobile network discovery: {e}")
                     
                 
-                # Step 4: Specific IP addresses (if provided)
                 if not self.stop_event.is_set() and ip_range:
                     logger.info(f"Step 4: Scanning specific IP addresses ({len(ip_range)} IPs)")
                     try:
@@ -1092,17 +1024,14 @@ class ControllerDiscovery(QObject):
         self.scan_thread.start()
     
     def stop_scan(self):
-        """Stop the current scan"""
         if self.is_scanning:
             self.stop_event.set()
             logger.info("Stopping controller discovery scan")
     
     def get_discovered_controllers(self) -> List[ControllerInfo]:
-        """Get list of discovered controllers"""
         return self.discovered_controllers.copy()
     
     def scan_single_ip(self, ip: str, callback: Optional[Callable] = None):
-        """Scan a single IP address (for manual entry)"""
         def scan():
             self.scan_ip(ip)
             if callback:
@@ -1112,7 +1041,6 @@ class ControllerDiscovery(QObject):
         thread.start()
     
     def _read_controller_data(self, controller_info: ControllerInfo):
-        """Read programs and media from discovered controller and update database"""
         try:
             from controllers.novastar import NovaStarController
             from controllers.huidu import HuiduController
@@ -1131,11 +1059,11 @@ class ControllerDiscovery(QObject):
                 else:
                     return
                 
-                if not controller or not controller.connect():
+                if not controller.connect():
                     logger.debug(f"Could not connect to {controller_info.ip}:{controller_info.port} for data reading")
                     return
                 
-                device_info = controller.get_device_info()  # type: ignore
+                device_info = controller.get_device_info()
                 if not device_info:
                     device_info = {}
                 

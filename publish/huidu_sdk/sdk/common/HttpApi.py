@@ -4,10 +4,10 @@ import hmac
 import hashlib
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
-import requests
-from requests_toolbelt.multipart.encoder import MultipartEncoder
-from sdk.common.Config import Config
+from typing import Optional, Dict
+import requests # type: ignore
+from requests_toolbelt.multipart.encoder import MultipartEncoder # type: ignore
+from sdk.common.Config import Config # type: ignore
 
 class HttpApi:
     def __init__(self, host_url: Optional[str] = None):
@@ -117,7 +117,7 @@ class HttpApi:
         err_string = None
 
         try:
-            headers = {}
+            headers: Dict[str, str] = {}
             self._sign_header(headers, None)
 
             response = requests.get(
@@ -140,18 +140,14 @@ class HttpApi:
         if headers is None:
             return False
 
-        # Generate unique request ID
         cuid = str(uuid.uuid4())
         headers['requestId'] = cuid
 
-        # Set SDK key
         headers['sdkKey'] = self.sdk_key
 
-        # Add current date (using Java-like format)
         current_date = datetime.now().strftime('%a %b %d %H:%M:%S %Z %Y')
         headers['date'] = current_date
 
-        # Generate signature
         if body is None:
             sign_data = self.sdk_key + current_date
         else:

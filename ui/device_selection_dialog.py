@@ -246,6 +246,9 @@ class DeviceSelectionDialog(QDialog):
         try:
             controllers = self.device_db.get_all_controllers(active_only=False)
             self.update_table_with_devices(controllers)
+            connected_count = sum(1 for c in controllers if c.get('status') == 'connected')
+            total_count = len(controllers)
+            self.status_label.setText(f"Connected: {connected_count} / Total: {total_count}")
         except Exception as e:
             logger.error(f"Error loading devices from database: {e}")
     
@@ -272,7 +275,9 @@ class DeviceSelectionDialog(QDialog):
         try:
             controllers = self.device_db.get_all_controllers(active_only=False)
             self.update_table_with_devices(controllers)
-            self.status_label.setText(f"Found {len(controllers)} device(s)")
+            connected_count = sum(1 for c in controllers if c.get('status') == 'connected')
+            total_count = len(controllers)
+            self.status_label.setText(f"Connected: {connected_count} / Total: {total_count}")
             self.loading_spinner.stop()
             
             QTimer.singleShot(500, self.check_connection_statuses)
@@ -294,19 +299,19 @@ class DeviceSelectionDialog(QDialog):
             self.table.setItem(row, 1, QTableWidgetItem(ip))
             self.table.setItem(row, 2, QTableWidgetItem(str(resolution)))
             
-            status_item = QTableWidgetItem(status.capitalize())
             if status == 'connected':
-                status_item.setForeground(QColor(0, 255, 0))
+                status_text = "ON"
+                status_color = QColor(0, 255, 0)
             else:
-                status_item.setForeground(QColor(255, 0, 0))
+                status_text = "OFF"
+                status_color = QColor(255, 0, 0)
+            status_item = QTableWidgetItem(status_text)
+            status_item.setForeground(status_color)
             self.table.setItem(row, 3, status_item)
             
-            from core.license_manager import LicenseManager
-            license_manager = LicenseManager()
-            license_file = license_manager.get_license_file_path(device_id)
-            license_status = "Yes" if license_file.exists() else "No"
-            license_item = QTableWidgetItem(license_status)
-            if license_status == "Yes":
+            license_file_name = controller.get('license_file_name', '') or ''
+            license_item = QTableWidgetItem(license_file_name)
+            if license_file_name:
                 license_item.setForeground(QColor(0, 255, 0))
             self.table.setItem(row, 4, license_item)
             
@@ -330,7 +335,7 @@ class DeviceSelectionDialog(QDialog):
                     status = controller.get('status', 'disconnected')
                     if status == 'connected':
                         if status_item:
-                            status_item.setText("On")
+                            status_item.setText("ON")
                             status_item.setForeground(QColor(0, 255, 0))
                         
                         ip = controller.get('ip_address', '')
@@ -343,22 +348,24 @@ class DeviceSelectionDialog(QDialog):
                             resolution_item = QTableWidgetItem(str(resolution))
                             self.table.setItem(row, 2, resolution_item)
                         
-                        from core.license_manager import LicenseManager
-                        license_manager = LicenseManager()
-                        license_file = license_manager.get_license_file_path(device_id)
-                        license_status = "Yes" if license_file.exists() else "No"
-                        license_item = QTableWidgetItem(license_status)
-                        if license_status == "Yes":
+                        controller_info = self.device_db.get_controller(device_id)
+                        license_file_name = controller_info.get('license_file_name', '') or '' if controller_info else ''
+                        license_item = QTableWidgetItem(license_file_name)
+                        if license_file_name:
                             license_item.setForeground(QColor(0, 255, 0))
                         self.table.setItem(row, 4, license_item)
                     else:
                         if status_item:
-                            status_item.setText("Off")
+                            status_item.setText("OFF")
                             status_item.setForeground(QColor(255, 0, 0))
                 else:
                     if status_item:
-                        status_item.setText("Off")
+                        status_item.setText("OFF")
                         status_item.setForeground(QColor(255, 0, 0))
+            
+            connected_count = sum(1 for c in controllers if c.get('status') == 'connected')
+            total_count = len(controllers)
+            self.status_label.setText(f"Connected: {connected_count} / Total: {total_count}")
         except Exception as e:
             logger.error(f"Error checking connection statuses: {e}")
     
