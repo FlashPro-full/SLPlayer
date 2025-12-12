@@ -116,14 +116,127 @@ def main():
                             logger.info(f"Set screen resolution from device: {width}x{height}")
                         else:
                             logger.warning(f"Could not extract resolution from device info")
+                        
+                        reply = QMessageBox.question(
+                            window,
+                            "Download Program",
+                            "Do you want to download a program from the device?",
+                            QMessageBox.Yes | QMessageBox.No,
+                            QMessageBox.Yes
+                        )
+                        
+                        download_success = False
+                        if reply == QMessageBox.Yes:
+                            try:
+                                controller = window.controller_service.current_controller
+                                if controller:
+                                    program_data = controller.download_program()
+                                    if program_data and program_data.get('elements'):
+                                        from core.program_manager import Program
+                                        program = Program()
+                                        program.name = program_data.get('name', 'Downloaded Program')
+                                        program.width = width or 64
+                                        program.height = height or 32
+                                        program.elements = program_data.get('elements', [])
+                                        program.properties = program_data.get('properties', program.properties)
+                                        program.play_mode = program_data.get('play_mode', program.play_mode)
+                                        program.play_control = program_data.get('play_control', program.play_control)
+                                        
+                                        screen_name = window.screen_list_panel.add_new_screen()
+                                        if screen_name and hasattr(window.screen_list_panel, 'add_program_to_screen'):
+                                            screen = window.screen_manager.get_screen_by_name(screen_name)
+                                            if screen:
+                                                screen.add_program(program)
+                                                window.screen_list_panel.refresh_screens(debounce=False)
+                                                download_success = True
+                                                logger.info("Program downloaded and loaded successfully")
+                                    else:
+                                        logger.warning("Downloaded program data is empty or invalid")
+                            except Exception as e:
+                                logger.error(f"Error downloading program: {e}", exc_info=True)
+                                QMessageBox.warning(window, "Download Failed", f"Failed to download program from device:\n{str(e)}")
+                        
+                        if not download_success:
+                            _create_new_screen_with_device_info(window, device_info, width, height, controller_type)
+                    else:
+                        _create_new_screen_with_device_info(window, {}, None, None, controller_type)
                 else:
                     logger.warning(f"Failed to connect to device {device_id} at {ip}:{port}")
             except Exception as e:
-                logger.error(f"Error connecting to device: {e}")
+                logger.error(f"Error connecting to device: {e}", exc_info=True)
             
             window.show()
             window.raise_()
             window.activateWindow()
+        
+        def _create_new_screen_with_device_info(window, device_info, width, height, controller_type):
+            try:
+                from core.screen_config import set_screen_config, get_screen_config
+                from core.program_manager import Program
+                
+                if not width or not height:
+                    width = device_info.get('width') or 64
+                    height = device_info.get('height') or 32
+                    if not width or not height:
+                        display_resolution = device_info.get('display_resolution', '')
+                        if display_resolution and 'x' in display_resolution.lower():
+                            try:
+                                parts = display_resolution.lower().replace(' ', '').split('x')
+                                if len(parts) == 2:
+                                    width = int(parts[0])
+                                    height = int(parts[1])
+                            except (ValueError, IndexError):
+                                pass
+                
+                brand = device_info.get('model', '') or controller_type
+                model = device_info.get('model', '') or ''
+                set_screen_config(brand, model, width, height, 0, None)
+                
+                screen_name = window.screen_list_panel.add_new_screen()
+                if screen_name:
+                    screen = window.screen_manager.get_screen_by_name(screen_name)
+                    if screen:
+                        program = window.program_manager.create_program("New Program", width, height)
+                        screen.add_program(program)
+                        
+                        if "screen" not in program.properties:
+                            program.properties["screen"] = {}
+                        program.properties["screen"]["screen_model"] = model or brand
+                        program.properties["screen"]["screen_resolution"] = f"{width}x{height}"
+                        
+                        from utils.app_data import get_app_data_dir
+                        import os
+                        save_dir = get_app_data_dir() / "programs"
+                        save_dir.mkdir(parents=True, exist_ok=True)
+                        program.properties["screen"]["program_file_saving_path"] = str(save_dir)
+                        
+                        controller = window.controller_service.current_controller
+                        if controller and hasattr(controller, 'get_device_info'):
+                            try:
+                                dev_info = controller.get_device_info()
+                                if dev_info:
+                                    if "play_control" not in program.properties:
+                                        program.properties["play_control"] = {}
+                                    play_control = program.play_control
+                                    if play_control:
+                                        if dev_info.get("play_control"):
+                                            sdk_play_control = dev_info.get("play_control")
+                                            if sdk_play_control.get("specified_time"):
+                                                play_control["specified_time"]["enabled"] = sdk_play_control["specified_time"].get("enabled", False)
+                                                play_control["specified_time"]["time"] = sdk_play_control["specified_time"].get("time", "")
+                                            if sdk_play_control.get("specify_week"):
+                                                play_control["specify_week"]["enabled"] = sdk_play_control["specify_week"].get("enabled", False)
+                                                play_control["specify_week"]["days"] = sdk_play_control["specify_week"].get("days", [])
+                                            if sdk_play_control.get("specify_date"):
+                                                play_control["specify_date"]["enabled"] = sdk_play_control["specify_date"].get("enabled", False)
+                                                play_control["specify_date"]["date"] = sdk_play_control["specify_date"].get("date", "")
+                            except Exception as e:
+                                logger.warning(f"Error loading play control from device: {e}")
+                        
+                        window.screen_list_panel.refresh_screens(debounce=False)
+                        logger.info(f"Created new screen '{screen_name}' with program using device info")
+            except Exception as e:
+                logger.error(f"Error creating new screen with device info: {e}", exc_info=True)
         
         device_dialog.device_selected.connect(on_device_selected)
         

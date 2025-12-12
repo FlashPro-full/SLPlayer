@@ -232,10 +232,10 @@ class ControllerDiscovery(QObject):
                 logger.error(f"NovaStar: Failed to call search function: {e}", exc_info=True)
                 return discovered
             
-            # Wait for callback or timeout (SDK timeout is 4 seconds, wait 5.5 to be safe)
+            # Wait for callback or timeout (SDK timeout is 4 seconds, wait 4.5 to be safe)
             # The callback can be called multiple times (once per controller found)
-            if not callback_received.wait(timeout=5.5):
-                logger.warning("NovaStar: Search timeout - no callback received within 5.5 seconds")
+            if not callback_received.wait(timeout=4.5):
+                logger.warning("NovaStar: Search timeout - no callback received within 4.5 seconds")
             
             # Give a small additional time for any late callbacks
             time.sleep(0.5)

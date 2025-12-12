@@ -19,11 +19,9 @@ class BaseClient:
 
     def device(self, dev_ids: List[str], method: str, data: Optional[Any] = None) -> dict:
         json_method = {
-            "method": method
+            "method": method,
+            "data": data
         }
-        
-        if data is not None:
-            json_method["data"] = data
 
         if dev_ids:
             json_method["id"] = ",".join(dev_ids)

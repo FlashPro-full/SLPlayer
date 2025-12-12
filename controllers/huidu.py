@@ -1,676 +1,515 @@
-import sys
-from typing import Optional, Dict, List, Tuple
+from typing import Optional, Dict, List
 from pathlib import Path
-from datetime import datetime
 from controllers.base_controller import BaseController, ControllerType, ConnectionStatus
-from controllers.huidu_sdk import HuiduSDK, SDK_PATH
+from controllers.huidu_sdk import HuiduSDK, DEFAULT_HOST, SDK_AVAILABLE
 from controllers.network_manager import NetworkManager
 from controllers.property_adapter import adapt_element_for_controller
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-# Ensure Huidu SDK path is in sys.path if SDK_PATH was found
-if SDK_PATH and str(SDK_PATH) not in sys.path:
-    sys.path.insert(0, str(SDK_PATH))
-
 class HuiduController(BaseController):
     DEFAULT_PORT = 30080
     
-    def __init__(self, ip_address: str, port: int = DEFAULT_PORT, sdk_key: str = "", sdk_secret: str = ""):
+    def __init__(self, ip_address: str, port: int = DEFAULT_PORT):
         super().__init__(ControllerType.HUIDU, ip_address, port)
-        # Validate IP address format - if it contains ":" and is not a valid IP, treat as serial params
-        # Serial devices should always use 127.0.0.1 for the API server
-        if ":" in ip_address and not ip_address.startswith(("http://", "https://")):
-            # Check if it's a valid IP:port format or serial params like "1:9600"
-            ip_clean = ip_address.split(':')[0].strip()
-            try:
-                ip_parts = ip_clean.split('.')
-                is_valid_ip = len(ip_parts) == 4 and all(0 <= int(p) <= 255 for p in ip_parts)
-            except (ValueError, AttributeError):
-                is_valid_ip = False
-            
-            if not is_valid_ip and ip_clean not in ("127.0.0.1", "127.0.0.1"):
-                # This is serial params, not an IP address - use 127.0.0.1
-                from controllers.huidu_sdk import DEFAULT_HOST
-                host = DEFAULT_HOST
-            else:
-                # Valid IP address, construct host normally
-                host = f"http://{ip_address}:{port}"
-        else:
-            # Normal IP address without port, construct host
-            host = f"http://{ip_address}:{port}"
-        self.sdk = HuiduSDK(host, sdk_key, sdk_secret)
+        self._device_id: Optional[str] = None
+        self.sdk: Optional[HuiduSDK] = None
         self.network_manager = NetworkManager()
         self._screen_created = False
         self._current_program_id: Optional[int] = None
         self._current_area_id: Optional[int] = None
     
-    def _is_valid_ip(self, ip_str: str) -> bool:
-        """Check if a string is a valid IP address"""
-        if not ip_str:
-            return False
-        # Handle IP:port format
-        ip_clean = ip_str.split(':')[0].strip() if ":" in ip_str and not ip_str.startswith(("http://", "https://")) else ip_str.strip()
-        if ip_clean in ("127.0.0.1", "127.0.0.1"):
-            return True
+    def _find_device_id_by_ip(self) -> Optional[str]:
+        if not SDK_AVAILABLE or not self.sdk or not self.sdk.device:
+            return None
+        
         try:
-            ip_parts = ip_clean.split('.')
-            return len(ip_parts) == 4 and all(0 <= int(p) <= 255 for p in ip_parts)
-        except (ValueError, AttributeError):
-            return False
+            result = self.sdk.device.get_online_devices()
+            if result.get("message") != "ok":
+                return None
+            
+            devices = result.get("data", [])
+            if not devices:
+                return None
+            
+            ip_clean = self.ip_address.split(':')[0].strip()
+            
+            for device_id in devices:
+                if isinstance(device_id, str):
+                    if ip_clean == "127.0.0.1" or ip_clean == "localhost":
+                        return device_id
+                    property_result = self.sdk.get_device_property([device_id])
+                    if property_result.get("message") == "ok":
+                        data_array = property_result.get("data", [])
+                        if data_array and len(data_array) > 0:
+                            device_data = data_array[0].get("data", {})
+                            device_ip = device_data.get("eth.ip")
+                            if device_ip == ip_clean:
+                                return device_id
+                elif isinstance(device_id, dict):
+                    if device_id.get("ip") == ip_clean or device_id.get("ip_address") == ip_clean:
+                        return device_id.get("id", device_id.get("controller_id", ""))
+            
+            if ip_clean == "127.0.0.1" or ip_clean == "localhost":
+                if devices and isinstance(devices[0], str):
+                    return devices[0]
+            
+            return None
+        except Exception as e:
+            logger.error(f"Error finding device ID: {e}")
+            return None
     
     def connect(self) -> bool:
         if self.status == ConnectionStatus.CONNECTED:
             return True
+        
         self.set_status(ConnectionStatus.CONNECTING)
+        
         try:
-            # Use 127.0.0.1 for serial devices (API server handles communication)
-            # For network devices, use the actual IP address
-            if self.ip_address == "127.0.0.1" or self.ip_address == "127.0.0.1":
-                host = f"http://{self.ip_address}:{self.port}"
-            else:
-                # Check if ip_address is a valid IP (not serial params)
-                ip_clean = self.ip_address.split(':')[0].strip()
-                try:
-                    ip_parts = ip_clean.split('.')
-                    is_valid_ip = len(ip_parts) == 4 and all(0 <= int(p) <= 255 for p in ip_parts)
-                except (ValueError, AttributeError):
-                    is_valid_ip = False
-                
-                if is_valid_ip:
-                    host = f"http://{self.ip_address}:{self.port}"
-                else:
-                    # Serial params, use 127.0.0.1
-                    host = "http://127.0.0.1:30080"
+            if not SDK_AVAILABLE:
+                logger.error("Huidu SDK is not available")
+                self.set_status(ConnectionStatus.ERROR)
+                return False
             
-            self.sdk.initialize(host, self.sdk.sdk_key, self.sdk.sdk_secret)
+            host = DEFAULT_HOST
+            self.sdk = HuiduSDK(host)
             
-            # For serial devices, check via 127.0.0.1
-            check_ip = "127.0.0.1" if self.ip_address == "127.0.0.1" or not self._is_valid_ip(self.ip_address) else self.ip_address
-            is_online = self.sdk.is_card_online(check_ip)
-            if not is_online:
-                logger.warning(f"Huidu controller at {self.ip_address} is_card_online check failed, but attempting connection anyway")
+            self._device_id = self._find_device_id_by_ip()
+            if not self._device_id:
+                logger.warning(f"Could not find device ID for IP {self.ip_address}")
+                self.set_status(ConnectionStatus.ERROR)
+                return False
             
             info = self.get_device_info()
             if info and info.get("controller_id"):
-                ping_success = info.get("connection_status", {}).get("ping", False)
-                port_success = info.get("connection_status", {}).get("port", False)
-                sdk_online = info.get("connection_status", {}).get("sdk_online", False)
-                
-                if ping_success and (port_success or sdk_online or is_online):
-                    self.set_status(ConnectionStatus.CONNECTED)
-                    logger.info(f"Connected to Huidu controller at {self.ip_address}")
-                    return True
-                else:
-                    logger.warning(f"Huidu controller at {self.ip_address} connection checks failed: ping={ping_success}, port={port_success}, sdk={sdk_online}")
-                    self.set_status(ConnectionStatus.DISCONNECTED)
-                    return False
+                self.set_status(ConnectionStatus.CONNECTED)
+                logger.info(f"Connected to Huidu controller {self._device_id} at {self.ip_address}")
+                return True
             else:
                 logger.warning(f"Failed to get device info for Huidu controller at {self.ip_address}")
-                self.set_status(ConnectionStatus.DISCONNECTED)
+                self.set_status(ConnectionStatus.ERROR)
                 return False
         except Exception as e:
             logger.error(f"Error connecting to Huidu controller: {e}", exc_info=True)
-            self.set_status(ConnectionStatus.DISCONNECTED)
+            self.set_status(ConnectionStatus.ERROR)
             return False
     
     def disconnect(self):
-        self._screen_created = False
-        self._current_program_id = None
-        self._current_area_id = None
+        self._device_id = None
+        self.sdk = None
         self.set_status(ConnectionStatus.DISCONNECTED)
         self.device_info = None
         logger.info(f"Disconnected from Huidu controller at {self.ip_address}")
     
     def get_device_info(self) -> Optional[Dict]:
+        if not self.sdk or not self._device_id:
+            return None
+        
         try:
-            ping_success = self.network_manager.ping_host(self.ip_address)
-            port_success = True
-            if self.port and self.port > 0:
-                port_success = self.network_manager.test_port_connection(self.ip_address, self.port, timeout=3.0)
+            property_result = self.sdk.get_device_property([self._device_id])
+            if property_result.get("message") != "ok":
+                return None
             
-            params = self.sdk.get_screen_params(self.ip_address)
-            controller_id = f"HD-{self.ip_address.replace('.', '-')}"
+            data_array = property_result.get("data", [])
+            if not data_array or len(data_array) == 0:
+                return None
             
-            device_info = {
-                "ip": self.ip_address,
+            device_data = data_array[0].get("data", {})
+            if not device_data:
+                return None
+            
+            import re
+            ip_pattern = re.compile(r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$')
+            
+            device_ip = device_data.get("eth.ip")
+            if not device_ip or not ip_pattern.match(device_ip) or device_ip == "127.0.0.1":
+                device_ip = self.ip_address
+            
+            device_name = device_data.get("name", f"Huidu_{self._device_id}")
+            screen_width = device_data.get("screen.width", "64")
+            screen_height = device_data.get("screen.height", "32")
+            firmware_version = device_data.get("version.app", "")
+            hardware_version = device_data.get("version.hardware", "")
+            model = hardware_version or device_data.get("model", "Huidu")
+            
+            self.device_info = {
+                "controller_id": self._device_id,
+                "controllerId": self._device_id,
+                "id": self._device_id,
+                "ip": device_ip,
                 "port": self.port,
-                "controller_id": controller_id,
-                "controllerId": controller_id,
-                "serial_number": controller_id,
+                "name": device_name,
+                "device_name": device_name,
+                "display_name": device_name,
+                "model": model,
+                "firmware_version": firmware_version,
+                "version": firmware_version,
+                "version.app": firmware_version,
+                "version.hardware": hardware_version,
+                "screen.width": screen_width,
+                "screen.height": screen_height,
+                "display_resolution": f"{screen_width}x{screen_height}",
+                "mac_address": self._device_id,
+                "serial_number": self._device_id,
                 "connection_status": {
-                    "ping": ping_success,
-                    "port": port_success,
-                    "sdk_online": self.sdk.is_card_online(self.ip_address)
+                    "ping": True,
+                    "port": True,
+                    "sdk_online": True
                 }
             }
             
-            if params:
-                device_info.update({
-                    "width": params.get("width", 64),
-                    "height": params.get("height", 32),
-                    "color": params.get("color", 1),
-                    "gray": params.get("gray", 1),
-                    "card_type": params.get("card_type", 0),
-                    "display_resolution": f"{params.get('width', 64)}x{params.get('height', 32)}"
-                })
-            
-            device_property = self.sdk.get_device_property()
-            if device_property.get("message") == "ok":
-                data_array = device_property.get("data", [])
-                if data_array and len(data_array) > 0:
-                    device_data = data_array[0].get("data", {})
-                    if device_data:
-                        if "name" in device_data:
-                            device_info["name"] = device_data["name"]
-                        if "version.app" in device_data:
-                            device_info["version"] = device_data["version.app"]
-                        if "version.hardware" in device_data:
-                            device_info["model"] = device_data["version.hardware"]
-                        if "luminance" in device_data:
-                            try:
-                                device_info["brightness"] = int(device_data["luminance"])
-                            except:
-                                pass
-                        if "eth.ip" in device_data:
-                            device_info["ip"] = device_data["eth.ip"]
-            
-            network_config = self.get_network_config()
-            if network_config:
-                device_info["network"] = network_config
-            
-            self.device_info = device_info
             return self.device_info
         except Exception as e:
             logger.error(f"Error getting device info: {e}", exc_info=True)
-            controller_id = f"HD-{self.ip_address.replace('.', '-')}"
-            self.device_info = {
-                "ip": self.ip_address,
-                "port": self.port,
-                "controller_id": controller_id
-            }
-            return self.device_info
+            return None
     
-    def upload_program(self, program_data: Dict, file_path: str = None) -> bool:
+    def test_connection(self) -> bool:
+        if not self.sdk or not self._device_id or not self.sdk.device:
+            return False
+        
+        try:
+            result = self.sdk.device.get_online_devices()
+            if result.get("message") == "ok":
+                devices = result.get("data", [])
+                return self._device_id in devices if self._device_id else False
+            return False
+        except Exception:
+            return False
+    
+    def upload_program(self, program_data: Dict, file_path: Optional[str] = None) -> bool:
         if self.status != ConnectionStatus.CONNECTED:
             if not self.connect():
                 return False
+        
+        if not self.sdk or not self._device_id:
+            logger.error("SDK not initialized or device ID not found")
+            return False
+        
         try:
-            self.set_progress(0, "Preparing program...")
-            width = program_data.get("width", 64)
-            height = program_data.get("height", 32)
-            if not self.sdk.create_screen(width, height):
-                error = self.sdk.get_last_error()
-                logger.error(f"Failed to create screen: error {error}")
-                return False
-            self._screen_created = True
-            self.set_progress(10, "Screen created")
+            from controllers.huidu_sdk import ProgramNode, AreaNode
+            from controllers.huidu_sdk import TextNode, ImageNode, VideoNode
+            from controllers.huidu_sdk import DigitalClockNode, DialClockNode, DynamicNode
             
-            program_id = self.sdk.add_program()
-            if not program_id:
-                error = self.sdk.get_last_error()
-                logger.error(f"Failed to add program: error {error}")
-                return False
-            self._current_program_id = program_id
-            
-            play_control_data = program_data.get("play_control", {})
-            if play_control_data:
-                try:
-                    from controllers.property_adapter import convert_play_control_to_sdk
-                    sdk_play_control = convert_play_control_to_sdk(play_control_data, "huidu")
-                    if sdk_play_control:
-                        self.set_progress(15, "Setting program schedule...")
-                        play_control_params = {
-                            "program_id": program_id,
-                            "play_control": sdk_play_control
-                        }
-                        if hasattr(self.sdk, 'set_program_play_control'):
-                            self.sdk.set_program_play_control(play_control_params)
-                        else:
-                            logger.debug("play_control conversion ready but SDK method not available")
-                except Exception as e:
-                    logger.debug(f"Could not set play_control on program: {e}")
-            
-            self.set_progress(20, "Program added")
             elements = program_data.get("elements", [])
-            total_elements = len(elements)
-            for idx, element in enumerate(elements):
-                self.set_progress(20 + int((idx / total_elements) * 60), f"Processing element {idx + 1}/{total_elements}")
-                if not self._add_element_to_sdk(element, program_id, width, height):
-                    logger.warning(f"Failed to add element: {element.get('type', 'unknown')}")
-            self.set_progress(90, "Sending to device...")
-            if not self.sdk.send_screen(self.ip_address):
-                error = self.sdk.get_last_error()
-                logger.error(f"Failed to send screen: error {error}")
+            if not elements:
+                logger.warning("No elements to upload")
                 return False
-            self.set_progress(100, "Upload complete")
-            logger.info(f"Program '{program_data.get('name', 'Unknown')}' uploaded successfully")
-            return True
+            
+            content_nodes = []
+            for element in elements:
+                adapted_element = adapt_element_for_controller(element, "huidu")
+                element_type = adapted_element.get("type")
+                properties = adapted_element.get("properties", {})
+                
+                x = int(adapted_element.get("x", 0))
+                y = int(adapted_element.get("y", 0))
+                width = int(adapted_element.get("width", 200))
+                height = int(adapted_element.get("height", 100))
+                
+                if element_type == "text" or element_type == "singleline_text":
+                    text_node = TextNode(properties.get("text", ""))
+                    text_node.x = x
+                    text_node.y = y
+                    text_node.width = width
+                    text_node.height = height
+                    if properties.get("color"):
+                        text_node.color = properties.get("color")
+                    if properties.get("font_family"):
+                        text_node.font_family = properties.get("font_family")
+                    if properties.get("font_size"):
+                        text_node.font_size = int(properties.get("font_size", 24))
+                    content_nodes.append(text_node)
+                
+                elif element_type == "photo" or element_type == "image":
+                    image_path = properties.get("file_path", "")
+                    if image_path:
+                        image_node = ImageNode(image_path)
+                        image_node.x = x
+                        image_node.y = y
+                        image_node.width = width
+                        image_node.height = height
+                        content_nodes.append(image_node)
+                
+                elif element_type == "video":
+                    video_path = properties.get("file_path", "")
+                    if video_path:
+                        video_node = VideoNode(video_path)
+                        video_node.x = x
+                        video_node.y = y
+                        video_node.width = width
+                        video_node.height = height
+                        content_nodes.append(video_node)
+                
+                elif element_type == "clock" or element_type == "digital_clock":
+                    clock_node = DigitalClockNode()
+                    clock_node.x = x
+                    clock_node.y = y
+                    clock_node.width = width
+                    clock_node.height = height
+                    content_nodes.append(clock_node)
+                
+                elif element_type == "dial_clock":
+                    clock_node = DialClockNode()
+                    clock_node.x = x
+                    clock_node.y = y
+                    clock_node.width = width
+                    clock_node.height = height
+                    content_nodes.append(clock_node)
+                
+                elif element_type == "animation" or element_type == "dynamic":
+                    dynamic_node = DynamicNode()
+                    dynamic_node.x = x
+                    dynamic_node.y = y
+                    dynamic_node.width = width
+                    dynamic_node.height = height
+                    content_nodes.append(dynamic_node)
+            
+            if not content_nodes:
+                logger.warning("No valid content nodes created")
+                return False
+            
+            area_node = AreaNode(content_nodes)
+            program_node = ProgramNode([area_node])
+            
+            self.set_progress(50, "Uploading program...")
+            if not self.sdk.program:
+                logger.error("SDK program interface not available")
+                return False
+            
+            result = self.sdk.program.replace([self._device_id], program_node)
+            
+            if result.get("message") == "ok":
+                self.set_progress(100, "Upload complete")
+                logger.info(f"Program '{program_data.get('name')}' uploaded successfully")
+                return True
+            else:
+                logger.error(f"Upload failed: {result}")
+                return False
         except Exception as e:
             logger.error(f"Error uploading program: {e}", exc_info=True)
             return False
     
-    def _add_element_to_sdk(self, element: Dict, program_id: int, screen_width: int, screen_height: int) -> bool:
-        adapted_element = adapt_element_for_controller(element, "huidu")
-        element_type = adapted_element.get("type")
-        properties = adapted_element.get("properties", {})
-        x = adapted_element.get("x", 0)
-        y = adapted_element.get("y", 0)
-        width = adapted_element.get("width", 200)
-        height = adapted_element.get("height", 100)
-        area_id = self.sdk.add_area(program_id, x, y, width, height)
-        if not area_id:
-            return False
-        if element_type == "text" or element_type == "singleline_text":
-            text = properties.get("text", "")
-            font_family = properties.get("font_family", "Arial")
-            font_size = properties.get("font_size", 24)
-            color_hex = properties.get("color", "#000000")
-            color_rgb = self._hex_to_rgb(color_hex)
-            item_id = self.sdk.add_text_item(
-                area_id, text, font_family, font_size,
-                color_rgb, 0, 4, 0, 25, 201, 3
-            )
-            return item_id is not None
-        elif element_type == "animation":
-            text = properties.get("text", "")
-            font_family = properties.get("font_family", "Arial")
-            font_size = properties.get("font_size", 24)
-            color_hex = properties.get("color", "#FFFFFF")
-            color_rgb = self._hex_to_rgb(color_hex)
-            item_id = self.sdk.add_text_item(
-                area_id, text, font_family, font_size,
-                color_rgb, 0, 4, 0, 25, 201, 3
-            )
-            return item_id is not None
-        elif element_type == "weather":
-            text = properties.get("text", "")
-            font_family = properties.get("font_family", "Arial")
-            font_size = properties.get("font_size", 24)
-            color_hex = properties.get("color", "#FFFFFF")
-            color_rgb = self._hex_to_rgb(color_hex)
-            item_id = self.sdk.add_text_item(
-                area_id, text, font_family, font_size,
-                color_rgb, 0, 4, 0, 25, 201, 3
-            )
-            return item_id is not None
-        elif element_type == "photo":
-            file_path = properties.get("file_path", "")
-            if file_path and Path(file_path).exists():
-                item_id = self.sdk.add_image_item(area_id, file_path, 0, 30, 201, 3)
-                return item_id is not None
-        elif element_type == "clock":
-            show_date = properties.get("show_date", True)
-            font_family = properties.get("font_family", "Arial")
-            font_size = properties.get("font_size", 48)
-            color_hex = properties.get("color", "#000000")
-            color_rgb = self._hex_to_rgb(color_hex)
-            item_id = self.sdk.add_time_item(
-                area_id, show_date, True, font_family, font_size, color_rgb
-            )
-            return item_id is not None
-        elif element_type == "sensor":
-            font_family = properties.get("font_family", "Arial")
-            font_size = properties.get("font_size", 24)
-            color_hex = properties.get("color", "#FFFFFF")
-            color_rgb = self._hex_to_rgb(color_hex)
-            sensor_type = properties.get("sensor_type", 0)
-            item_id = self.sdk.add_sensor_item(
-                area_id, sensor_type, color_rgb, font_family, font_size
-            )
-            return item_id is not None
-        elif element_type == "timing":
-            font_family = properties.get("font_family", "Arial")
-            font_size = properties.get("font_size", 24)
-            color_hex = properties.get("color", "#FFFFFF")
-            color_rgb = self._hex_to_rgb(color_hex)
-            count_type = properties.get("count_type", 0)
-            count_value = properties.get("count_value", 0)
-            item_id = self.sdk.add_count_item(
-                area_id, count_type, count_value, color_rgb, font_family, font_size
-            )
-            return item_id is not None
-        logger.warning(f"Element type {element_type} not fully supported by Huidu SDK")
-        return False
-    
-    def _hex_to_rgb(self, hex_color: str) -> tuple:
-        hex_color = hex_color.lstrip('#')
-        if len(hex_color) == 6:
-            return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
-        return (0, 0, 0)
-    
-    def download_program(self, program_id: str = None) -> Optional[Dict]:
-        logger.warning("Program download not directly supported by Huidu SDK")
-        return None
-    
-    def get_program_list(self) -> List[Dict]:
-        logger.warning("Program list not directly supported by Huidu SDK")
-        return []
-    
-    def get_time(self) -> Optional[datetime]:
+    def download_program(self, program_id: Optional[str] = None) -> Optional[Dict]:
+        if not self.sdk or not self._device_id:
+            return None
+        
         try:
-            from datetime import datetime
-            device_info = self.get_device_info()
-            if device_info and 'time' in device_info:
-                time_str = device_info.get('time')
-                if time_str:
-                    return datetime.fromisoformat(time_str) if isinstance(time_str, str) else time_str
-            return datetime.now()
-        except Exception:
+            result = self.sdk.get_programs([self._device_id])
+            if result.get("message") != "ok":
+                return None
+            
+            data_array = result.get("data", [])
+            if not data_array:
+                return None
+            
+            programs = []
+            for item in data_array:
+                if isinstance(item, dict):
+                    prog_id = item.get("id") or item.get("program_id")
+                    program_name = item.get("name") or f"Program_{prog_id}"
+                    programs.append({
+                        "id": prog_id,
+                        "name": program_name,
+                        "data": item
+                    })
+            
+            selected_program = None
+            if programs and program_id:
+                for prog in programs:
+                    if str(prog.get("id")) == str(program_id):
+                        selected_program = prog
+                        break
+            
+            if not selected_program and programs:
+                selected_program = programs[0]
+            
+            if selected_program:
+                program_data = selected_program.get("data", {})
+                if program_data:
+                    from core.program_converter import ProgramConverter
+                    from controllers.huidu_sdk import ProgramNode
+                    
+                    if isinstance(program_data, ProgramNode):
+                        sdk_dict = program_data.to_dict() if hasattr(program_data, 'to_dict') else {}
+                    elif isinstance(program_data, dict):
+                        sdk_dict = program_data
+                    else:
+                        sdk_dict = {}
+                    
+                    if sdk_dict:
+                        converted = ProgramConverter.sdk_to_soo(sdk_dict, "huidu")
+                        converted["id"] = selected_program.get("id")
+                        return converted
+                else:
+                    return {
+                        "id": selected_program.get("id"),
+                        "name": selected_program.get("name"),
+                        "elements": [],
+                        "properties": {},
+                        "play_mode": {"mode": "play_times", "play_times": 1, "fixed_length": "0:00:30"},
+                        "play_control": {
+                            "specified_time": {"enabled": False, "time": ""},
+                            "specify_week": {"enabled": False, "days": []},
+                            "specify_date": {"enabled": False, "date": ""}
+                        }
+                    }
+            
+            return None
+        except Exception as e:
+            logger.error(f"Error downloading program: {e}", exc_info=True)
             return None
     
-    def set_time(self, time: datetime) -> bool:
+    def get_program_list(self) -> List[Dict]:
+        if not self.sdk or not self._device_id:
+            return []
+        
         try:
-            from datetime import datetime
-            if not isinstance(time, datetime):
-                return False
+            result = self.sdk.get_programs([self._device_id])
+            if result.get("message") != "ok":
+                return []
             
-            result = self.sdk.set_device_property([], {
-                "time": time.isoformat(),
-                "date": time.strftime('%Y-%m-%d'),
-                "timezone": "UTC"
-            })
+            data_array = result.get("data", [])
+            if not data_array:
+                return []
+            
+            programs = []
+            for item in data_array:
+                if isinstance(item, dict):
+                    program_id = item.get("id") or item.get("program_id")
+                    program_name = item.get("name") or f"Program_{program_id}"
+                    programs.append({
+                        "id": program_id,
+                        "name": program_name,
+                        "program_id": program_id
+                    })
+            
+            return programs
+        except Exception as e:
+            logger.error(f"Error getting program list: {e}", exc_info=True)
+            return []
+    
+    def delete_program(self, program_id: str) -> bool:
+        if not self.sdk or not self._device_id or not self.sdk.program:
+            return False
+        
+        try:
+            result = self.sdk.program.remove([self._device_id], [program_id])
             return result.get("message") == "ok"
         except Exception as e:
-            logger.error(f"Error setting time: {e}")
+            logger.error(f"Error deleting program: {e}", exc_info=True)
             return False
     
     def get_brightness(self) -> Optional[int]:
+        if not self.sdk or not self._device_id:
+            return None
+        
         try:
-            device_property = self.sdk.get_device_property()
-            if device_property.get("message") == "ok":
-                data_array = device_property.get("data", [])
+            property_result = self.sdk.get_device_property([self._device_id])
+            if property_result.get("message") == "ok":
+                data_array = property_result.get("data", [])
                 if data_array and len(data_array) > 0:
                     device_data = data_array[0].get("data", {})
-                    if device_data and "luminance" in device_data:
-                        try:
-                            return int(device_data["luminance"])
-                        except:
-                            pass
-            if self.device_info:
-                return self.device_info.get("brightness")
-        except Exception:
-            pass
-        return None
+                    luminance = device_data.get("luminance", "100")
+                    return int(luminance)
+            return None
+        except Exception as e:
+            logger.error(f"Error getting brightness: {e}")
+            return None
     
     def set_brightness(self, brightness: int, brightness_settings: Optional[Dict] = None) -> bool:
+        if not self.sdk or not self._device_id or not self.sdk.device:
+            return False
+        
         try:
-            if brightness_settings and brightness_settings.get("time_ranges"):
-                # Handle time-based brightness if supported
-                time_ranges = brightness_settings.get("time_ranges", [])
-                for time_range in time_ranges:
-                    # Store time-based brightness settings (controller may handle automatically)
-                    pass
-            
-            if brightness_settings and brightness_settings.get("sensor", {}).get("enabled"):
-                # Sensor-based brightness handled by controller automatically
-                pass
-            
-            # Set current brightness
-            result = self.sdk.set_luminance(brightness)
+            result = self.sdk.device.set_device_property([self._device_id], "luminance", str(brightness))
             return result.get("message") == "ok"
         except Exception as e:
-            logger.error(f"Error setting brightness: {e}")
-        return False
+            logger.error(f"Error setting brightness: {e}", exc_info=True)
+            return False
     
-    def get_power_schedule(self) -> Optional[List[Dict]]:
-        try:
-            device_info = self.get_device_info()
-            if device_info and 'power_schedule' in device_info:
-                return device_info.get('power_schedule')
-            
-            result = self.sdk.get_device_status()
-            if result and result.get("message") == "ok":
-                data = result.get("data", [])
-                if data and len(data) > 0:
-                    schedule_data = data[0].get("power_schedule") or data[0].get("schedule")
-                    if schedule_data:
-                        return schedule_data
-            
+    def get_network_config(self) -> Optional[Dict]:
+        if not self.sdk or not self._device_id:
             return None
-        except Exception as e:
-            logger.debug(f"Error getting power schedule: {e}")
-            return None
-    
-    def set_power_schedule(self, schedule: Dict) -> bool:
-        """Set power schedule. Accepts schedule dict with daily schedules."""
+        
         try:
-            from sdk.data.task.ScheduledTaskInfo import ScheduledTaskInfo
-            
-            screen_tasks = []
-            
-            if isinstance(schedule, list):
-                for day_schedule in schedule:
-                    if not day_schedule.get("enabled", True):
-                        continue
+            property_result = self.sdk.get_device_property([self._device_id])
+            if property_result.get("message") == "ok":
+                data_array = property_result.get("data", [])
+                if data_array and len(data_array) > 0:
+                    device_data = data_array[0].get("data", {})
                     
-                    on_time = day_schedule.get("on_time", "08:00")
-                    off_time = day_schedule.get("off_time", "22:00")
-                    day = day_schedule.get("day", "").lower()
-                    
-                    on_hour, on_min = map(int, on_time.split(':'))
-                    off_hour, off_min = map(int, off_time.split(':'))
-                    
-                    on_time_str = f"{on_hour:02d}:{on_min:02d}:00"
-                    off_time_str = f"{off_hour:02d}:{off_min:02d}:00"
-                    
-                    week_days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
-                    day_map = {
-                        "monday": "Mon", "tuesday": "Tue", "wednesday": "Wed",
-                        "thursday": "Thu", "friday": "Fri", "saturday": "Sat", "sunday": "Sun"
+                    network_config = {
+                        "eth": {
+                            "ip": device_data.get("eth.ip", ""),
+                            "dhcp": device_data.get("eth.dhcp", "false") == "true"
+                        },
+                        "wifi": {
+                            "enabled": device_data.get("wifi.enabled", "false") == "true",
+                            "mode": device_data.get("wifi.mode", ""),
+                            "ssid": device_data.get("wifi.ap.ssid", ""),
+                            "password": device_data.get("wifi.ap.passwd", "")
+                        }
                     }
                     
-                    if day:
-                        week_filter = day_map.get(day, day.capitalize()[:3])
-                    else:
-                        week_filter = ",".join(week_days)
-                    
-                    screen_tasks.append(ScheduledTaskInfo(
-                        data="true",
-                        time_range=f"{on_time_str}~{off_time_str}",
-                        week_filter=week_filter,
-                        month_filter="Jan,Feb,Mar,Apr,May,Jun,Jul,Aug,Sep,Oct,Nov,Dec"
-                    ))
-                    screen_tasks.append(ScheduledTaskInfo(
-                        data="false",
-                        time_range=f"{off_time_str}~{on_time_str}",
-                        week_filter=week_filter,
-                        month_filter="Jan,Feb,Mar,Apr,May,Jun,Jul,Aug,Sep,Oct,Nov,Dec"
-                    ))
-            elif isinstance(schedule, dict):
-                if "on_time" in schedule and "off_time" in schedule:
-                    on_time = schedule.get("on_time", "08:00")
-                    off_time = schedule.get("off_time", "22:00")
-                    enabled = schedule.get("enabled", True)
-                    
-                    if enabled:
-                        on_hour, on_min = map(int, on_time.split(':'))
-                        off_hour, off_min = map(int, off_time.split(':'))
-                        
-                        on_time_str = f"{on_hour:02d}:{on_min:02d}:00"
-                        off_time_str = f"{off_hour:02d}:{off_min:02d}:00"
-                        
-                        screen_tasks.append(ScheduledTaskInfo(
-                            data="true",
-                            time_range=f"{on_time_str}~{off_time_str}",
-                            week_filter="Mon,Tue,Wed,Thu,Fri,Sat,Sun",
-                            month_filter="Jan,Feb,Mar,Apr,May,Jun,Jul,Aug,Sep,Oct,Nov,Dec"
-                        ))
-                        screen_tasks.append(ScheduledTaskInfo(
-                            data="false",
-                            time_range=f"{off_time_str}~{on_time_str}",
-                            week_filter="Mon,Tue,Wed,Thu,Fri,Sat,Sun",
-                            month_filter="Jan,Feb,Mar,Apr,May,Jun,Jul,Aug,Sep,Oct,Nov,Dec"
-                        ))
+                    return network_config
+            return None
+        except Exception as e:
+            logger.error(f"Error getting network config: {e}", exc_info=True)
+            return None
+    
+    def set_network_config(self, network_config: Dict) -> bool:
+        if not self.sdk or not self._device_id:
+            return False
+        
+        try:
+            properties = {}
             
-            if screen_tasks:
-                tasks = {"screen": screen_tasks}
-                result = self.sdk.set_time_switch(tasks)
+            if "eth" in network_config:
+                eth = network_config["eth"]
+                if "ip" in eth:
+                    properties["eth.ip"] = eth["ip"]
+                if "dhcp" in eth:
+                    properties["eth.dhcp"] = "true" if eth["dhcp"] else "false"
+            
+            if "wifi" in network_config:
+                wifi = network_config["wifi"]
+                if "enabled" in wifi:
+                    properties["wifi.enabled"] = "true" if wifi["enabled"] else "false"
+                if "mode" in wifi:
+                    properties["wifi.mode"] = wifi["mode"]
+                if "ssid" in wifi:
+                    properties["wifi.ap.ssid"] = wifi["ssid"]
+                if "password" in wifi:
+                    properties["wifi.ap.passwd"] = wifi["password"]
+            
+            if properties and self.sdk.device:
+                result = self.sdk.device.set_device_property([self._device_id], properties)
                 return result.get("message") == "ok"
             
             return False
         except Exception as e:
-            logger.error(f"Error setting power schedule: {e}")
-            return False
-    
-    def _time_str_to_seconds(self, time_str: str) -> int:
-        try:
-            parts = time_str.split(':')
-            if len(parts) >= 2:
-                hours = int(parts[0])
-                minutes = int(parts[1])
-                return hours * 3600 + minutes * 60
-        except Exception:
-            pass
-        return 0
-    
-    def get_network_config(self) -> Optional[Dict]:
-        try:
-            device_property = self.sdk.get_device_property()
-            if device_property.get("message") == "ok":
-                data_array = device_property.get("data", [])
-                if data_array and len(data_array) > 0:
-                    device_data = data_array[0].get("data", {})
-                    if device_data:
-                        config = {}
-                        if "eth.ip" in device_data:
-                            config["ip"] = device_data["eth.ip"]
-                        if "eth.gateway" in device_data:
-                            config["gateway"] = device_data["eth.gateway"]
-                        if "eth.netmask" in device_data:
-                            config["subnet"] = device_data["eth.netmask"]
-                        if "eth.dhcp" in device_data:
-                            config["dhcp"] = device_data["eth.dhcp"] == "true"
-                        if config:
-                            return config
-        except Exception as e:
-            logger.error(f"Error getting network config: {e}")
-        return None
-    
-    def set_network_config(self, network_config: Dict) -> bool:
-        try:
-            # Convert field names to Huidu SDK format
-            huidu_config = {}
-            if "ip" in network_config or "ip_address" in network_config:
-                huidu_config["ip"] = network_config.get("ip") or network_config.get("ip_address")
-            if "subnet" in network_config or "subnet_mask" in network_config or "netmask" in network_config:
-                huidu_config["netmask"] = network_config.get("subnet") or network_config.get("subnet_mask") or network_config.get("netmask")
-            if "gateway" in network_config:
-                huidu_config["gateway"] = network_config.get("gateway")
-            if "dhcp" in network_config:
-                huidu_config["dhcp"] = "true" if network_config.get("dhcp") else "false"
-            
-            result = self.sdk.set_ip(huidu_config)
-            return result.get("message") == "ok"
-        except Exception as e:
-            logger.error(f"Error setting network config: {e}")
+            logger.error(f"Error setting network config: {e}", exc_info=True)
             return False
     
     def get_wifi_config(self) -> Optional[Dict]:
-        try:
-            device_property = self.sdk.get_device_property()
-            if device_property.get("message") == "ok":
-                data_array = device_property.get("data", [])
-                if data_array and len(data_array) > 0:
-                    device_data = data_array[0].get("data", {})
-                    if device_data:
-                        wifi_config = {}
-                        if "wifi.enabled" in device_data:
-                            wifi_config["enabled"] = device_data["wifi.enabled"] == "true"
-                        if "wifi.ssid" in device_data:
-                            wifi_config["ssid"] = device_data["wifi.ssid"]
-                        if "wifi.password" in device_data:
-                            wifi_config["password"] = device_data["wifi.password"]
-                        if wifi_config:
-                            return wifi_config
-        except Exception as e:
-            logger.debug(f"Error getting wifi config: {e}")
+        network_config = self.get_network_config()
+        if network_config and "wifi" in network_config:
+            return network_config["wifi"]
         return None
     
     def set_wifi_config(self, wifi_config: Dict) -> bool:
-        try:
-            result = self.sdk.set_device_property([], {
-                "wifi.enabled": "true" if wifi_config.get("enabled", False) else "false",
-                "wifi.ssid": wifi_config.get("ssid", ""),
-                "wifi.password": wifi_config.get("password", "")
-            })
-            return result.get("message") == "ok"
-        except Exception as e:
-            logger.error(f"Error setting wifi config: {e}")
-            return False
+        network_config = {"wifi": wifi_config}
+        return self.set_network_config(network_config)
     
     def reboot(self) -> bool:
+        if not self.sdk or not self._device_id or not self.sdk.device:
+            return False
+        
         try:
-            result = self.sdk.set_device_property([], {"reboot": "true"})
+            result = self.sdk.device.set_device_property([self._device_id], "reboot", "true")
             return result.get("message") == "ok"
         except Exception as e:
-            logger.error(f"Error rebooting controller: {e}")
+            logger.error(f"Error rebooting device: {e}", exc_info=True)
             return False
-    
-    def delete_program(self, program_id: str) -> bool:
-        logger.warning("Program deletion not directly supported by Huidu SDK")
-        return False
-    
-    def test_connection(self) -> bool:
-        try:
-            ping_success = self.network_manager.ping_host(self.ip_address)
-            if not ping_success:
-                logger.warning(f"Ping test failed for {self.ip_address}")
-                return False
-            
-            port_success = True
-            if self.port and self.port > 0:
-                port_success = self.network_manager.test_port_connection(
-                    self.ip_address, self.port, timeout=3.0
-                )
-                if not port_success:
-                    logger.warning(f"Port {self.port} test failed for {self.ip_address}")
-            
-            sdk_success = self.sdk.is_card_online(self.ip_address)
-            if not sdk_success:
-                logger.warning(f"SDK is_card_online check failed for {self.ip_address}")
-            
-            overall_success = ping_success and (port_success or sdk_success)
-            
-            if overall_success:
-                logger.info(f"Connection test successful for {self.ip_address}")
-            else:
-                logger.warning(f"Connection test failed for {self.ip_address}")
-            
-            return overall_success
-        except Exception as e:
-            logger.error(f"Error testing connection: {e}")
-            return False
-    
-    def test_connection_detailed(self) -> Dict[str, bool]:
-        results = {
-            'ping': False,
-            'port': False,
-            'sdk': False,
-            'overall': False
-        }
-        
-        try:
-            results['ping'] = self.network_manager.ping_host(self.ip_address)
-            
-            if self.port and self.port > 0:
-                results['port'] = self.network_manager.test_port_connection(
-                    self.ip_address, self.port, timeout=3.0
-                )
-            else:
-                results['port'] = True
-            
-            results['sdk'] = self.sdk.is_card_online(self.ip_address)
-            results['overall'] = results['ping'] and (results['port'] or results['sdk'])
-            
-        except Exception as e:
-            logger.error(f"Error in detailed connection test: {e}")
-        
-        return results
-    
-    @staticmethod
-    def find_controller_ip() -> Optional[str]:
-        network_manager = NetworkManager()
-        return network_manager.find_controller_ip(controller_type="huidu")
 

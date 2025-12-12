@@ -130,16 +130,44 @@ class ProgramConverter:
     @staticmethod
     def _huidu_to_soo(sdk_program_dict: Dict) -> Dict:
         """Convert Huidu SDK format to *.soo format"""
-        elements = sdk_program_dict.get("elements", []) or sdk_program_dict.get("areas", [])
         soo_elements = []
         
-        for element in elements:
-            soo_element = ProgramConverter._huidu_element_to_soo_element(element)
-            if soo_element:
-                soo_elements.append(soo_element)
+        areas = sdk_program_dict.get("area", []) or sdk_program_dict.get("areas", []) or sdk_program_dict.get("elements", [])
+        
+        for area in areas:
+            if isinstance(area, dict):
+                items = area.get("item", [])
+                area_x = area.get("x", 0)
+                area_y = area.get("y", 0)
+                area_width = area.get("width", 0)
+                area_height = area.get("height", 0)
+                
+                for item in items:
+                    if isinstance(item, dict):
+                        soo_element = ProgramConverter._huidu_content_node_to_soo_element(item, area_x, area_y, area_width, area_height)
+                        if soo_element:
+                            soo_elements.append(soo_element)
+            else:
+                soo_element = ProgramConverter._huidu_element_to_soo_element(area)
+                if soo_element:
+                    soo_elements.append(soo_element)
+        
+        play_control = sdk_program_dict.get("playControl", {}) or sdk_program_dict.get("play_control", {})
+        if isinstance(play_control, dict):
+            play_control_converted = {
+                "specified_time": play_control.get("specified_time", {"enabled": False, "time": ""}),
+                "specify_week": play_control.get("specify_week", {"enabled": False, "days": []}),
+                "specify_date": play_control.get("specify_date", {"enabled": False, "date": ""})
+            }
+        else:
+            play_control_converted = {
+                "specified_time": {"enabled": False, "time": ""},
+                "specify_week": {"enabled": False, "days": []},
+                "specify_date": {"enabled": False, "date": ""}
+            }
         
         return {
-            "id": sdk_program_dict.get("id", f"program_{sdk_program_dict.get('name', 'Program').lower().replace(' ', '_')}"),
+            "id": sdk_program_dict.get("id") or sdk_program_dict.get("uuid") or f"program_{sdk_program_dict.get('name', 'Program').lower().replace(' ', '_')}",
             "name": sdk_program_dict.get("name", "Program"),
             "width": sdk_program_dict.get("width", 64),
             "height": sdk_program_dict.get("height", 32),
@@ -150,11 +178,7 @@ class ProgramConverter:
                 "background_music": sdk_program_dict.get("background_music", {"enabled": False, "file": "", "volume": 0})
             },
             "play_mode": sdk_program_dict.get("play_mode", {"mode": "play_times", "play_times": 1, "fixed_length": "0:00:30"}),
-            "play_control": sdk_program_dict.get("play_control", {
-                "specified_time": {"enabled": False, "time": ""},
-                "specify_week": {"enabled": False, "days": []},
-                "specify_date": {"enabled": False, "date": ""}
-            }),
+            "play_control": play_control_converted,
             "duration": sdk_program_dict.get("duration", 0.0)
         }
     
@@ -206,8 +230,48 @@ class ProgramConverter:
         return element
     
     @staticmethod
+    def _huidu_content_node_to_soo_element(item: Dict, area_x: int = 0, area_y: int = 0, area_width: int = 0, area_height: int = 0) -> Optional[Dict]:
+        """Convert Huidu content node (from AreaNode.item) to *.soo element format"""
+        element_type = item.get("type", "")
+        
+        soo_element = {
+            "type": "",
+            "x": area_x,
+            "y": area_y,
+            "width": area_width if area_width > 0 else 200,
+            "height": area_height if area_height > 0 else 100,
+            "properties": {}
+        }
+        
+        if element_type == "text":
+            soo_element["type"] = "text"
+            soo_element["properties"]["text"] = item.get("string", "")
+            if item.get("font"):
+                font = item["font"]
+                if isinstance(font, dict):
+                    soo_element["properties"]["font_family"] = font.get("family", "Arial")
+                    soo_element["properties"]["font_size"] = font.get("size", 24)
+            soo_element["properties"]["color"] = item.get("color", "#000000")
+        elif element_type == "image":
+            soo_element["type"] = "photo"
+            soo_element["properties"]["file_path"] = item.get("file_path", "") or item.get("filePath", "")
+        elif element_type == "video":
+            soo_element["type"] = "video"
+            soo_element["properties"]["file_path"] = item.get("file_path", "") or item.get("filePath", "")
+        elif element_type == "digitalClock":
+            soo_element["type"] = "clock"
+        elif element_type == "dialClock":
+            soo_element["type"] = "dial_clock"
+        elif element_type == "dynamic":
+            soo_element["type"] = "animation"
+        else:
+            return None
+        
+        return soo_element
+    
+    @staticmethod
     def _huidu_element_to_soo_element(element: Dict) -> Optional[Dict]:
-        """Convert Huidu element to *.soo element format"""
+        """Convert Huidu element to *.soo element format (legacy format)"""
         element_type = element.get("type", "")
         
         soo_element = {

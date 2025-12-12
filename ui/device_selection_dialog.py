@@ -262,7 +262,6 @@ class DeviceSelectionDialog(QDialog):
         
         self.status_label.setText("Discovering devices...")
         self.loading_spinner.start()
-        self.table.setRowCount(0)
         
         self.discovery_thread = DeviceDiscoveryThread(self.controller_service)
         self.discovery_thread.devices_discovered.connect(self.on_devices_discovered)
