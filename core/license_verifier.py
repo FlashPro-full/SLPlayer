@@ -31,9 +31,12 @@ class LicenseVerifier:
             import sys
             if getattr(sys, 'frozen', False):
                 base_path = Path(sys.executable).parent
+                public_key_path = base_path / "resources" / "public.key"
+                if not public_key_path.exists():
+                    public_key_path = base_path / "_internal" / "resources" / "public.key"
             else:
                 base_path = Path(__file__).parent.parent
-            public_key_path = base_path / "resources" / "public.key"
+                public_key_path = base_path / "resources" / "public.key"
         
         self.public_key_path = public_key_path
         self.public_key = None

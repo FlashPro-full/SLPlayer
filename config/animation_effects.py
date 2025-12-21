@@ -1,78 +1,125 @@
-"""
-Animation effects configuration and mapping
-Maps animation names to numeric indices used in XML export
-"""
 from enum import IntEnum
 
-
 class AnimationEffect(IntEnum):
-    RANDOM = -1
-    IMMEDIATE_SHOW = 0
-    IMMEDIATE_CLEAR = 0
-    MOVE_LEFT = 1
-    MOVE_RIGHT = 2
-    MOVE_UP = 3
-    MOVE_DOWN = 4
-    COVER_LEFT = 5
-    COVER_RIGHT = 6
-    COVER_UP = 7
-    COVER_DOWN = 8
-    TOP_LEFT_COVER = 9
-    TOP_RIGHT_COVER = 10
-    BOTTOM_LEFT_COVER = 11
-    BOTTOM_RIGHT_COVER = 12
-    OPEN_FROM_MIDDLE = 13
-    UP_DOWN_OPEN = 14
-    CLOSE_FROM_MIDDLE = 15
-    UP_DOWN_CLOSE = 16
-    GRADUAL_CHANGE = 17
+    DIRECT_DISPLAY = 0
+    SHIFT_LEFT = 1
+    SHIFT_RIGHT = 2
+    SHIFT_UP = 3
+    SHIFT_DOWN = 4
+    OVERLAY_LEFT = 5
+    OVERLAY_RIGHT = 6
+    OVERLAY_UP = 7
+    OVERLAY_DOWN = 8
+    OVERLAY_TOP_LEFT = 9
+    OVERLAY_BOTTOM_LEFT = 10
+    OVERLAY_TOP_RIGHT = 11
+    OVERLAY_BOTTOM_RIGHT = 12
+    HORIZONTAL_OPENING = 13
+    VERTICAL_OPENING = 14
+    HORIZONTAL_CLOSING = 15
+    VERTICAL_CLOSING = 16
+    FADE_IN_OUT = 17
     VERTICAL_BLINDS = 18
     HORIZONTAL_BLINDS = 19
-    TWINKLE = 20
-    CONTINUOUS_MOVE_LEFT = 21
-    CONTINUOUS_MOVE_RIGHT = 22
-    DONT_CLEAR_SCREEN = 23
+    DONT_CLEAR_SCREEN = 20
+    RANDOM_SPECIAL = 25
+    CONTINUOUS_LEFT = 26
+    CONTINUOUS_RIGHT = 27
+    CONTINUOUS_UP = 28
+    CONTINUOUS_DOWN = 29
+    FLASHING = 30
 
-
-ANIMATION_NAME_TO_INDEX = {
-    "Random": AnimationEffect.RANDOM,
-    "Immediate Show": AnimationEffect.IMMEDIATE_SHOW,
-    "Immediate Clear": AnimationEffect.IMMEDIATE_CLEAR,
-    "Move Left": AnimationEffect.MOVE_LEFT,
-    "Move Right": AnimationEffect.MOVE_RIGHT,
-    "Move Up": AnimationEffect.MOVE_UP,
-    "Move Down": AnimationEffect.MOVE_DOWN,
-    "Cover Left": AnimationEffect.COVER_LEFT,
-    "Cover Right": AnimationEffect.COVER_RIGHT,
-    "Cover Up": AnimationEffect.COVER_UP,
-    "Cover Down": AnimationEffect.COVER_DOWN,
-    "Top Left Cover": AnimationEffect.TOP_LEFT_COVER,
-    "Top Right Cover": AnimationEffect.TOP_RIGHT_COVER,
-    "Bottom Left Cover": AnimationEffect.BOTTOM_LEFT_COVER,
-    "Bottom Right Cover": AnimationEffect.BOTTOM_RIGHT_COVER,
-    "Open From Middle": AnimationEffect.OPEN_FROM_MIDDLE,
-    "Up Down Open": AnimationEffect.UP_DOWN_OPEN,
-    "Close From Middle": AnimationEffect.CLOSE_FROM_MIDDLE,
-    "Up Down Close": AnimationEffect.UP_DOWN_CLOSE,
-    "Gradual Change": AnimationEffect.GRADUAL_CHANGE,
-    "Vertical Blinds": AnimationEffect.VERTICAL_BLINDS,
-    "Horizontal Blinds": AnimationEffect.HORIZONTAL_BLINDS,
-    "Twinkle": AnimationEffect.TWINKLE,
-    "Continuous Move Left": AnimationEffect.CONTINUOUS_MOVE_LEFT,
-    "Continuous Move Right": AnimationEffect.CONTINUOUS_MOVE_RIGHT,
-    "Don't Clear Screen": AnimationEffect.DONT_CLEAR_SCREEN,
+ANIMATION_NAME_TO_SDK_INDEX = {
+    "Direct display": 0,
+    "Immediate Show": 0,
+    "Immediate Clear": 0,
+    "Shift left": 1,
+    "Move Left": 1,
+    "Shift right": 2,
+    "Move Right": 2,
+    "Shift up": 3,
+    "Move Up": 3,
+    "Shift down": 4,
+    "Move Down": 4,
+    "Overlay left": 5,
+    "Cover Left": 5,
+    "Overlay right": 6,
+    "Cover Right": 6,
+    "Overlay up": 7,
+    "Cover Up": 7,
+    "Overlay down": 8,
+    "Cover Down": 8,
+    "Overlay top left": 9,
+    "Top Left Cover": 9,
+    "Overlay bottom left": 10,
+    "Bottom Left Cover": 10,
+    "Overlay top right": 11,
+    "Top Right Cover": 11,
+    "Overlay bottom right": 12,
+    "Bottom Right Cover": 12,
+    "Horizontal opening": 13,
+    "Open From Middle": 13,
+    "Vertical opening": 14,
+    "Up Down Open": 14,
+    "Horizontal closing": 15,
+    "Close From Middle": 15,
+    "Vertical closing": 16,
+    "Up Down Close": 16,
+    "Fade in and out": 17,
+    "Gradual Change": 17,
+    "Vertical blinds": 18,
+    "Vertical Blinds": 18,
+    "Horizontal blinds": 19,
+    "Horizontal Blinds": 19,
+    "Do not clear the screen": 20,
+    "Don't Clear Screen": 20,
+    "Random special effects": 25,
+    "Random": 25,
+    "Continuous left movement": 26,
+    "Continuous Move Left": 26,
+    "Continuous right movement": 27,
+    "Continuous Move Right": 27,
+    "Continuous up movement": 28,
+    "Continuous Move Up": 28,
+    "Continuous down movement": 29,
+    "Continuous Move Down": 29,
+    "Flashing": 30,
+    "Twinkle": 30,
 }
 
-# Reverse mapping from index to name
-ANIMATION_INDEX_TO_NAME = {v.value: k for k, v in ANIMATION_NAME_TO_INDEX.items()}
-
+SDK_INDEX_TO_ANIMATION_NAME = {
+    0: "Direct display",
+    1: "Shift left",
+    2: "Shift right",
+    3: "Shift up",
+    4: "Shift down",
+    5: "Overlay left",
+    6: "Overlay right",
+    7: "Overlay up",
+    8: "Overlay down",
+    9: "Overlay top left",
+    10: "Overlay bottom left",
+    11: "Overlay top right",
+    12: "Overlay bottom right",
+    13: "Horizontal opening",
+    14: "Vertical opening",
+    15: "Horizontal closing",
+    16: "Vertical closing",
+    17: "Fade in and out",
+    18: "Vertical blinds",
+    19: "Horizontal blinds",
+    20: "Do not clear the screen",
+    25: "Random special effects",
+    26: "Continuous left movement",
+    27: "Continuous right movement",
+    28: "Continuous up movement",
+    29: "Continuous down movement",
+    30: "Flashing",
+}
 
 def get_animation_index(name: str) -> int:
-    """Get animation index from name"""
-    return ANIMATION_NAME_TO_INDEX.get(name, AnimationEffect.IMMEDIATE_SHOW).value
-
+    return ANIMATION_NAME_TO_SDK_INDEX.get(name, 0)
 
 def get_animation_name(index: int) -> str:
-    """Get animation name from index"""
-    return ANIMATION_INDEX_TO_NAME.get(index, "Immediate Show")
+    return SDK_INDEX_TO_ANIMATION_NAME.get(index, "Direct display")
 

@@ -2,7 +2,7 @@ from PyQt5.QtCore import QDir, Qt, QUrl, pyqtSignal
 from PyQt5.QtMultimedia import QMediaContent, QMediaPlayer
 from PyQt5.QtMultimediaWidgets import QVideoWidget
 from PyQt5.QtWidgets import (QApplication, QFileDialog, QHBoxLayout, QLabel, QPushButton, QSizePolicy, QSlider, QStyle, QVBoxLayout, QWidget)
-from PyQt5.QtGui import QPalette
+from PyQt5.QtGui import QPalette, QColor
 
 
 class VideoPlayer(QWidget):
@@ -20,10 +20,10 @@ class VideoPlayer(QWidget):
         self.videoWidget.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
         
         palette = QPalette()
-        palette.setColor(QPalette.Window, Qt.black)
+        palette.setColor(QPalette.Window, QColor(0, 0, 0))
         self.videoWidget.setPalette(palette)
         
-        self.videoWidget.setAttribute(Qt.WA_OpaquePaintEvent, True)
+        self.videoWidget.setAttribute(Qt.WA_OpaquePaintEvent, True)  # type: ignore
         self.videoWidget.setAutoFillBackground(False)
 
         openButton = QPushButton("Open...")
@@ -34,7 +34,7 @@ class VideoPlayer(QWidget):
         self.playButton.setIcon(self.style().standardIcon(QStyle.SP_MediaPlay))  # type: ignore
         self.playButton.clicked.connect(self._togglePlayPause)
 
-        self.positionSlider = QSlider(Qt.Horizontal)
+        self.positionSlider = QSlider(Qt.Horizontal)  # type: ignore
         self.positionSlider.setRange(0, 0)
         self.positionSlider.sliderPressed.connect(self._on_slider_pressed)
         self.positionSlider.sliderReleased.connect(self._on_slider_released)
@@ -196,7 +196,7 @@ class VideoPlayer(QWidget):
     @staticmethod
     def get_video_thumbnail(video_path: str, frame_time: float = 1.0):
         try:
-            import cv2
+            import cv2 #type: ignore
             import numpy as np
             from PyQt5.QtGui import QPixmap, QImage
             

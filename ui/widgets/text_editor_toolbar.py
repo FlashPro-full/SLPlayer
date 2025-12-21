@@ -14,9 +14,9 @@ class TextEditorToolbar(QWidget):
     def __init__(self, text_edit: Optional[QTextEdit] = None, parent=None):
         super().__init__(parent)
         self.text_edit = text_edit
-        self._horizontal_alignment = Qt.AlignHCenter
-        self._vertical_alignment = Qt.AlignVCenter
-        self.font_color = QColor(Qt.white)
+        self._horizontal_alignment = Qt.AlignHCenter #type: ignore
+        self._vertical_alignment = Qt.AlignVCenter #type: ignore    
+        self.font_color = QColor(Qt.white) #type: ignore
         self.text_bg_color = None
         self.init_ui()
         self._connect_text_edit()
@@ -131,6 +131,10 @@ class TextEditorToolbar(QWidget):
         self.font_size_spin.setMaximum(200)
         self.font_size_spin.setValue(12)
         self.font_size_spin.valueChanged.connect(self._on_font_size_changed)
+        self.font_size_spin.editingFinished.connect(self._on_font_size_editing_finished)
+        self._font_size_editing = False
+        line_edit = self.font_size_spin.lineEdit()
+        line_edit.textChanged.connect(self._on_font_size_text_changed)
         row1.addWidget(self.font_size_spin)
 
         main_layout.addLayout(row1)
@@ -380,7 +384,29 @@ class TextEditorToolbar(QWidget):
         cursor.setCharFormat(char_format)
         self._emit_format_changed()
     
+    def _on_font_size_text_changed(self, text):
+        self._font_size_editing = True
+    
+    def _on_font_size_editing_finished(self):
+        self._font_size_editing = False
+        text = self.font_size_spin.lineEdit().text().strip()
+        if text:
+            try:
+                value = int(text)
+                if value < 6:
+                    value = 6
+                elif value > 200:
+                    value = 200
+                self.font_size_spin.blockSignals(True)
+                self.font_size_spin.setValue(value)
+                self.font_size_spin.blockSignals(False)
+                self._on_font_size_changed(value)
+            except ValueError:
+                pass
+    
     def _on_font_size_changed(self, size):
+        if self._font_size_editing:
+            return
         if not self.text_edit:
             return
         

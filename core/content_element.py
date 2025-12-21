@@ -55,7 +55,7 @@ class TextElement(ContentElement):
             "text": "New Text",
             "font_family": "Arial",
             "font_size": 24,
-            "color": "#000000",
+            "color": "#FFFFFF",
             "alignment": "left",
             "bold": False,
             "italic": False,
@@ -91,7 +91,7 @@ class SingleLineTextElement(ContentElement):
             "text": "Scrolling Text",
             "font_family": "Arial",
             "font_size": 24,
-            "color": "#000000",
+            "color": "#FFFFFF",
             "speed": 5,
             "direction": "left"
         }
@@ -139,7 +139,7 @@ class ClockElement(ContentElement):
             "format": "HH:mm:ss",
             "font_family": "Arial",
             "font_size": 48,
-            "color": "#000000",
+            "color": "#FFFFFF",
             "show_date": False,
             "date_format": "yyyy-MM-dd"
         }
@@ -166,7 +166,7 @@ class TimerElement(ContentElement):
             "format": "HH:mm:ss",
             "font_family": "Arial",
             "font_size": 48,
-            "color": "#000000",
+            "color": "#FFFFFF",
             "auto_start": True
         }
 
@@ -182,7 +182,7 @@ class WeatherElement(ContentElement):
             "format": "{city}: {temperature}°C, {description}",
             "update_interval": 3600,
             "font_size": 24,
-            "color": "#000000",
+            "color": "#FFFFFF",
             "show_icon": True
         }
 

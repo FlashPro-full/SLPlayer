@@ -1,10 +1,9 @@
 from PyQt5.QtWidgets import QStatusBar, QLabel, QHBoxLayout, QWidget
 from PyQt5.QtCore import Qt
 
-from controllers.base_controller import ConnectionStatus
+from services.controller_service import get_controller_service
 from config.i18n import tr
 from ui.widgets.loading_spinner import LoadingSpinner
-
 
 class StatusBarWidget(QStatusBar):
     
@@ -17,8 +16,9 @@ class StatusBarWidget(QStatusBar):
                 border-top: 2px solid #555555;
             }
         """)
+        self.controller_service = get_controller_service()
         self.init_ui()
-        self.set_connection_status(ConnectionStatus.DISCONNECTED)
+        self._update_status()
     
     def init_ui(self):
         self.connection_label = QLabel(tr("status.no_device"))
@@ -46,25 +46,14 @@ class StatusBarWidget(QStatusBar):
         self.progress_label = QLabel("")
         self.addPermanentWidget(self.progress_label)
     
-    def set_connection_status(self, status: ConnectionStatus, device_name: str = ""):
-        try:
-            status_value = status.value
-        except AttributeError:
-            status_value = str(status).lower()
-        
-        if status_value == "disconnected":
-            self.connection_label.setText(tr("status.no_device"))
-            self.connection_label.setStyleSheet("color: red;")
-        elif status_value == "connecting":
-            self.connection_label.setText(tr("status.connecting"))
-            self.connection_label.setStyleSheet("color: orange;")
-        elif status_value == "connected":
+    def set_connection_status(self, status: bool, device_name: str = ""):
+        if status:
             base_text = tr("status.connected")
             text = f"{base_text} ({device_name})" if device_name else base_text
             self.connection_label.setText(text)
             self.connection_label.setStyleSheet("color: green;")
-        elif status_value == "error":
-            self.connection_label.setText(tr("status.connection_error"))
+        else:
+            self.connection_label.setText(tr("status.no_device"))
             self.connection_label.setStyleSheet("color: red;")
     
     def set_program_name(self, name: str):
@@ -85,3 +74,12 @@ class StatusBarWidget(QStatusBar):
     def hide_scanning(self):
         self.scanning_spinner.stop()
         self.scanning_widget.setVisible(False)
+    
+    def _update_status(self):
+        current_controller = self.controller_service.get_current_controller()
+        if current_controller:
+            is_online = self.controller_service.is_online()
+            controller_id = current_controller.get("controller_id", "")
+            self.set_connection_status(is_online, controller_id)
+        else:
+            self.set_connection_status(False, "")

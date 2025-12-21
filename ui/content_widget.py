@@ -55,6 +55,10 @@ class ContentWidget(QtWidgets.QWidget):
         self._clock_timer.timeout.connect(self._update_clocks)
         self._clock_timer.setInterval(1000)
         self._clock_timer.start()
+        self.setMouseTracking(True)
+        self._drag_state = None
+        self._resize_handle_size = 8
+        self._hover_handle = None
     
     def set_screen_manager(self, screen_manager: Optional['ScreenManager']):
         self.screen_manager = screen_manager
@@ -2980,6 +2984,11 @@ class ContentWidget(QtWidgets.QWidget):
                 for element in elements:
                     self._draw_element(painter, element, rect_x, rect_y, scale)
                 
+                if self.selected_element_id:
+                    selected_element = next((e for e in elements if e.get("id") == self.selected_element_id), None)
+                    if selected_element:
+                        self._draw_selection_handles(painter, selected_element)
+                
                 painter.setClipping(False)
         else:
             self.scale_factor = 1.0
@@ -3020,3 +3029,378 @@ class ContentWidget(QtWidgets.QWidget):
         self._cached_pixmap = None
         super().resizeEvent(event)
         self.update()
+    
+    def _screen_to_canvas(self, screen_x: int, screen_y: int) -> tuple:
+        if self.scale_factor <= 0:
+            return (0, 0)
+        canvas_x = int((screen_x - self.screen_offset_x) / self.scale_factor)
+        canvas_y = int((screen_y - self.screen_offset_y) / self.scale_factor)
+        return (canvas_x, canvas_y)
+    
+    def _canvas_to_screen(self, canvas_x: int, canvas_y: int) -> tuple:
+        screen_x = int(self.screen_offset_x + (canvas_x * self.scale_factor))
+        screen_y = int(self.screen_offset_y + (canvas_y * self.scale_factor))
+        return (screen_x, screen_y)
+    
+    def _get_element_at_position(self, screen_x: int, screen_y: int) -> Optional[Dict]:
+        elements = self._get_current_program_elements()
+        for element in reversed(elements):
+            element_props = element.get("properties", {})
+            x = element_props.get("x", element.get("x", 0))
+            y = element_props.get("y", element.get("y", 0))
+            width = element_props.get("width", element.get("width", 100))
+            height = element_props.get("height", element.get("height", 100))
+            
+            scaled_x = int(self.screen_offset_x + (x * self.scale_factor))
+            scaled_y = int(self.screen_offset_y + (y * self.scale_factor))
+            scaled_width = int(width * self.scale_factor)
+            scaled_height = int(height * self.scale_factor)
+            
+            rect = QtCore.QRect(scaled_x, scaled_y, scaled_width, scaled_height)
+            if rect.contains(screen_x, screen_y):
+                return element
+        return None
+    
+    def _get_resize_handle(self, screen_x: int, screen_y: int, element: Dict) -> Optional[str]:
+        if not element or element.get("id") != self.selected_element_id:
+            return None
+        
+        element_props = element.get("properties", {})
+        x = element_props.get("x", element.get("x", 0))
+        y = element_props.get("y", element.get("y", 0))
+        width = element_props.get("width", element.get("width", 100))
+        height = element_props.get("height", element.get("height", 100))
+        
+        scaled_x = int(self.screen_offset_x + (x * self.scale_factor))
+        scaled_y = int(self.screen_offset_y + (y * self.scale_factor))
+        scaled_width = int(width * self.scale_factor)
+        scaled_height = int(height * self.scale_factor)
+        
+        handle_size = self._resize_handle_size
+        
+        handles = {
+            "nw": QtCore.QRect(scaled_x - handle_size//2, scaled_y - handle_size//2, handle_size, handle_size),
+            "n": QtCore.QRect(scaled_x + scaled_width//2 - handle_size//2, scaled_y - handle_size//2, handle_size, handle_size),
+            "ne": QtCore.QRect(scaled_x + scaled_width - handle_size//2, scaled_y - handle_size//2, handle_size, handle_size),
+            "e": QtCore.QRect(scaled_x + scaled_width - handle_size//2, scaled_y + scaled_height//2 - handle_size//2, handle_size, handle_size),
+            "se": QtCore.QRect(scaled_x + scaled_width - handle_size//2, scaled_y + scaled_height - handle_size//2, handle_size, handle_size),
+            "s": QtCore.QRect(scaled_x + scaled_width//2 - handle_size//2, scaled_y + scaled_height - handle_size//2, handle_size, handle_size),
+            "sw": QtCore.QRect(scaled_x - handle_size//2, scaled_y + scaled_height - handle_size//2, handle_size, handle_size),
+            "w": QtCore.QRect(scaled_x - handle_size//2, scaled_y + scaled_height//2 - handle_size//2, handle_size, handle_size),
+        }
+        
+        for handle_name, handle_rect in handles.items():
+            if handle_rect.contains(screen_x, screen_y):
+                return handle_name
+        return None
+    
+    def _get_cursor_for_handle(self, handle: Optional[str]) -> Qt.CursorShape:
+        if not handle:
+            return Qt.ArrowCursor # type: ignore
+        cursors = {
+            "nw": Qt.SizeFDiagCursor, # type: ignore
+            "n": Qt.SizeVerCursor, # type: ignore
+            "ne": Qt.SizeBDiagCursor, # type: ignore
+            "e": Qt.SizeHorCursor, # type: ignore
+            "se": Qt.SizeFDiagCursor, # type: ignore
+            "s": Qt.SizeVerCursor, # type: ignore
+            "sw": Qt.SizeBDiagCursor, # type: ignore
+            "w": Qt.SizeHorCursor, # type: ignore
+        }
+        return cursors.get(handle, Qt.ArrowCursor) # type: ignore
+    
+    def _update_element_position(self, element: Dict, new_x: int, new_y: int):
+        if not self.screen_manager:
+            return
+        
+        program = None
+        for screen in self.screen_manager.screens:
+            for p in screen.programs:
+                if element in p.elements:
+                    program = p
+                    break
+            if program:
+                break
+        
+        if not program:
+            return
+        
+        from datetime import datetime
+        screen_width, screen_height = self._get_screen_bounds()
+        element_props = element.get("properties", {})
+        width = element_props.get("width", element.get("width", 100))
+        height = element_props.get("height", element.get("height", 100))
+        
+        new_x = max(0, min(new_x, screen_width - width))
+        new_y = max(0, min(new_y, screen_height - height))
+        
+        if "properties" not in element:
+            element["properties"] = {}
+        element["properties"]["x"] = new_x
+        element["properties"]["y"] = new_y
+        element["x"] = new_x
+        element["y"] = new_y
+        program.modified = datetime.now().isoformat()
+        
+        if self.properties_panel:
+            self.properties_panel.property_changed.emit("element_position", (new_x, new_y))
+            if hasattr(self.properties_panel, 'update_properties'):
+                self.properties_panel.update_properties()
+        
+        self.update()
+    
+    def _update_element_size(self, element: Dict, new_width: int, new_height: int, handle: str):
+        if not self.screen_manager:
+            return
+        
+        program = None
+        for screen in self.screen_manager.screens:
+            for p in screen.programs:
+                if element in p.elements:
+                    program = p
+                    break
+            if program:
+                break
+        
+        if not program:
+            return
+        
+        from datetime import datetime
+        screen_width, screen_height = self._get_screen_bounds()
+        element_props = element.get("properties", {})
+        x = element_props.get("x", element.get("x", 0))
+        y = element_props.get("y", element.get("y", 0))
+        
+        min_size = 10
+        new_width = max(min_size, min(new_width, screen_width - x))
+        new_height = max(min_size, min(new_height, screen_height - y))
+        
+        if "properties" not in element:
+            element["properties"] = {}
+        element["properties"]["width"] = new_width
+        element["properties"]["height"] = new_height
+        element["width"] = new_width
+        element["height"] = new_height
+        program.modified = datetime.now().isoformat()
+        
+        if self.properties_panel:
+            self.properties_panel.property_changed.emit("element_size", (new_width, new_height))
+            if hasattr(self.properties_panel, 'update_properties'):
+                self.properties_panel.update_properties()
+        
+        self.update()
+    
+    def _get_screen_bounds(self) -> tuple:
+        from core.screen_config import get_screen_config
+        config = get_screen_config()
+        if config:
+            width = config.get("width", 640)
+            height = config.get("height", 480)
+            if width > 0 and height > 0:
+                return (width, height)
+        return (640, 480)
+    
+    def _draw_selection_handles(self, painter, element: Dict):
+        if not element or element.get("id") != self.selected_element_id:
+            return
+        
+        element_props = element.get("properties", {})
+        x = element_props.get("x", element.get("x", 0))
+        y = element_props.get("y", element.get("y", 0))
+        width = element_props.get("width", element.get("width", 100))
+        height = element_props.get("height", element.get("height", 100))
+        
+        scaled_x = int(self.screen_offset_x + (x * self.scale_factor))
+        scaled_y = int(self.screen_offset_y + (y * self.scale_factor))
+        scaled_width = int(width * self.scale_factor)
+        scaled_height = int(height * self.scale_factor)
+        
+        handle_size = self._resize_handle_size
+        handle_color = QtGui.QColor(255, 255, 255)
+        handle_border = QtGui.QColor(0, 0, 0)
+        
+        handles = [
+            (scaled_x - handle_size//2, scaled_y - handle_size//2),
+            (scaled_x + scaled_width//2 - handle_size//2, scaled_y - handle_size//2),
+            (scaled_x + scaled_width - handle_size//2, scaled_y - handle_size//2),
+            (scaled_x + scaled_width - handle_size//2, scaled_y + scaled_height//2 - handle_size//2),
+            (scaled_x + scaled_width - handle_size//2, scaled_y + scaled_height - handle_size//2),
+            (scaled_x + scaled_width//2 - handle_size//2, scaled_y + scaled_height - handle_size//2),
+            (scaled_x - handle_size//2, scaled_y + scaled_height - handle_size//2),
+            (scaled_x - handle_size//2, scaled_y + scaled_height//2 - handle_size//2),
+        ]
+        
+        for hx, hy in handles:
+            handle_rect = QtCore.QRect(hx, hy, handle_size, handle_size)
+            painter.setPen(QtGui.QPen(handle_border, 1))
+            painter.setBrush(QtGui.QBrush(handle_color))
+            painter.drawRect(handle_rect)
+    
+    def mousePressEvent(self, event):
+        if event.button() != Qt.LeftButton:
+            super().mousePressEvent(event)
+            return
+        
+        screen_x = event.x()
+        screen_y = event.y()
+        
+        if not (self.screen_offset_x <= screen_x <= self.screen_offset_x + int(self.scale_factor * self._get_screen_bounds()[0]) and
+                self.screen_offset_y <= screen_y <= self.screen_offset_y + int(self.scale_factor * self._get_screen_bounds()[1])):
+            super().mousePressEvent(event)
+            return
+        
+        element = self._get_element_at_position(screen_x, screen_y)
+        
+        if element:
+            self.selected_element_id = element.get("id")
+            if self.properties_panel:
+                program = None
+                for screen in self.screen_manager.screens if self.screen_manager else []:
+                    for p in screen.programs:
+                        if element in p.elements:
+                            program = p
+                            break
+                    if program:
+                        break
+                if program:
+                    self.properties_panel.set_element(element, program)
+            
+            handle = self._get_resize_handle(screen_x, screen_y, element)
+            if handle:
+                self._drag_state = {
+                    "type": "resize",
+                    "element": element,
+                    "handle": handle,
+                    "start_x": screen_x,
+                    "start_y": screen_y,
+                    "start_element_x": element.get("properties", {}).get("x", element.get("x", 0)),
+                    "start_element_y": element.get("properties", {}).get("y", element.get("y", 0)),
+                    "start_element_width": element.get("properties", {}).get("width", element.get("width", 100)),
+                    "start_element_height": element.get("properties", {}).get("height", element.get("height", 100)),
+                }
+            else:
+                canvas_x, canvas_y = self._screen_to_canvas(screen_x, screen_y)
+                self._drag_state = {
+                    "type": "drag",
+                    "element": element,
+                    "start_x": screen_x,
+                    "start_y": screen_y,
+                    "start_canvas_x": canvas_x,
+                    "start_canvas_y": canvas_y,
+                    "start_element_x": element.get("properties", {}).get("x", element.get("x", 0)),
+                    "start_element_y": element.get("properties", {}).get("y", element.get("y", 0)),
+                }
+        else:
+            self.selected_element_id = None
+            if self.properties_panel:
+                self.properties_panel.set_element(None, None)
+        
+        self.update()
+        super().mousePressEvent(event)
+    
+    def mouseMoveEvent(self, event):
+        screen_x = event.x()
+        screen_y = event.y()
+        
+        if self._drag_state:
+            if self._drag_state["type"] == "drag":
+                canvas_x, canvas_y = self._screen_to_canvas(screen_x, screen_y)
+                dx = canvas_x - self._drag_state["start_canvas_x"]
+                dy = canvas_y - self._drag_state["start_canvas_y"]
+                new_x = self._drag_state["start_element_x"] + dx
+                new_y = self._drag_state["start_element_y"] + dy
+                self._update_element_position(self._drag_state["element"], new_x, new_y)
+            elif self._drag_state["type"] == "resize":
+                handle = self._drag_state["handle"]
+                canvas_x, canvas_y = self._screen_to_canvas(screen_x, screen_y)
+                start_canvas_x, start_canvas_y = self._screen_to_canvas(
+                    self._drag_state["start_x"],
+                    self._drag_state["start_y"]
+                )
+                
+                dx = canvas_x - start_canvas_x
+                dy = canvas_y - start_canvas_y
+                
+                start_x = self._drag_state["start_element_x"]
+                start_y = self._drag_state["start_element_y"]
+                start_width = self._drag_state["start_element_width"]
+                start_height = self._drag_state["start_element_height"]
+                
+                new_x = start_x
+                new_y = start_y
+                new_width = start_width
+                new_height = start_height
+                
+                if "n" in handle:
+                    new_y = start_y + dy
+                    new_height = start_height - dy
+                if "s" in handle:
+                    new_height = start_height + dy
+                if "w" in handle:
+                    new_x = start_x + dx
+                    new_width = start_width - dx
+                if "e" in handle:
+                    new_width = start_width + dx
+                
+                if new_width < 10:
+                    if "w" in handle:
+                        new_x = start_x + start_width - 10
+                    new_width = 10
+                if new_height < 10:
+                    if "n" in handle:
+                        new_y = start_y + start_height - 10
+                    new_height = 10
+                
+                element = self._drag_state["element"]
+                element_props = element.get("properties", {})
+                element_props["x"] = new_x
+                element_props["y"] = new_y
+                element_props["width"] = new_width
+                element_props["height"] = new_height
+                element["x"] = new_x
+                element["y"] = new_y
+                element["width"] = new_width
+                element["height"] = new_height
+                self.update()
+        else:
+            element = self._get_element_at_position(screen_x, screen_y)
+            if element and element.get("id") == self.selected_element_id:
+                handle = self._get_resize_handle(screen_x, screen_y, element)
+                if handle != self._hover_handle:
+                    self._hover_handle = handle
+                    cursor = self._get_cursor_for_handle(handle)
+                    self.setCursor(cursor)
+                    self.update()
+            else:
+                if self._hover_handle:
+                    self._hover_handle = None
+                    self.setCursor(Qt.ArrowCursor)
+                    self.update()
+        
+        super().mouseMoveEvent(event)
+    
+    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.LeftButton and self._drag_state:
+            if self._drag_state["type"] == "resize":
+                element = self._drag_state["element"]
+                element_props = element.get("properties", {})
+                new_width = element_props.get("width", element.get("width", 100))
+                new_height = element_props.get("height", element.get("height", 100))
+                self._update_element_size(element, new_width, new_height, self._drag_state["handle"])
+            
+            if self.properties_panel and self._drag_state["element"]:
+                program = None
+                for screen in self.screen_manager.screens if self.screen_manager else []:
+                    for p in screen.programs:
+                        if self._drag_state["element"] in p.elements:
+                            program = p
+                            break
+                    if program:
+                        break
+                if program:
+                    self.properties_panel.set_element(self._drag_state["element"], program)
+            
+            self._drag_state = None
+            self.update()
+        
+        super().mouseReleaseEvent(event)

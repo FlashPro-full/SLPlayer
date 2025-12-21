@@ -8,8 +8,7 @@ from utils.logger import get_logger
 from utils.app_data import get_credentials_file, ensure_app_data_dir
 from ui.widgets.toast import ToastManager
 from ui.widgets.loading_spinner import LoadingWidget
-from services.controller_service import ControllerService
-from controllers.base_controller import BaseController
+from services.controller_service import get_controller_service
 
 logger = get_logger(__name__)
 
@@ -47,7 +46,7 @@ class LicenseDialog(QDialog):
         self.setMinimumWidth(450)
         self.setModal(True)
         self.license_valid = False
-        self.controller_service = ControllerService()
+        self.controller_service = get_controller_service()
         self.activation_thread = None
         
         self.controller_id = controller_id
@@ -333,6 +332,11 @@ class LicenseDialog(QDialog):
                 license_manager = LicenseManager()
                 device_id = get_device_id()
                 
+                if not self.controller_id:
+                    logger.error("Cannot verify license: controller_id is None")
+                    self.activation_status.setText("✗ License verification failed: No controller ID")
+                    self.activation_status.setStyleSheet("color: #F44336; font-size: 10pt;")
+                    return
 
                 if license_manager.verify_license_offline(self.controller_id, device_id):
                     self.activation_status.setText("✓ License activated successfully!")
@@ -378,9 +382,9 @@ class LicenseDialog(QDialog):
                 msg = f"{error_message}\n\nWould you like to request a transfer?"
                 reply = QMessageBox.question(
                     self, "Transfer Required", msg,
-                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+                    QMessageBox.Yes | QMessageBox.No
                 )
-                if reply == QMessageBox.StandardButton.Yes:
+                if reply == QMessageBox.Yes:
                     self.request_transfer()
             
             elif error_code == 'DISPLAY_ALREADY_ASSIGNED':
@@ -392,7 +396,7 @@ class LicenseDialog(QDialog):
                 
                 QMessageBox.information(
                     self, "Display Already Assigned", msg,
-                    QMessageBox.StandardButton.Ok
+                    QMessageBox.Ok
                 )
                 
 
@@ -475,12 +479,8 @@ class LicenseDialog(QDialog):
     
     
     def _update_ui_for_controller(self):
-        """Update UI elements based on whether controller is connected"""
-        # Re-check license status if controller is found
         if self.controller_id:
             self.check_license_status()
-            # If activation section doesn't exist, we need to recreate the UI
-            # For simplicity, we'll just update the status
             if hasattr(self, 'activation_section'):
                 if hasattr(self, 'activate_btn'):
                     self.activate_btn.setEnabled(True)

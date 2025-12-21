@@ -4,9 +4,95 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5.QtCore import Qt, pyqtSignal
 from typing import Optional, Dict
+from controllers.huidu import HuiduController
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+DIALOG_STYLE = """
+    QDialog {
+        background-color: #2B2B2B;
+    }
+    QLabel {
+        color: #FFFFFF;
+    }
+    QPushButton {
+        padding: 8px 20px;
+        border: none;
+        border-radius: 4px;
+        font-size: 11pt;
+        background-color: #4A90E2;
+        color: #FFFFFF;
+    }
+    QPushButton:hover {
+        background-color: #5AA0F2;
+    }
+    QPushButton:pressed {
+        background-color: #3A80D2;
+    }
+    QPushButton:disabled {
+        background-color: #555555;
+        color: #888888;
+    }
+    QGroupBox {
+        border: 1px solid #555555;
+        border-radius: 4px;
+        margin-top: 10px;
+        padding-top: 10px;
+        color: #FFFFFF;
+    }
+    QGroupBox::title {
+        subcontrol-origin: margin;
+        left: 10px;
+        padding: 0 5px;
+        color: #FFFFFF;
+    }
+    QLineEdit {
+        background-color: #3B3B3B;
+        border: 1px solid #555555;
+        border-radius: 4px;
+        padding: 4px 8px;
+        color: #FFFFFF;
+    }
+    QLineEdit:hover {
+        border: 1px solid #4A90E2;
+    }
+    QLineEdit:focus {
+        border: 1px solid #4A90E2;
+    }
+    QCheckBox {
+        color: #FFFFFF;
+    }
+    QCheckBox::indicator {
+        width: 18px;
+        height: 18px;
+        border: 1px solid #555555;
+        background-color: #3B3B3B;
+        border-radius: 3px;
+    }
+    QCheckBox::indicator:checked {
+        background-color: #4A90E2;
+        border: 1px solid #4A90E2;
+    }
+    QTabWidget::pane {
+        background-color: #2B2B2B;
+        border: 1px solid #555555;
+    }
+    QTabBar::tab {
+        background-color: #3B3B3B;
+        color: #FFFFFF;
+        padding: 8px 16px;
+        border: 1px solid #555555;
+        border-bottom: none;
+    }
+    QTabBar::tab:selected {
+        background-color: #2B2B2B;
+        border-bottom: 1px solid #2B2B2B;
+    }
+    QTabBar::tab:hover {
+        background-color: #4B4B4B;
+    }
+"""
 
 
 class NetworkConfigDialog(QDialog):
@@ -16,12 +102,22 @@ class NetworkConfigDialog(QDialog):
     def __init__(self, parent=None, controller=None):
         super().__init__(parent)
         self.controller = controller
-        self.setWindowTitle("Network Configuration")
+        self.controller_id = None
+        if controller:
+            try:
+                self.controller_id = controller.get('controller_id') if isinstance(controller, dict) else (controller.get_controller_id() if hasattr(controller, 'get_controller_id') else None)
+            except:
+                pass
+        
+        self.setWindowTitle("🌐 Network Configuration")
         self.setMinimumWidth(600)
         self.setMinimumHeight(500)
+        self.setStyleSheet(DIALOG_STYLE)
+        
+        self.huidu_controller = HuiduController()
         
         self.init_ui()
-        self.read_from_controller()
+        self.load_from_device()
     
     def init_ui(self):
         layout = QVBoxLayout(self)
@@ -45,16 +141,12 @@ class NetworkConfigDialog(QDialog):
         button_layout = QHBoxLayout()
         button_layout.addStretch()
         
-        read_btn = QPushButton("📥 Read from Controller")
-        read_btn.clicked.connect(self.read_from_controller)
-        button_layout.addWidget(read_btn)
-        
         save_btn = QPushButton("💾 Save & Apply")
         save_btn.clicked.connect(self.save_and_apply)
         button_layout.addWidget(save_btn)
         
         reboot_btn = QPushButton("🔄 Reboot Controller")
-        reboot_btn.setStyleSheet("QPushButton { background-color: #ff6b6b; color: white; font-weight: bold; }")
+        reboot_btn.setStyleSheet("QPushButton { background-color: #F44336; color: white; font-weight: bold; } QPushButton:hover { background-color: #E53935; }")
         reboot_btn.clicked.connect(self.reboot_controller)
         button_layout.addWidget(reboot_btn)
         
@@ -99,7 +191,7 @@ class NetworkConfigDialog(QDialog):
 
         info_label = QLabel("Note: Changes to IP settings may require a controller reboot to take effect.")
         info_label.setWordWrap(True)
-        info_label.setStyleSheet("color: #666; font-style: italic;")
+        info_label.setStyleSheet("color: #AAAAAA; font-style: italic;")
         layout.addWidget(info_label)
         
         return widget
@@ -141,7 +233,7 @@ class NetworkConfigDialog(QDialog):
 
         info_label = QLabel("Note: Wi-Fi configuration may require a controller reboot to take effect.")
         info_label.setWordWrap(True)
-        info_label.setStyleSheet("color: #666; font-style: italic;")
+        info_label.setStyleSheet("color: #AAAAAA; font-style: italic;")
         layout.addWidget(info_label)
         
         return widget
@@ -152,104 +244,68 @@ class NetworkConfigDialog(QDialog):
         self.subnet_mask_edit.setEnabled(enabled)
         self.gateway_edit.setEnabled(enabled)
     
-    def read_from_controller(self):
+    def load_from_device(self):
         try:
-            if not self.controller:
-                QMessageBox.warning(self, "No Controller", "No controller connected.")
+            if not self.controller_id:
                 return
             
-
-            if hasattr(self.controller, 'get_network_config'):
-                config = self.controller.get_network_config()
-                if config:
-                    ip = config.get("eth.ip") or config.get("ip") or config.get("ip_address") or config.get("ipAddress") or ""
-                    subnet = config.get("eth.netmask") or config.get("subnet") or config.get("subnet_mask") or config.get("subnetMask") or config.get("netmask") or ""
-                    gateway = config.get("eth.gateway") or config.get("gateway") or config.get("gateway_ip") or config.get("gatewayIp") or ""
-                    dhcp_str = config.get("eth.dhcp") or config.get("dhcp") or config.get("dhcp_enabled") or ""
+            response = self.huidu_controller.get_device_property([self.controller_id])
+            
+            if response.get("message") == "ok" and response.get("data"):
+                device_data_list = response.get("data", [])
+                if device_data_list and len(device_data_list) > 0:
+                    device_data = device_data_list[0].get("data", {})
+                    
+                    ip = device_data.get("eth.ip", "")
+                    dhcp_str = device_data.get("eth.dhcp", "false")
                     dhcp = dhcp_str == "true" or dhcp_str == True if dhcp_str else False
                     
                     self.ip_address_edit.setText(ip)
-                    self.subnet_mask_edit.setText(subnet)
-                    self.gateway_edit.setText(gateway)
                     self.dhcp_check.setChecked(dhcp)
                     self.on_dhcp_toggled(dhcp)
-            
-
-            if hasattr(self.controller, 'get_wifi_config'):
-                wifi_config = self.controller.get_wifi_config()
-                if wifi_config:
-                    enabled = wifi_config.get("wifi.enabled") == "true" or wifi_config.get("wifi.enabled") == True if wifi_config.get("wifi.enabled") else wifi_config.get("enabled", False)
-                    ssid = wifi_config.get("wifi.ap.ssid") or wifi_config.get("wifi.ssid") or wifi_config.get("ssid", "")
-                    self.enable_wifi_check.setChecked(enabled)
+                    
+                    wifi_enabled_str = device_data.get("wifi.enabled", "false")
+                    wifi_enabled = wifi_enabled_str == "true" or wifi_enabled_str == True if wifi_enabled_str else False
+                    ssid = device_data.get("wifi.ap.ssid", "")
+                    
+                    self.enable_wifi_check.setChecked(wifi_enabled)
                     self.ssid_edit.setText(ssid)
-            else:
-                logger.debug("Controller does not support Wi-Fi configuration")
-            
-            QMessageBox.information(self, "Success", "Network settings read from controller.")
-            
+                    
+                    logger.info(f"Loaded network settings from device")
         except Exception as e:
-            logger.error(f"Error reading network config: {e}", exc_info=True)
-            QMessageBox.warning(self, "Error", f"Could not read all network settings: {str(e)}")
+            logger.error(f"Error loading network settings from device: {e}", exc_info=True)
     
     def save_and_apply(self):
         try:
-            if not self.controller:
+            if not self.controller_id:
                 QMessageBox.warning(self, "No Controller", "No controller connected.")
                 return
             
-
             if not self.dhcp_check.isChecked():
                 ip = self.ip_address_edit.text().strip()
-                mask = self.subnet_mask_edit.text().strip()
-                gateway = self.gateway_edit.text().strip()
-                
                 if not ip or not self.validate_ip(ip):
                     QMessageBox.warning(self, "Invalid IP", "Please enter a valid IP address.")
                     return
-                
-                if not mask or not self.validate_ip(mask):
-                    QMessageBox.warning(self, "Invalid Mask", "Please enter a valid subnet mask.")
-                    return
-                
-                if gateway and not self.validate_ip(gateway):
-                    QMessageBox.warning(self, "Invalid Gateway", "Please enter a valid gateway address.")
-                    return
             
-
-            settings = {
-                "ip_config": {
-                    "ip_address": self.ip_address_edit.text().strip() if not self.dhcp_check.isChecked() else "",
-                    "subnet_mask": self.subnet_mask_edit.text().strip() if not self.dhcp_check.isChecked() else "",
-                    "gateway": self.gateway_edit.text().strip() if not self.dhcp_check.isChecked() else "",
-                    "dhcp": self.dhcp_check.isChecked()
-                },
-                "wifi_config": {
-                    "enabled": self.enable_wifi_check.isChecked(),
-                    "ssid": self.ssid_edit.text().strip(),
-                    "password": self.password_edit.text()
-                }
-            }
+            properties = {}
             
-
-            if hasattr(self.controller, 'set_network_config'):
-                # Prepare network config in format expected by controller
-                ip_config = {}
-                if not self.dhcp_check.isChecked():
-                    ip_config["ip"] = self.ip_address_edit.text().strip()
-                    ip_config["subnet"] = self.subnet_mask_edit.text().strip()
-                    ip_config["gateway"] = self.gateway_edit.text().strip()
-                ip_config["dhcp"] = self.dhcp_check.isChecked()
-                
-                # Also include alternative field names for compatibility
-                ip_config["ip_address"] = ip_config.get("ip", "")
-                ip_config["subnet_mask"] = ip_config.get("subnet", "")
-                ip_config["netmask"] = ip_config.get("subnet", "")
-                
-                if not self.controller.set_network_config(ip_config):
-                    QMessageBox.warning(self, "Failed", "Failed to apply IP settings.")
-                    return
-                
-                # Check if reboot is needed and prompt
+            if self.dhcp_check.isChecked():
+                properties["eth.dhcp"] = "true"
+            else:
+                properties["eth.dhcp"] = "false"
+                properties["eth.ip"] = self.ip_address_edit.text().strip()
+            
+            if self.enable_wifi_check.isChecked():
+                properties["wifi.enabled"] = "true"
+                properties["wifi.ap.ssid"] = self.ssid_edit.text().strip()
+                if self.password_edit.text():
+                    properties["wifi.ap.passwd"] = self.password_edit.text()
+            else:
+                properties["wifi.enabled"] = "false"
+            
+            response = self.huidu_controller.set_device_property(properties, [self.controller_id])
+            
+            if response.get("message") == "ok":
                 reply = QMessageBox.question(
                     self, "Network Changes Applied",
                     "Network settings have been saved.\n\n"
@@ -261,30 +317,14 @@ class NetworkConfigDialog(QDialog):
                 
                 if reply == QMessageBox.Yes:
                     self.reboot_controller_silent()
-            
-
-            if hasattr(self.controller, 'set_wifi_config') and self.enable_wifi_check.isChecked():
-                wifi_config = {
-                    "enabled": self.enable_wifi_check.isChecked(),
-                    "ssid": self.ssid_edit.text().strip(),
-                    "password": self.password_edit.text()
-                }
-                if not self.controller.set_wifi_config(wifi_config):
-                    QMessageBox.warning(self, "Failed", "Failed to apply Wi-Fi settings.")
-                    return
-            elif hasattr(self.controller, 'set_wifi_config') and not self.enable_wifi_check.isChecked():
-                wifi_config = {"enabled": False}
-                self.controller.set_wifi_config(wifi_config)
-            
-            # Don't show this message if reboot was already triggered
-            if hasattr(self, '_reboot_triggered') and self._reboot_triggered:
-                self.settings_changed.emit(settings)
-                self.accept()
+                else:
+                    QMessageBox.information(self, "Success", 
+                                          "Network settings saved. Controller may need to be rebooted for changes to take effect.")
+                    self.settings_changed.emit(properties)
+                    self.accept()
             else:
-                QMessageBox.information(self, "Success", 
-                                      "Network settings saved. Controller may need to be rebooted for changes to take effect.")
-                self.settings_changed.emit(settings)
-                self.accept()
+                error_msg = response.get("data", "Unknown error")
+                QMessageBox.warning(self, "Failed", f"Failed to save network settings: {error_msg}")
             
         except Exception as e:
             logger.error(f"Error saving network config: {e}", exc_info=True)
@@ -293,7 +333,7 @@ class NetworkConfigDialog(QDialog):
     def reboot_controller(self):
         """Reboot controller with confirmation dialog"""
         try:
-            if not self.controller:
+            if not self.controller_id:
                 QMessageBox.warning(self, "No Controller", "No controller connected.")
                 return
             
@@ -315,20 +355,20 @@ class NetworkConfigDialog(QDialog):
     def reboot_controller_silent(self):
         """Reboot controller without confirmation (called after network changes)"""
         try:
-            if not self.controller:
+            if not self.controller_id:
                 return
             
-            if hasattr(self.controller, 'reboot'):
-                if self.controller.reboot():
-                    QMessageBox.information(self, "Success", 
-                                          "Reboot command sent to controller. It will restart shortly.\n\n"
-                                          "You will be disconnected from the controller.")
-                    self._reboot_triggered = True
-                    self.accept()
-                else:
-                    QMessageBox.warning(self, "Failed", "Failed to send reboot command.")
+            response = self.huidu_controller.reboot_device([self.controller_id])
+            
+            if response.get("message") == "ok":
+                QMessageBox.information(self, "Success", 
+                                      "Reboot command sent to controller. It will restart shortly.\n\n"
+                                      "You will be disconnected from the controller.")
+                self._reboot_triggered = True
+                self.accept()
             else:
-                QMessageBox.warning(self, "Not Supported", "Controller does not support reboot command.")
+                error_msg = response.get("data", "Unknown error")
+                QMessageBox.warning(self, "Failed", f"Failed to send reboot command: {error_msg}")
                     
         except Exception as e:
             logger.error(f"Error rebooting controller: {e}", exc_info=True)

@@ -1,10 +1,6 @@
-"""
-License manager for activation and management
-Handles communication with license server and local license files
-"""
 import json
 import base64
-import requests
+import requests # type: ignore
 from pathlib import Path
 from typing import Optional, Dict, List, Any
 from utils.logger import get_logger
@@ -16,17 +12,10 @@ logger = get_logger(__name__)
 
 
 class LicenseManager:
-    """Manages license activation and verification"""
     
     def __init__(self, api_base_url: Optional[str] = None):
-        """
-        Initialize license manager.
-        
-        Args:
-            api_base_url: Base URL for license API (defaults to Starled Italia server)
-        """
+
         if api_base_url is None:
-            # Default to Starled Italia server, but allow override via settings
             try:
                 from config.settings import settings
                 api_base_url = settings.get("license.api_url", "https://www.starled-italia.com/license/api")
@@ -34,42 +23,20 @@ class LicenseManager:
                 api_base_url = "https://www.starled-italia.com/license/api"
         
         self.api_base_url = api_base_url.rstrip('/')
-        ensure_app_data_dir()  # Ensure base directory exists
+        ensure_app_data_dir()
         self.license_dir = get_licenses_dir()
         self.license_dir.mkdir(parents=True, exist_ok=True)
         self.verifier = LicenseVerifier()
     
     def get_license_file_path(self, controller_id: str) -> Path:
-        """Get path to license file for a controller"""
-        # Sanitize controller_id for filename
         safe_id = controller_id.replace('/', '_').replace('\\', '_')
         return self.license_dir / f"{safe_id}.slp"
     
     def activate_license(self, controller_id: str, email: str, 
                         device_id: Optional[str] = None) -> Dict[str, Any]:
-        """
-        Activate license with server.
-        
-        Args:
-            controller_id: Controller ID from LED display
-            email: User email
-            device_id: Device ID (auto-generated if not provided)
-        
-        Returns:
-            Dictionary with activation result:
-            {
-                'success': bool,
-                'code': str (if error),
-                'message': str,
-                'license': dict (if success),
-                'actions': list (if DISPLAY_ALREADY_ASSIGNED)
-            }
-        """
         if device_id is None:
             device_id = get_device_id()
         
-        # Prepare request data - PHP backend uses $_REQUEST which reads form data
-        # Backend expects: $_REQUEST['controllerId'], $_REQUEST['deviceId'], $_REQUEST['email']
         request_data = {
             'controllerId': controller_id,
             'deviceId': device_id,
@@ -290,7 +257,8 @@ class LicenseManager:
             
             from core.controller_database import get_controller_database
             db = get_controller_database()
-            db.update_license_info(controller_id)
+            license_file_name = license_file.name
+            db.update_license_info(controller_id, license_file_name)
             
             return True
         except Exception as e:
@@ -298,7 +266,6 @@ class LicenseManager:
             return False
     
     def load_license_file(self, controller_id: str) -> Optional[Dict[str, str]]:
-        """Load license file for a controller"""
         license_file = self.get_license_file_path(controller_id)
         return self.verifier.parse_license_file(license_file)
     

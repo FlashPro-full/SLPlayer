@@ -1,6 +1,3 @@
-"""
-Startup service - Handles application startup logic including license verification
-"""
 import sys
 import base64
 import json
@@ -16,19 +13,12 @@ logger = get_logger(__name__)
 
 
 class StartupService:
-    """Handles application startup operations"""
-    
+
     def __init__(self):
         self.license_manager = LicenseManager()
         self.device_id = get_device_id()
     
     def verify_license_at_startup(self) -> Tuple[Optional[str], bool]:
-        """
-        Verify license at startup.
-        
-        Returns:
-            Tuple of (controller_id, valid_license_found)
-        """
         controller_id = None
         valid_license_found = False
         invalid_licenses = []
@@ -96,15 +86,6 @@ class StartupService:
         return controller_id, valid_license_found
     
     def check_license_after_activation(self, controller_id: Optional[str]) -> bool:
-        """
-        Check if license is valid after activation dialog.
-        
-        Args:
-            controller_id: Controller ID to verify
-            
-        Returns:
-            True if license is valid, False otherwise
-        """
         if not controller_id:
             logger.error("No controller ID available - cannot verify license")
             return False

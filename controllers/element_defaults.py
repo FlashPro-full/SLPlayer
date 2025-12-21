@@ -21,7 +21,7 @@ def ensure_element_defaults(element: Dict) -> Dict:
         if "font_size" not in format_props:
             format_props["font_size"] = 24
         if "font_color" not in format_props:
-            format_props["font_color"] = "#000000"
+            format_props["font_color"] = "#FFFFFF"
         if "bold" not in format_props:
             format_props["bold"] = False
         if "italic" not in format_props:
@@ -31,7 +31,7 @@ def ensure_element_defaults(element: Dict) -> Dict:
         if "alignment" not in format_props:
             format_props["alignment"] = "left"
         if "vertical_alignment" not in format_props:
-            format_props["vertical_alignment"] = "top"
+            format_props["vertical_alignment"] = "middle"
     
     elif element_type == "animation":
         if "text" not in properties:

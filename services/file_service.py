@@ -34,9 +34,23 @@ class FileService:
     
     def save_file(self, program: Program, file_path: Optional[str] = None) -> bool:
         try:
-            result = self.file_manager.save_soo_file_for_screen(program, file_path)
+            if not self.file_manager.screen_manager:
+                logger.error("ScreenManager not available in FileManager")
+                return False
+            
+            screen_name = ScreenManager.get_screen_name_from_program(program)
+            screen = self.file_manager.screen_manager.get_screen_by_name(screen_name)
+            
+            if not screen:
+                logger.error(f"Screen '{screen_name}' not found for program")
+                return False
+            
+            if not file_path:
+                file_path = self._get_default_file_path(program)
+            
+            result = self.file_manager.save_screen_to_file(screen, file_path)
             if result:
-                saved_path = file_path or self._get_default_file_path(program)
+                saved_path = file_path
                 event_bus.program_saved.emit(program, saved_path)
                 event_bus.file_saved.emit(saved_path)
                 event_bus.ui_program_list_refresh.emit()
@@ -44,7 +58,7 @@ class FileService:
             else:
                 error_msg = "Failed to save file"
                 event_bus.file_error.emit(
-                    file_path or self._get_default_file_path(program),
+                    file_path,
                     error_msg
                 )
             return result
@@ -59,23 +73,38 @@ class FileService:
     
     def load_latest_files(self) -> bool:
         try:
-            success, files_loaded, files_total = self.file_manager.load_latest_soo_files()
-            if success:
+            if not self.file_manager.screen_manager:
+                logger.error("ScreenManager not available in FileManager")
+                return False
+            
+            screens = self.file_manager.load_autosaved_screens()
+            if screens:
+                for screen in screens:
+                    if screen.id not in self.file_manager.screen_manager._screens_by_id:
+                        self.file_manager.screen_manager.screens.append(screen)
+                        self.file_manager.screen_manager._screens_by_name[screen.name] = screen
+                        self.file_manager.screen_manager._screens_by_id[screen.id] = screen
+                        for program in screen.programs:
+                            self.file_manager.screen_manager._programs_by_id[program.id] = program
                 event_bus.ui_program_list_refresh.emit()
-            return success
+                return True
+            return False
         except Exception as e:
             logger.error(f"Error loading latest files: {e}", exc_info=True)
             return False
     
     def _get_default_file_path(self, program: Program) -> str:
+        from utils.app_data import get_app_data_dir
         screen_name = ScreenManager.get_screen_name_from_program(program)
         sanitized = ScreenManager.sanitize_screen_name(screen_name)
-        work_dir = self.file_manager.work_dir
+        work_dir = get_app_data_dir() / "work"
+        work_dir.mkdir(parents=True, exist_ok=True)
         return str(work_dir / f"{sanitized}.soo")
     
     def get_recent_files(self, limit: int = 10) -> List[str]:
         try:
-            work_dir = self.file_manager.work_dir
+            from utils.app_data import get_app_data_dir
+            work_dir = get_app_data_dir() / "work"
             if not work_dir.exists():
                 return []
             

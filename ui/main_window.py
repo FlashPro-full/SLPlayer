@@ -1,26 +1,21 @@
 import sys
 from datetime import datetime
-from PyQt5 import QtWidgets, QtGui, QtCore
-from PyQt5.QtCore import Qt, QSize, QTimer
-from PyQt5.QtWidgets import QSplitter, QProgressDialog, QMessageBox, QFileDialog
-from PyQt5.QtGui import QCloseEvent
+from PyQt5 import QtWidgets
+from PyQt5.QtCore import Qt, QTimer
+from PyQt5.QtWidgets import QSplitter, QMessageBox, QFileDialog
 
 from core.program_manager import ProgramManager
 from core.screen_manager import ScreenManager
 from core.file_manager import FileManager
-from core.file_io_thread import FileLoadThread, BatchFileLoadThread
 from core.screen_config import get_screen_config_manager
-from services.controller_service import ControllerService
-from services.program_action_service import ProgramActionService
+from services.controller_service import get_controller_service
 from utils.logger import get_logger
-from ui.menu_bar import MenuBar
-from ui.toolbar import ProgramToolbar, ContentTypesToolbar, ControlToolbar, PlaybackToolbar
+from ui.toolbar import ProgramToolbar, ContentTypesToolbar, ControlToolbar, PlaybackToolbar, DeviceToolbar
 from ui.screen_list_panel import ScreenListPanel
 from ui.content_widget import ContentWidget
 from ui.properties_panel import PropertiesPanel
 
 logger = get_logger(__name__)
-
 
 class MainWindow(QtWidgets.QMainWindow):
     def __init__(self):
@@ -42,22 +37,15 @@ class MainWindow(QtWidgets.QMainWindow):
         self.program_manager = ProgramManager()
         self.screen_manager = ScreenManager()
         self.file_manager = FileManager(self.screen_manager)
-        self.controller_service = ControllerService()
-        self.program_action_service = ProgramActionService(self.program_manager, self.controller_service, self.screen_manager)
+        self.controller_service = get_controller_service()
         self._latest_file_loaded = False
-        self._file_load_thread = None
-        self._batch_load_thread = None
         self._pending_new_screen = False
         
-        self._setup_menu_bar()
         self._setup_toolbar()
         self._setup_main_content()
         self._connect_signals()
+        self._load_autosaved_files()
     
-    def _setup_menu_bar(self):
-        self.menu_bar = MenuBar(self)
-        self.setMenuBar(self.menu_bar)
-        
     def _setup_toolbar(self):
         self.program_toolbar = ProgramToolbar(self)
         self.addToolBar(Qt.TopToolBarArea, self.program_toolbar)
@@ -71,12 +59,13 @@ class MainWindow(QtWidgets.QMainWindow):
         self.playback_toolbar = PlaybackToolbar(self)
         self.addToolBar(Qt.TopToolBarArea, self.playback_toolbar)
         self.playback_toolbar.setOrientation(Qt.Horizontal)
+        self.device_toolbar = DeviceToolbar(self)
+        self.addToolBar(Qt.TopToolBarArea, self.device_toolbar)
+        self.device_toolbar.setOrientation(Qt.Horizontal)
     
     def _setup_main_content(self):
-        # Main horizontal splitter: left side (screen list + content), right side (properties)
         main_splitter = QSplitter(Qt.Horizontal, self)
         
-        # Left side: vertical splitter for screen list and content
         left_splitter = QSplitter(Qt.Horizontal, self)
         self.screen_list_panel = ScreenListPanel(self)
         self.screen_list_panel.set_screen_manager(self.screen_manager)
@@ -119,22 +108,15 @@ class MainWindow(QtWidgets.QMainWindow):
         self.addWidget(self.properties_panel)
     
     def _connect_signals(self):
-        self.menu_bar.send_requested.connect(self.on_send_program)
-        self.menu_bar.export_to_usb_requested.connect(self.on_export_to_usb)
-        self.menu_bar.open_program_requested.connect(self._on_open_file_requested)
-        self.menu_bar.new_program_requested.connect(self._on_new_program_from_menu)
-        self.menu_bar.new_screen_requested.connect(self._on_new_screen_from_menu)
-        self.menu_bar.sync_settings_requested.connect(self._on_sync_settings_requested)
-        self.menu_bar.discover_controllers_requested.connect(self._on_discover_controllers_requested)
-        self.menu_bar.login_requested.connect(self._on_login_requested)
-        self.menu_bar.disconnect_requested.connect(self._on_disconnect_controller_requested)
-        self.menu_bar.export_logs_requested.connect(self._on_export_logs_requested)
-        self.menu_bar.time_power_brightness_requested.connect(self._on_time_power_brightness_requested)
-        self.menu_bar.network_config_requested.connect(self._on_network_config_requested)
         self.control_toolbar.action_triggered.connect(self.on_toolbar_action)
         self.playback_toolbar.action_triggered.connect(self.on_playback_action)
-        self.program_toolbar.new_program_requested.connect(self._on_new_program_from_toolbar)
-        self.program_toolbar.new_screen_requested.connect(self._on_new_screen_from_toolbar)
+        self.program_toolbar.new_program_requested.connect(self._on_new_program)
+        self.program_toolbar.new_screen_requested.connect(self._on_new_screen)
+        self.device_toolbar.time_requested.connect(self._on_time_requested)
+        self.device_toolbar.brightness_requested.connect(self._on_brightness_requested)
+        self.device_toolbar.power_requested.connect(self._on_power_requested)
+        self.device_toolbar.schedule_requested.connect(self._on_schedule_requested)
+        self.device_toolbar.network_requested.connect(self._on_network_config_requested)
         
         screen_config_manager = get_screen_config_manager()
         screen_config_manager.config_changed.connect(self._on_screen_config_changed)
@@ -153,46 +135,89 @@ class MainWindow(QtWidgets.QMainWindow):
         self.screen_list_panel.program_copy_requested.connect(self._on_program_copy)
         self.screen_list_panel.content_copy_requested.connect(self._on_content_copy)
         self.content_types_toolbar.content_type_selected.connect(self._on_content_type_selected)
-        self.menu_bar.save_program_requested.connect(self._on_save_requested)
         
-        # Connect controller service events to status bar
         from core.event_bus import event_bus
         event_bus.controller_connected.connect(self._on_controller_connected)
         event_bus.controller_disconnected.connect(self._on_controller_disconnected)
         event_bus.controller_error.connect(self._on_controller_error)
+        
+        if self.controller_service.current_controller:
+            self._on_controller_connected(self.controller_service.current_controller)
     
     def on_send_program(self):
-        self.program_action_service.send_program(self)
-    
-    def on_export_to_usb(self):
-        self.program_action_service.export_to_usb(self)
+        if not self.controller_service or not self.controller_service.current_controller:
+            QMessageBox.warning(self, "No Controller", "No controller is currently connected.")
+            return
+        
+        if not self.screen_manager or not self.screen_manager.current_screen:
+            QMessageBox.warning(self, "No Screen", "No screen is currently selected.")
+            return
+        
+        if not self.screen_manager.current_screen.programs:
+            QMessageBox.warning(self, "No Program", "No program to send.")
+            return
+        
+        controller_dict = self.controller_service.current_controller
+        controller_type = controller_dict.get("controller_type", "").lower() if isinstance(controller_dict, dict) else ""
+        
+        if controller_type != "huidu":
+            QMessageBox.warning(self, "Unsupported Controller", "This operation is only supported for Huidu controllers.")
+            return
+        
+        reply = QMessageBox.question(
+            self,
+            "Send Program",
+            "Do you want to Add or Replace the program on the device?\n\nYes = Replace\nNo = Add",
+            QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel,
+            QMessageBox.Yes
+        )
+        
+        if reply == QMessageBox.Cancel:
+            return
+        
+        is_replace = (reply == QMessageBox.Yes)
+        
+        try:
+            from controllers.huidu import HuiduController
+            from core.program_converter import ProgramConverter
+            
+            controller_id = controller_dict.get("controller_id")
+
+            huidu_controller = HuiduController()
+            
+            current_program = self.screen_manager.current_screen.programs[0]
+            program_dict = current_program.to_dict()
+            
+            sdk_program = ProgramConverter.soo_to_sdk(program_dict, "huidu")
+            sdk_program_list = [sdk_program]
+            
+            if is_replace:
+                response = huidu_controller.replace_program(sdk_program_list, [controller_id])
+            else:
+                response = huidu_controller.add_program(sdk_program_list, [controller_id])
+            
+            if response.get("message") == "ok":
+                QMessageBox.information(self, "Success", f"Program {'replaced' if is_replace else 'added'} successfully.")
+            else:
+                error_msg = response.get("data", "Unknown error")
+                QMessageBox.warning(self, "Error", f"Failed to send program: {error_msg}")
+        except Exception as e:
+            logger.error(f"Error sending program: {e}", exc_info=True)
+            QMessageBox.critical(self, "Error", f"An error occurred while sending program:\n{str(e)}")
     
     def on_toolbar_action(self, action: str):
         if action == "send":
             self.on_send_program()
-        elif action == "export_to_usb":
-            self.on_export_to_usb()
         elif action == "insert":
             self.on_insert()
         elif action == "clear":
             self.on_clear()
     
     def on_insert(self):
-        self.program_action_service.show_insert_instructions(self)
+        pass
     
     def on_clear(self):
-        result = self.program_action_service.clear_program(self)
-        if result:
-            current_program = self.program_manager.current_program
-            if not current_program and self.screen_manager:
-                if self.screen_manager.current_screen and self.screen_manager.current_screen.programs:
-                    current_program = self.screen_manager.current_screen.programs[0]
-            if current_program:
-                self.properties_panel.set_program(current_program)
-            if hasattr(self, 'content_widget'):
-                self.content_widget.update()
-            if hasattr(self, 'screen_list_panel'):
-                self.screen_list_panel.refresh_screens(debounce=False)
+        pass
     
     def on_playback_action(self, action: str):
         if not hasattr(self, 'content_widget'):
@@ -219,11 +244,11 @@ class MainWindow(QtWidgets.QMainWindow):
             self.screen_manager.current_screen = screen
             from core.screen_config import set_screen_config, get_screen_config
             screen_config = get_screen_config()
-            brand = screen_config.get("brand", "") if screen_config else ""
-            model = screen_config.get("model", "") if screen_config else ""
+            controller_type = screen_config.get("controller_type", "") if screen_config else ""
+            if screen and hasattr(screen, 'properties') and screen.properties:
+                controller_type = screen.properties.get("controller_type", controller_type)
             set_screen_config(
-                brand,
-                model,
+                controller_type,
                 screen.width,
                 screen.height,
                 0,
@@ -301,7 +326,7 @@ class MainWindow(QtWidgets.QMainWindow):
             if hasattr(self, 'content_widget'):
                 self.content_widget.update()
             self.properties_panel.show_empty()
-    
+
     def _on_content_add_requested(self, program_id: str, content_type: str):
         if hasattr(self, 'content_widget'):
             self.content_widget.add_content(program_id, content_type)
@@ -311,7 +336,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.content_widget.add_content_to_current_program(content_type)
     
     def _on_screen_insert(self, screen_name: str):
-        self.program_action_service.show_insert_instructions(self)
+        pass
     
     def _on_screen_close(self, screen_name: str):
         if not self.screen_manager:
@@ -346,24 +371,56 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.screen_list_panel._clipboard_program_id = program_id
     
     def _load_autosaved_files(self):
+        logger.info(f"Loading autosaved files")
         if not self.file_manager or not self.screen_manager:
             return
-        
-        autosaved_screens = self.file_manager.load_autosaved_screens()
-        for screen in autosaved_screens:
-            if screen.id not in self.screen_manager._screens_by_id:
-                self.screen_manager.screens.append(screen)
-                self.screen_manager._screens_by_name[screen.name] = screen
-                self.screen_manager._screens_by_id[screen.id] = screen
+        logger.info(f"{self.controller_service}")
+        controller_id = None
+        if self.controller_service and self.controller_service.current_controller:
+            controller_id = self.controller_service.current_controller.get("controller_id")
+        logger.info(f"Controller ID: {controller_id}")
+        if controller_id:
+            existing_screen = self.file_manager.load_device_screen(controller_id)
+            if existing_screen:
+                if existing_screen.id not in self.screen_manager._screens_by_id:
+                    self.screen_manager.screens.append(existing_screen)
+                    self.screen_manager._screens_by_name[existing_screen.name] = existing_screen
+                    self.screen_manager._screens_by_id[existing_screen.id] = existing_screen
+                    for program in existing_screen.programs:
+                        self.screen_manager._programs_by_id[program.id] = program
+                self.screen_manager.current_screen = existing_screen
+                if hasattr(self, 'screen_list_panel'):
+                    self.screen_list_panel.refresh_screens(debounce=False)
+            else:
+                from utils.app_data import get_app_data_dir
+                from core.screen_config import get_screen_config
+                work_dir = get_app_data_dir() / "work"
+                work_dir.mkdir(parents=True, exist_ok=True)
+                file_path = str(work_dir / f"{controller_id}.soo")
                 
-                for program in screen.programs:
-                    self.screen_manager._programs_by_id[program.id] = program
-        
-        if autosaved_screens and hasattr(self, 'screen_list_panel'):
-            self.screen_list_panel.refresh_screens(debounce=False)
-        elif not autosaved_screens:
-            if not self.screen_manager.screens:
-                self.open_screen_settings_on_startup()
+                config = get_screen_config()
+                width = config.get("width", 1920) if config else 1920
+                height = config.get("height", 1080) if config else 1080
+                controller_type = config.get("controller_type", "").split()[0] if config else ""
+                
+                screen = self.screen_manager.create_screen_for_device(controller_id, controller_type, width, height, file_path)
+                self.file_manager.save_screen_to_file(screen, file_path)
+                self.load_soo_file(file_path, clear_existing=False)
+        else:
+            autosaved_screens = self.file_manager.load_autosaved_screens()
+            for screen in autosaved_screens:
+                if screen.id not in self.screen_manager._screens_by_id:
+                    self.screen_manager.screens.append(screen)
+                    self.screen_manager._screens_by_name[screen.name] = screen
+                    self.screen_manager._screens_by_id[screen.id] = screen
+                    for program in screen.programs:
+                        self.screen_manager._programs_by_id[program.id] = program
+            
+            if autosaved_screens and hasattr(self, 'screen_list_panel'):
+                self.screen_list_panel.refresh_screens(debounce=False)
+            elif not autosaved_screens:
+                if not self.screen_manager.screens:
+                    self.open_screen_settings_on_startup()
     
     def _on_open_file_requested(self, file_path: str):
         if not file_path:
@@ -394,6 +451,7 @@ class MainWindow(QtWidgets.QMainWindow):
     
     def load_soo_file(self, file_path: str, clear_existing: bool = False):
         result = self.file_manager.load_soo_file(file_path, clear_existing)
+        logger.info(f"Loaded file: {file_path}, result: {result}")
         if result and hasattr(self, 'screen_list_panel'):
             self.screen_list_panel.refresh_screens(debounce=False)
         return result
@@ -448,7 +506,6 @@ class MainWindow(QtWidgets.QMainWindow):
     
     def _on_new_screen_requested(self):
         self._pending_new_screen = True
-        self.open_screen_settings_dialog()
     
     def _on_screen_deleted(self, screen_name: str):
         screen = self.screen_manager.get_screen_by_name(screen_name)
@@ -531,23 +588,13 @@ class MainWindow(QtWidgets.QMainWindow):
             if hasattr(self, 'screen_list_panel'):
                 self.screen_list_panel.refresh_screens(debounce=False)
     
-    def _on_new_program_from_menu(self):
+    def _on_new_program(self):
         if hasattr(self, 'screen_list_panel'):
             from core.screen_config import get_screen_name
             screen_name = get_screen_name()
             self.screen_list_panel.add_program_to_screen(screen_name)
     
-    def _on_new_screen_from_menu(self):
-        if hasattr(self, 'screen_list_panel'):
-            self.screen_list_panel.add_new_screen()
-    
-    def _on_new_program_from_toolbar(self):
-        if hasattr(self, 'screen_list_panel'):
-            from core.screen_config import get_screen_name
-            screen_name = get_screen_name()
-            self.screen_list_panel.add_program_to_screen(screen_name)
-    
-    def _on_new_screen_from_toolbar(self):
+    def _on_new_screen(self):
         if hasattr(self, 'screen_list_panel'):
             self.screen_list_panel.add_new_screen()
 
@@ -558,102 +605,12 @@ class MainWindow(QtWidgets.QMainWindow):
         pass
     
     def _startup_controller_discovery(self):
-        """Automatically discover and connect to controllers on application startup"""
-        try:
-            logger.info("Starting automatic controller discovery on startup")
-            
-            if hasattr(self, 'status_bar'):
-                self.status_bar.show_scanning("Scanning for controllers...")
-            
-            discovered = self.controller_service.discover_controllers(timeout=20)
-            
-            if hasattr(self, 'status_bar'):
-                self.status_bar.hide_scanning()
-            
-            if discovered:
-                logger.info(f"Found {len(discovered)} controller(s) on startup")
-                first_controller = discovered[0]
-                logger.info(f"Auto-connecting to first controller: {first_controller.ip}:{first_controller.port} ({first_controller.controller_type})")
-                
-                success = self.controller_service.connect_to_controller(
-                    first_controller.ip,
-                    first_controller.port,
-                    first_controller.controller_type,
-                    first_controller
-                )
-                
-                if success:
-                    logger.info(f"Successfully auto-connected to {first_controller.controller_type} controller at {first_controller.ip}:{first_controller.port}")
-                    self._read_brightness_on_connection()
-                else:
-                    logger.warning(f"Failed to auto-connect to controller at {first_controller.ip}:{first_controller.port}")
-                    if hasattr(self, 'status_bar'):
-                        from controllers.base_controller import ConnectionStatus
-                        self.status_bar.set_connection_status(
-                            ConnectionStatus.DISCONNECTED,
-                            ""
-                        )
-            else:
-                logger.info("No controllers found on startup")
-                if hasattr(self, 'status_bar'):
-                    from controllers.base_controller import ConnectionStatus
-                    self.status_bar.set_connection_status(ConnectionStatus.DISCONNECTED, "")
-        except Exception as e:
-            logger.warning(f"Error during startup controller discovery: {e}", exc_info=True)
-            if hasattr(self, 'status_bar'):
-                self.status_bar.hide_scanning()
-                from controllers.base_controller import ConnectionStatus
-                self.status_bar.set_connection_status(ConnectionStatus.DISCONNECTED, "")
+        pass
     
     def _on_discover_controllers_requested(self):
-        """Handle discover controllers menu action"""
-        try:
-            from ui.dashboard_dialog import DashboardDialog
-            from PyQt5.QtWidgets import QProgressDialog
-            
-            # Show progress dialog while discovering
-            progress = QProgressDialog("Searching for controllers on network...", "Cancel", 0, 0, self)
-            progress.setWindowModality(Qt.WindowModal)
-            progress.setCancelButton(None)
-            progress.show()
-            
-            # Start discovery in background
-            discovered = self.controller_service.discover_controllers(timeout=20)
-            
-            progress.close()
-            
-            # Open dashboard dialog with discovered controllers
-            dialog = DashboardDialog(self, self.controller_service)
-            dialog.controller_selected.connect(self._on_controller_selected_from_discovery)
-            dialog.exec()
-            
-            # After dialog closes, check if controller was selected and connect
-            if hasattr(dialog, '_selected_controller_info') and dialog._selected_controller_info:
-                controller_info = dialog._selected_controller_info
-                try:
-                    success = self.controller_service.connect_to_controller(
-                        controller_info.ip,
-                        controller_info.port,
-                        controller_info.controller_type,
-                        controller_info  # Pass controller info to use SN for NovaStar
-                    )
-                    if success:
-                        logger.info(f"Successfully connected to {controller_info.controller_type} controller at {controller_info.ip}:{controller_info.port}")
-                        # Read brightness automatically on connection
-                        self._read_brightness_on_connection()
-                        QMessageBox.information(self, "Connected", f"Successfully connected to {controller_info.controller_type} controller at {controller_info.ip}:{controller_info.port}")
-                    else:
-                        QMessageBox.warning(self, "Connection Failed", f"Failed to connect to controller at {controller_info.ip}:{controller_info.port}")
-                except Exception as e:
-                    logger.exception(f"Error connecting to controller: {e}")
-                    QMessageBox.critical(self, "Connection Error", f"An error occurred while connecting:\n{str(e)}")
-            
-        except Exception as e:
-            logger.exception(f"Error discovering controllers: {e}")
-            QMessageBox.critical(self, "Discovery Error", f"An error occurred while discovering controllers:\n{str(e)}")
+        pass
     
     def _on_login_requested(self):
-        """Handle login/license menu action"""
         try:
             from ui.login_dialog import LoginDialog
             from core.startup_service import StartupService
@@ -661,8 +618,8 @@ class MainWindow(QtWidgets.QMainWindow):
             startup_service = StartupService()
             controller_id, _ = startup_service.verify_license_at_startup()
             
-            if self.controller_service.is_connected() and self.controller_service.current_controller:
-                controller_id = self.controller_service.current_controller.get_controller_id() or controller_id
+            if self.controller_service.is_online() and self.controller_service.current_controller:
+                controller_id = self.controller_service.current_controller.get('controller_id') or controller_id
             
             login_dialog = LoginDialog(controller_id=controller_id, parent=self)
             dialog_result = login_dialog.exec()
@@ -684,17 +641,14 @@ class MainWindow(QtWidgets.QMainWindow):
             QMessageBox.critical(self, "Error", f"An error occurred while opening login dialog:\n{str(e)}")
     
     def _on_controller_selected_from_discovery(self, ip: str, port: int, controller_type: str):
-        """Handle controller selection from discovery dialog (signal handler)"""
-        # The actual connection is handled after dialog closes to get controller_info
         pass
     
     def _on_network_config_requested(self):
-        """Handle network config menu action"""
         try:
             from ui.network_config_dialog import NetworkConfigDialog
             
             controller = None
-            if self.controller_service and self.controller_service.is_connected():
+            if self.controller_service and self.controller_service.is_online():
                 controller = self.controller_service.current_controller
             
             if not controller:
@@ -707,85 +661,108 @@ class MainWindow(QtWidgets.QMainWindow):
             logger.exception(f"Error opening network config dialog: {e}")
             QMessageBox.critical(self, "Error", f"An error occurred while opening the dialog:\n{str(e)}")
     
-    def _on_time_power_brightness_requested(self):
-        """Handle time/power/brightness menu action"""
+    def _on_time_requested(self):
         try:
-            from ui.time_power_brightness_dialog import TimePowerBrightnessDialog
+            from ui.time_dialog import TimeDialog
             
             controller = None
-            if self.controller_service and self.controller_service.is_connected():
+            if self.controller_service and self.controller_service.is_online():
                 controller = self.controller_service.current_controller
             
             if not controller:
                 QMessageBox.warning(self, "No Controller", "Please connect to a controller first.")
                 return
             
-            # Get current screen name if available
             screen_name = None
             if self.screen_manager and self.screen_manager.current_screen:
                 screen_name = self.screen_manager.current_screen.name
             
-            dialog = TimePowerBrightnessDialog(parent=self, controller=controller, screen_name=screen_name)
+            dialog = TimeDialog(parent=self, controller=controller, screen_name=screen_name)
             dialog.exec()
         except Exception as e:
-            logger.exception(f"Error opening time/power/brightness dialog: {e}")
+            logger.exception(f"Error opening time dialog: {e}")
+            QMessageBox.critical(self, "Error", f"An error occurred while opening the dialog:\n{str(e)}")
+    
+    def _on_brightness_requested(self):
+        try:
+            from ui.brightness_dialog import BrightnessDialog
+            
+            controller = None
+            if self.controller_service and self.controller_service.is_online():
+                controller = self.controller_service.current_controller
+            
+            if not controller:
+                QMessageBox.warning(self, "No Controller", "Please connect to a controller first.")
+                return
+            
+            screen_name = None
+            if self.screen_manager and self.screen_manager.current_screen:
+                screen_name = self.screen_manager.current_screen.name
+            
+            dialog = BrightnessDialog(parent=self, controller=controller, screen_name=screen_name)
+            dialog.exec()
+        except Exception as e:
+            logger.exception(f"Error opening brightness dialog: {e}")
+            QMessageBox.critical(self, "Error", f"An error occurred while opening the dialog:\n{str(e)}")
+    
+    def _on_power_requested(self):
+        try:
+            from ui.power_dialog import PowerDialog
+            
+            controller = None
+            if self.controller_service and self.controller_service.is_online():
+                controller = self.controller_service.current_controller
+            
+            if not controller:
+                QMessageBox.warning(self, "No Controller", "Please connect to a controller first.")
+                return
+            
+            screen_name = None
+            if self.screen_manager and self.screen_manager.current_screen:
+                screen_name = self.screen_manager.current_screen.name
+            
+            dialog = PowerDialog(parent=self, controller=controller, screen_name=screen_name)
+            dialog.exec()
+        except Exception as e:
+            logger.exception(f"Error opening power dialog: {e}")
+            QMessageBox.critical(self, "Error", f"An error occurred while opening the dialog:\n{str(e)}")
+    
+    def _on_schedule_requested(self):
+        try:
+            from ui.schedule_dialog import ScheduleDialog
+            
+            if not self.screen_manager or not self.screen_manager.current_screen:
+                QMessageBox.warning(self, "No Screen", "Please select a screen first.")
+                return
+            
+            if not self.screen_manager.current_screen.programs:
+                QMessageBox.warning(self, "No Program", "Please add a program to the screen first.")
+                return
+            
+            dialog = ScheduleDialog(parent=self, screen_manager=self.screen_manager)
+            dialog.exec()
+        except Exception as e:
+            logger.exception(f"Error opening schedule dialog: {e}")
             QMessageBox.critical(self, "Error", f"An error occurred while opening the dialog:\n{str(e)}")
     
     def _on_controller_connected(self, controller):
-        """Handle controller connected event"""
-        try:
-            if hasattr(self, 'status_bar') and controller:
-                device_info = controller.get_device_info()
-                device_name = ""
-                if device_info:
-                    device_name = device_info.get("name", "") or device_info.get("controller_id", "")
-                    if not device_name:
-                        device_name = f"{controller.controller_type.value} ({controller.ip_address})"
-                else:
-                    device_name = f"{controller.controller_type.value} ({controller.ip_address})"
-                
-                self.status_bar.set_connection_status(
-                    controller.get_connection_status(),
-                    device_name
-                )
-                logger.info(f"Status bar updated: Connected to {device_name}")
-            
-            self._update_license_dependent_actions()
-        except Exception as e:
-            logger.error(f"Error updating status bar on connection: {e}", exc_info=True)
+        self.update_controller(controller)
     
     def _on_controller_disconnected(self):
-        """Handle controller disconnected event"""
-        try:
-            if hasattr(self, 'status_bar'):
-                from controllers.base_controller import ConnectionStatus
-                self.status_bar.set_connection_status(ConnectionStatus.DISCONNECTED, "")
-                logger.info("Status bar updated: Disconnected")
-            
-            self._update_license_dependent_actions()
-        except Exception as e:
-            logger.error(f"Error updating status bar on disconnection: {e}", exc_info=True)
+        self.update_controller(None)
     
     def _on_controller_error(self, error_message: str):
-        """Handle controller error event"""
-        try:
-            logger.warning(f"Controller error: {error_message}")
-            if hasattr(self, 'status_bar'):
-                from controllers.base_controller import ConnectionStatus
-                self.status_bar.set_connection_status(ConnectionStatus.ERROR, "")
-        except Exception as e:
-            logger.error(f"Error handling controller error: {e}", exc_info=True)
+        pass
     
     def _update_license_dependent_actions(self):
-        """Update action states based on license availability"""
         try:
             has_license = False
-            is_connected = self.controller_service.is_connected()
+            is_online = self.controller_service.is_online()
             
-            if is_connected:
+            if is_online:
                 controller = self.controller_service.current_controller
                 if controller:
-                    controller_id = controller.get_controller_id()
+                    controller_id = controller.get("controller_id") if isinstance(controller, dict) else None
                     if controller_id:
                         try:
                             from core.license_manager import LicenseManager
@@ -795,37 +772,26 @@ class MainWindow(QtWidgets.QMainWindow):
                         except Exception as e:
                             logger.error(f"Error checking license: {e}", exc_info=True)
             
-            send_enabled = is_connected and has_license
-            insert_enabled = is_connected and has_license
-            export_usb_enabled = is_connected and has_license
-            import_enabled = is_connected and has_license
-            export_enabled = is_connected and has_license
+            send_enabled = is_online and has_license
+            insert_enabled = is_online and has_license
+            import_enabled = is_online and has_license
+            export_enabled = is_online and has_license
             
-            if hasattr(self.menu_bar, 'actions'):
-                if "control.send" in self.menu_bar.actions:
-                    self.menu_bar.actions["control.send"].setEnabled(send_enabled)
-                if "control.export_to_usb" in self.menu_bar.actions:
-                    self.menu_bar.actions["control.export_to_usb"].setEnabled(export_usb_enabled)
-                if "control.import" in self.menu_bar.actions:
-                    self.menu_bar.actions["control.import"].setEnabled(import_enabled)
-                if "control.export" in self.menu_bar.actions:
-                    self.menu_bar.actions["control.export"].setEnabled(export_enabled)
             
             if hasattr(self, 'control_toolbar'):
                 for action in self.control_toolbar.actions():
                     action_text = action.text()
                     if action_text:
                         if "⬆️" in action_text or "Send" in action_text:
-                            action.setEnabled(send_enabled)
+                            pass
                         elif "📲" in action_text or "Insert" in action_text:
-                            action.setEnabled(insert_enabled)
+                            pass
                         elif "💾" in action_text or "U-Disk" in action_text:
-                            action.setEnabled(export_usb_enabled)
+                            pass
         except Exception as e:
             logger.error(f"Error updating license-dependent actions: {e}", exc_info=True)
     
     def _read_brightness_on_connection(self):
-        """Automatically read brightness from controller when connected"""
         try:
             if not self.controller_service or not self.controller_service.current_controller:
                 return
@@ -841,7 +807,6 @@ class MainWindow(QtWidgets.QMainWindow):
             logger.warning(f"Error reading brightness on connection: {e}", exc_info=True)
     
     def _on_disconnect_controller_requested(self):
-        """Handle disconnect/clear controller menu action"""
         try:
             if self.controller_service and self.controller_service.current_controller:
                 reply = QMessageBox.question(
@@ -852,7 +817,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     QMessageBox.No
                 )
                 if reply == QMessageBox.Yes:
-                    self.controller_service.disconnect()
+                    self.controller_service.disconnect_controller()
                     logger.info("Current controller cleared/disconnected")
                     QMessageBox.information(self, "Disconnected", "Controller has been disconnected and cleared.")
                     # Status bar will be updated via event bus
@@ -862,24 +827,21 @@ class MainWindow(QtWidgets.QMainWindow):
             logger.exception(f"Error disconnecting controller: {e}")
             QMessageBox.critical(self, "Error", f"An error occurred while disconnecting:\n{str(e)}")
     
+    def update_controller(self, controller_dict):
+        if hasattr(self, 'status_bar') and self.status_bar:
+            if hasattr(self.status_bar, '_update_status'):
+                self.status_bar._update_status()
+            elif controller_dict:
+                is_online = controller_dict.get("is_online", False)
+                controller_id = controller_dict.get("controller_id", "")
+                self.status_bar.set_connection_status(is_online, controller_id)
+            else:
+                self.status_bar.set_connection_status(False, "")
+    
     def _clear_current_controller(self):
-        """Clear/disconnect the current controller (internal method)"""
-        try:
-            if self.controller_service and self.controller_service.current_controller:
-                self.controller_service.disconnect()
-                logger.info("Current controller cleared/disconnected")
-                # Update status bar if available
-                if hasattr(self, 'status_bar'):
-                    from controllers.base_controller import ConnectionStatus
-                    self.status_bar.set_connection_status(ConnectionStatus.DISCONNECTED, "")
-                return True
-            return False
-        except Exception as e:
-            logger.exception(f"Error clearing controller: {e}")
-            return False
+        pass
     
     def _on_export_logs_requested(self):
-        """Handle export logs menu action"""
         try:
             from utils.logger import export_all_logs, get_log_directory
             from datetime import datetime
@@ -947,7 +909,7 @@ class MainWindow(QtWidgets.QMainWindow):
             return
         
         controller = self.controller_service.current_controller
-        if not controller or not self.controller_service.is_connected():
+        if not controller or not self.controller_service.is_online():
             reply = QMessageBox.question(
                 self,
                 "No Controller Connected",
@@ -1018,9 +980,6 @@ class MainWindow(QtWidgets.QMainWindow):
         except Exception as e:
             logger.exception(f"Error during sync: {e}")
             QMessageBox.critical(self, "Sync Error", f"An error occurred during sync:\n{str(e)}")
-    
-    def open_screen_settings_dialog(self, load_current_screen: bool = False):
-        pass
 
     def showEvent(self, event):
         super().showEvent(event)
@@ -1032,21 +991,13 @@ class MainWindow(QtWidgets.QMainWindow):
     def closeEvent(self, event):
         try:
             if self.screen_manager and self.screen_manager.screens:
-                saved_count = self.file_manager.save_all_screens()
+                controller_id = None
+                if self.controller_service and self.controller_service.current_controller:
+                    controller_id = self.controller_service.current_controller.get('controller_id')
+                saved_count = self.file_manager.save_all_screens(controller_id)
                 logger.info(f"Auto-saved {saved_count} screen(s) to work directory on close")
         except Exception as e:
             logger.error(f"Error auto-saving on close: {e}", exc_info=True)
-        
-        try:
-            from controllers.huidu_sdk import _stop_api_server
-            _stop_api_server()
-        except Exception as e:
-            logger.error(f"Error stopping API server on close: {e}")
-        
-        if hasattr(self, '_device_dialog') and self._device_dialog:
-            if hasattr(self._device_dialog, 'select_btn'):
-                self._device_dialog.select_btn.setEnabled(True)
-            self._device_dialog.show()
         
         event.accept()
 

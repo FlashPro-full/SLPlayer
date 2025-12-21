@@ -1,12 +1,11 @@
 from PyQt5.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, 
     QTableWidget, QTableWidgetItem, QHeaderView, QMessageBox,
-    QProgressBar, QGroupBox
+    QProgressBar, QGroupBox, QWidget
 )
-from PyQt5.QtCore import Qt, pyqtSignal, QTimer
-from typing import List, Optional
-from core.controller_discovery import ControllerInfo
-from services.controller_service import ControllerService
+from PyQt5.QtCore import Qt, pyqtSignal, QTimer, QModelIndex
+from typing import List, Optional, Dict, Any
+from services.controller_service import get_controller_service
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -16,29 +15,22 @@ class DashboardDialog(QDialog):
     
     controller_selected = pyqtSignal(str, int, str)
     
-    def __init__(self, parent=None, controller_service: Optional[ControllerService] = None):
+    def __init__(self, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
         self.setWindowTitle("Controller Dashboard - Detected Displays")
         self.setModal(False)
         self.setMinimumWidth(800)
         self.setMinimumHeight(600)
+        self.controller_service = get_controller_service()
         
-        # Use provided controller service or get from parent
-        if controller_service:
-            self.controller_service = controller_service
-        elif parent and hasattr(parent, 'controller_service'):
-            self.controller_service = parent.controller_service
-        else:
-            self.controller_service = ControllerService()
-        
-        self.controllers: List[ControllerInfo] = []
-        self._selected_controller_info: Optional[ControllerInfo] = None
+        self.controllers: List[Dict[str, Any]] = []
+        self._selected_controller_info: Optional[Dict[str, Any]] = None
         
         self.init_ui()
         self.connect_signals()
         self.start_discovery()
     
-    def init_ui(self):
+    def init_ui(self) -> None:
         layout = QVBoxLayout(self)
         layout.setSpacing(15)
         layout.setContentsMargins(20, 20, 20, 20)
@@ -67,7 +59,9 @@ class DashboardDialog(QDialog):
         self.table.setHorizontalHeaderLabels([
             "IP Address", "Port", "Type", "Name", "Model", "Firmware", "Resolution", "Display Name", "Status"
         ])
-        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        header = self.table.horizontalHeader()
+        if header is not None:
+            header.setSectionResizeMode(QHeaderView.Stretch)
         self.table.setSelectionBehavior(QTableWidget.SelectRows)
         self.table.setSelectionMode(QTableWidget.SingleSelection)
         self.table.setEditTriggers(QTableWidget.NoEditTriggers)
@@ -93,28 +87,26 @@ class DashboardDialog(QDialog):
         
         layout.addLayout(button_layout)
     
-    def connect_signals(self):
-        # Connect to controller service discovery signals
-        self.controller_service.discovery.controller_found.connect(self.on_controller_found)
-        self.controller_service.discovery.discovery_finished.connect(self.on_discovery_finished)
+    def connect_signals(self) -> None:
+        pass
     
-    def start_discovery(self):
+    def start_discovery(self) -> None:
         self.controllers.clear()
         self.table.setRowCount(0)
         self.status_label.setText("Scanning network for controllers...")
         self.progress_bar.setRange(0, 0)
         # Use controller service to discover
-        discovered = self.controller_service.discover_controllers(timeout=20)
-        if discovered:
-            self.controllers = discovered
+        discovered = self.controller_service.discover_controllers()
+        if discovered and discovered.get("all_controllers"):
+            self.controllers = discovered["all_controllers"]
             self.update_table()
             self.on_discovery_finished()
     
-    def on_controller_found(self, controller_info: ControllerInfo):
+    def on_controller_found(self, controller_info: Dict[str, Any]) -> None:
         self.controllers.append(controller_info)
         self.update_table()
     
-    def on_discovery_finished(self):
+    def on_discovery_finished(self) -> None:
         self.status_label.setText(f"Discovery complete. Found {len(self.controllers)} controller(s).")
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(100)
@@ -122,82 +114,42 @@ class DashboardDialog(QDialog):
         if len(self.controllers) == 0:
             self.status_label.setText("No controllers found. Click 'Refresh Scan' to try again.")
     
-    def update_table(self):
+    def update_table(self) -> None:
         self.table.setRowCount(len(self.controllers))
         
         for row, controller in enumerate(self.controllers):
-            self.table.setItem(row, 0, QTableWidgetItem(controller.ip))
-            self.table.setItem(row, 1, QTableWidgetItem(str(controller.port)))
-            self.table.setItem(row, 2, QTableWidgetItem(controller.controller_type.upper()))
-            self.table.setItem(row, 3, QTableWidgetItem(controller.name or "Unknown"))
-            self.table.setItem(row, 4, QTableWidgetItem(getattr(controller, 'model', None) or "Unknown"))
-            self.table.setItem(row, 5, QTableWidgetItem(controller.firmware_version or "Unknown"))
-            self.table.setItem(row, 6, QTableWidgetItem(str(controller.display_resolution) if controller.display_resolution else "Unknown"))
-            self.table.setItem(row, 7, QTableWidgetItem(getattr(controller, 'display_name', None) or "Unknown"))
+            self.table.setItem(row, 0, QTableWidgetItem(controller.get('ip', 'Unknown')))
+            self.table.setItem(row, 1, QTableWidgetItem(str(controller.get('port', 0))))
+            self.table.setItem(row, 2, QTableWidgetItem(controller.get('controller_type', 'Unknown').upper()))
+            self.table.setItem(row, 3, QTableWidgetItem(controller.get('name', 'Unknown')))
+            self.table.setItem(row, 4, QTableWidgetItem(controller.get('model', 'Unknown')))
+            self.table.setItem(row, 5, QTableWidgetItem(controller.get('version_app', controller.get('firmware_version', 'Unknown'))))
+            resolution = controller.get('display_resolution') or controller.get('resolution')
+            if resolution:
+                self.table.setItem(row, 6, QTableWidgetItem(str(resolution)))
+            else:
+                width = controller.get('screen_width') or controller.get('width')
+                height = controller.get('screen_height') or controller.get('height')
+                if width and height:
+                    self.table.setItem(row, 6, QTableWidgetItem(f"{width}x{height}"))
+                else:
+                    self.table.setItem(row, 6, QTableWidgetItem("Unknown"))
+            self.table.setItem(row, 7, QTableWidgetItem(controller.get('display_name', controller.get('name', 'Unknown'))))
             
             # Status item
             status_item = QTableWidgetItem("Checking...")
             self.table.setItem(row, 8, status_item)
-            
-            # Check controller status asynchronously
-            QTimer.singleShot(100 * (row + 1), lambda r=row, c=controller: self.check_controller_status(c, r))
     
-    def check_controller_status(self, controller_info: ControllerInfo, row: int):
-        """Check controller status asynchronously"""
-        try:
-            # Try to connect using controller service
-            success = self.controller_service.connect_to_controller(
-                controller_info.ip,
-                controller_info.port,
-                controller_info.controller_type
-            )
-            
-            if success and self.controller_service.current_controller:
-                controller = self.controller_service.current_controller
-                device_info = controller.get_device_info()
-                if device_info:
-                    # Update controller info with device data
-                    if "firmware_version" in device_info:
-                        controller_info.firmware_version = device_info["firmware_version"]
-                    if "resolution" in device_info or "display_resolution" in device_info:
-                        controller_info.display_resolution = device_info.get("resolution") or device_info.get("display_resolution")
-                    if "name" in device_info:
-                        controller_info.name = device_info["name"]
-                    if "model" in device_info:
-                        controller_info.model = device_info["model"]
-                    if "display_name" in device_info:
-                        controller_info.display_name = device_info["display_name"]
-                    
-                    # Update table
-                    if controller_info.firmware_version:
-                        self.table.item(row, 5).setText(controller_info.firmware_version)
-                    if controller_info.display_resolution:
-                        self.table.item(row, 6).setText(str(controller_info.display_resolution))
-                    if controller_info.name:
-                        self.table.item(row, 3).setText(controller_info.name)
-                    if controller_info.model:
-                        self.table.item(row, 4).setText(controller_info.model)
-                    if controller_info.display_name:
-                        self.table.item(row, 7).setText(controller_info.display_name)
-                
-                self.table.item(row, 8).setText("Connected")
-                self.table.item(row, 8).setForeground(Qt.darkGreen)
-                # Disconnect after checking
-                self.controller_service.disconnect()
-            else:
-                self.table.item(row, 8).setText("Disconnected")
-                self.table.item(row, 8).setForeground(Qt.red)
-        except Exception as e:
-            logger.error(f"Error checking controller status: {e}", exc_info=True)
-            if row < self.table.rowCount():
-                self.table.item(row, 8).setText("Error")
-                self.table.item(row, 8).setForeground(Qt.red)
-    
-    def on_table_double_click(self, index):
+    def on_table_double_click(self, index: QModelIndex) -> None:
         self.on_connect()
     
-    def on_connect(self):
-        selected_rows = self.table.selectionModel().selectedRows()
+    def on_connect(self) -> None:
+        selection_model = self.table.selectionModel()
+        if selection_model is None:
+            QMessageBox.warning(self, "No Selection", "Please select a controller to connect.")
+            return
+        
+        selected_rows = selection_model.selectedRows()
         if not selected_rows:
             QMessageBox.warning(self, "No Selection", "Please select a controller to connect.")
             return
@@ -207,17 +159,14 @@ class DashboardDialog(QDialog):
             return
         
         controller_info = self.controllers[row]
-        # Emit with controller_info as additional parameter
-        # Note: pyqtSignal doesn't support optional args, so we'll pass it as a dict
         self.controller_selected.emit(
-            controller_info.ip,
-            controller_info.port,
-            controller_info.controller_type
+            controller_info.get('ip', ''),
+            controller_info.get('port', 0),
+            controller_info.get('controller_type', '')
         )
-        # Store controller_info for connection
         self._selected_controller_info = controller_info
         self.accept()
     
-    def exec_(self):
+    def exec_(self) -> int:
         return super().exec_()
 

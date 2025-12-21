@@ -53,7 +53,7 @@ class Program:
             "duration": self.duration
         }
     
-    def from_dict(self, data: Dict):
+    def from_dict(self, data: Dict) -> None:
         self.id = data.get("id", self.id)
         self.name = data.get("name", "New Program")
         self.width = data.get("width", DEFAULT_CANVAS_WIDTH)
@@ -74,25 +74,25 @@ class Program:
 
 class ProgramManager:
     
-    def __init__(self):
+    def __init__(self) -> None:
         self.programs: List[Program] = []
         self.current_program: Optional[Program] = None
         self._programs_by_id: Dict[str, Program] = {}  # O(1) lookup index
     
-    def create_program(self, name: str = None, width: int = DEFAULT_CANVAS_WIDTH,
+    def create_program(self, name: Optional[str] = None, width: int = DEFAULT_CANVAS_WIDTH,
                       height: int = DEFAULT_CANVAS_HEIGHT) -> Program:
         if not name:
             existing_names = [p.name for p in self.programs]
             n = 1
             while True:
-                candidate = f"Program {n}"
+                candidate = f"Program{n}"
                 if candidate not in existing_names:
                     name = candidate
                     break
                 n += 1
         program = Program(name, width, height)
         self.programs.append(program)
-        self._programs_by_id[program.id] = program  # Maintain index
+        self._programs_by_id[program.id] = program
         self.current_program = program
         return program
     

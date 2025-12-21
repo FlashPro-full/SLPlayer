@@ -1,6 +1,3 @@
-"""
-Background thumbnail generation for videos and images
-"""
 from PyQt5.QtCore import QThread, pyqtSignal, QObject, Qt
 from PyQt5.QtGui import QPixmap, QImage
 from pathlib import Path
@@ -12,7 +9,7 @@ logger = get_logger(__name__)
 
 
 class ThumbnailCache:
-    """Simple in-memory cache for thumbnails"""
+
     _instance = None
     _cache: Dict[str, QPixmap] = {}
     _max_cache_size = 100
@@ -38,7 +35,7 @@ class ThumbnailCache:
 
 
 class VideoThumbnailThread(QThread):
-    """Thread for generating video thumbnails in background"""
+
     finished = pyqtSignal(str, object)  # file_path, QPixmap or None
     
     def __init__(self, video_path: str):
@@ -64,9 +61,8 @@ class VideoThumbnailThread(QThread):
             self.finished.emit(self.video_path, None)
     
     def _generate_thumbnail(self) -> Optional[QPixmap]:
-        """Generate thumbnail using OpenCV"""
         try:
-            import cv2
+            import cv2 # type: ignore
             import numpy as np
             
             cap = cv2.VideoCapture(self.video_path)
@@ -97,7 +93,7 @@ class VideoThumbnailThread(QThread):
 
 
 class ImageThumbnailThread(QThread):
-    """Thread for loading image thumbnails in background"""
+
     finished = pyqtSignal(str, object)  # file_path, QPixmap or None
     
     def __init__(self, image_path: str, max_size: int = 200):

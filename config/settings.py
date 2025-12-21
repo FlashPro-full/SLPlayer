@@ -48,7 +48,6 @@ class Settings:
         self.settings = self.load_settings()
     
     def load_settings(self) -> Dict[str, Any]:
-
         if self.config_file.exists():
             try:
                 with open(self.config_file, 'r', encoding='utf-8') as f:

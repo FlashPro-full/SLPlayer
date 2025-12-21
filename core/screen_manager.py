@@ -21,6 +21,7 @@ class Screen:
         self.created = datetime.now().isoformat()
         self.modified = datetime.now().isoformat()
         self.file_path: Optional[str] = None
+        self.properties: Dict[str, str] = {}
     
     def add_program(self, program: Program):
         if program not in self.programs:
@@ -77,17 +78,25 @@ class Screen:
 
 class ScreenManager:
     
-    def __init__(self):
+    def __init__(self) -> None:
         self.screens: List[Screen] = []
         self.current_screen: Optional[Screen] = None
-        # O(1) lookup indexes
         self._screens_by_name: Dict[str, Screen] = {}
         self._screens_by_id: Dict[str, Screen] = {}
         self._programs_by_id: Dict[str, Program] = {}
     
-    def create_screen(self, name: str, width: int = DEFAULT_CANVAS_WIDTH, 
+    def create_screen(self, name: Optional[str] = None, width: int = DEFAULT_CANVAS_WIDTH, 
                      height: int = DEFAULT_CANVAS_HEIGHT) -> Screen:
-        if name in self._screens_by_name:
+        if not name:
+            existing_names = [s.name for s in self.screens]
+            n = 1
+            while True:
+                candidate = f"Screen{n}"
+                if candidate not in existing_names:
+                    name = candidate
+                    break
+                n += 1
+        elif name in self._screens_by_name:
             counter = 1
             while f"{name}_{counter}" in self._screens_by_name:
                 counter += 1
@@ -222,6 +231,13 @@ class ScreenManager:
         for char in invalid_chars:
             sanitized = sanitized.replace(char, "_")
         return sanitized
+    
+    def create_screen_for_device(self, device_id: str, controller_type: str, width: int, height: int, file_path: str) -> Screen:
+        screen = self.create_screen(device_id, width, height)
+        screen.properties["controller_type"] = controller_type
+        screen.properties["device_id"] = device_id
+        screen.file_path = file_path
+        return screen
     
     @staticmethod
     def get_programs_for_screen(programs: List[Program], screen_name: str) -> List[Program]:

@@ -1,4 +1,4 @@
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Any
 from datetime import datetime
 import uuid
 
@@ -16,8 +16,8 @@ class ProgramService:
         self.program_manager = program_manager
         self.screen_manager = screen_manager
     
-    def create_program(self, name: str = None, width: int = 1920, 
-                      height: int = 1080, screen_name: str = None) -> Optional[Program]:
+    def create_program(self, name: Optional[str] = None, width: int = 1920, 
+                      height: int = 1080, screen_name: Optional[str] = None) -> Optional[Program]:
         try:
             if not name:
                 existing_names = [p.name for p in self.program_manager.programs]
@@ -34,8 +34,11 @@ class ProgramService:
             if "screen" not in program.properties:
                 program.properties["screen"] = {}
             
+            screen_props_raw = program.properties.get("screen", {})
+            screen_props: Dict[str, Any] = screen_props_raw if isinstance(screen_props_raw, dict) else {}
             if screen_name:
-                program.properties["screen"]["screen_name"] = screen_name
+                screen_props["screen_name"] = screen_name
+                program.properties["screen"] = screen_props
             else:
                 screen_name = ScreenManager.determine_screen_name(program)
             
@@ -45,9 +48,10 @@ class ProgramService:
             if self.screen_manager:
                 screen = self.screen_manager.get_screen_by_name(screen_name)
                 if not screen:
-                    screen_props = program.properties.get("screen", {})
-                    screen_width = screen_props.get("width", width) if isinstance(screen_props, dict) else width
-                    screen_height = screen_props.get("height", height) if isinstance(screen_props, dict) else height
+                    screen_props_raw = program.properties.get("screen", {})
+                    screen_props_dict: Dict[str, Any] = screen_props_raw if isinstance(screen_props_raw, dict) else {}
+                    screen_width = screen_props_dict.get("width", width)
+                    screen_height = screen_props_dict.get("height", height)
                     screen = self.screen_manager.create_screen(screen_name, screen_width, screen_height)
                 screen.add_program(program)
             
@@ -149,7 +153,9 @@ class ProgramService:
             new_program.modified = datetime.now().isoformat()
             
             if "screen" in program.properties:
-                new_program.properties["screen"] = program.properties["screen"].copy()
+                screen_props_raw = program.properties.get("screen", {})
+                screen_props: Dict[str, Any] = screen_props_raw if isinstance(screen_props_raw, dict) else {}
+                new_program.properties["screen"] = screen_props.copy()
             
             self.program_manager.programs.append(new_program)
             self.program_manager.current_program = new_program

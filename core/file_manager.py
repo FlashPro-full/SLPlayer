@@ -17,19 +17,22 @@ class FileManager:
         try:
             from core.soo_file_config import SOOFileConfig, ScreenPropertiesConfig
             from core.screen_config import get_screen_config
-            from core.schedule_manager import ScheduleManager
             
             if properties_panel:
                 properties_panel.save_all_current_properties()
             
             screen_config = get_screen_config()
+            controller_type = ""
+            if screen and hasattr(screen, 'properties') and screen.properties:
+                controller_type = screen.properties.get("controller_type", "")
+            if not controller_type and screen_config:
+                controller_type = screen_config.get("controller_type", "")
             
             screen_props = ScreenPropertiesConfig(
                 screen_name=screen.name,
                 width=screen.width,
                 height=screen.height,
-                brand=screen_config.get("brand", "") if screen_config else "",
-                model=screen_config.get("model", "") if screen_config else "",
+                controller_type=controller_type,
                 rotation=screen_config.get("rotate", 0) if screen_config else 0
             )
             
@@ -43,9 +46,18 @@ class FileManager:
             except Exception as e:
                 logger.debug(f"Could not load schedule data for saving: {e}")
             
+            from core.program_converter import program_to_sdk
+            
+            sdk_programs = []
+            for i, program in enumerate(screen.programs, 1):
+                program_dict = program.to_dict()
+                program_dict["name"] = f"Program{i}"
+                sdk_program = program_to_sdk(program_dict)
+                sdk_programs.append(sdk_program)
+            
             file_config = SOOFileConfig(
                 screen_properties=screen_props,
-                programs=[p.to_dict() for p in screen.programs],
+                programs=sdk_programs,
                 schedule=schedule_data
             )
             
@@ -71,7 +83,6 @@ class FileManager:
         try:
             from core.soo_file_config import SOOFileConfig
             from core.screen_config import set_screen_config
-            from core.schedule_manager import ScheduleManager
             
             file_path_obj = Path(file_path)
             if not file_path_obj.exists():
@@ -89,7 +100,11 @@ class FileManager:
                 screen_props.height
             )
             
-            for program_data in file_config.programs:
+            from core.program_converter import sdk_to_program
+            
+            for i, sdk_program_data in enumerate(file_config.programs, 1):
+                program_data = sdk_to_program(sdk_program_data)
+                program_data["name"] = f"Program{i}"
                 from core.program_manager import Program
                 program = Program()
                 program.from_dict(program_data)
@@ -108,8 +123,7 @@ class FileManager:
             screen.file_path = file_path
             
             set_screen_config(
-                screen_props.brand,
-                screen_props.model,
+                screen_props.controller_type,
                 screen_props.width,
                 screen_props.height,
                 screen_props.rotation,
@@ -187,7 +201,25 @@ class FileManager:
             logger.error(f"Error loading .soo file: {e}", exc_info=True)
             return False
 
-    def save_all_screens(self) -> int:
+    def get_device_file_path(self, device_id: str) -> Optional[Path]:
+        try:
+            from utils.app_data import get_app_data_dir
+            work_dir = get_app_data_dir() / "work"
+            if not work_dir.exists():
+                return None
+            file_path = work_dir / f"{device_id}.soo"
+            return file_path if file_path.exists() else None
+        except Exception as e:
+            logger.error(f"Error getting device file path: {e}", exc_info=True)
+            return None
+    
+    def load_device_screen(self, device_id: str) -> Optional[Screen]:
+        file_path = self.get_device_file_path(device_id)
+        if file_path:
+            return self.load_screen_from_file(str(file_path))
+        return None
+    
+    def save_all_screens(self, controller_id: Optional[str] = None) -> int:
         if not self.screen_manager:
             return 0
         
@@ -198,16 +230,31 @@ class FileManager:
             work_dir = get_app_data_dir() / "work"
             work_dir.mkdir(parents=True, exist_ok=True)
             
+            if not controller_id:
+                try:
+                    from services.controller_service import get_controller_service
+                    controller_service = get_controller_service()
+                    if controller_service.current_controller:
+                        controller_id = controller_service.current_controller.get('controller_id')
+                except Exception:
+                    pass
+            
             saved_count = 0
+            saved_paths = set()
             for screen in self.screen_manager.screens:
                 if screen.file_path:
                     file_path = screen.file_path
                 else:
-                    safe_name = ScreenManager.sanitize_screen_name(screen.name)
-                    file_path = str(work_dir / f"{safe_name}.soo")
+                    if controller_id:
+                        file_path = str(work_dir / f"{controller_id}.soo")
+                    else:
+                        safe_name = ScreenManager.sanitize_screen_name(screen.name)
+                        file_path = str(work_dir / f"{safe_name}.soo")
                 
-                if self.save_screen_to_file(screen, file_path):
-                    saved_count += 1
+                if file_path not in saved_paths:
+                    if self.save_screen_to_file(screen, file_path):
+                        saved_count += 1
+                        saved_paths.add(file_path)
             
             return saved_count
         except Exception as e:

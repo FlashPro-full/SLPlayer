@@ -31,12 +31,12 @@ class NetworkSetupDialog(QDialog):
         instructions.setReadOnly(True)
         instructions.setMaximumHeight(150)
         instructions.setText("""
-<b>Network Setup Instructions:</b><br><br>
-1. Make sure your PC is connected to the same network as your LED display controller.<br>
-2. Connect your PC to the network via Ethernet or Wi-Fi.<br>
-3. Ensure the controller is powered on and connected to the network.<br>
-4. Click "Continue" to proceed to the main application.<br><br>
-<i>You can discover and connect to controllers from the Control menu after starting the application.</i>
+            <b>Network Setup Instructions:</b><br><br>
+            1. Make sure your PC is connected to the same network as your LED display controller.<br>
+            2. Connect your PC to the network via Ethernet or Wi-Fi.<br>
+            3. Ensure the controller is powered on and connected to the network.<br>
+            4. Click "Continue" to proceed to the main application.<br><br>
+            <i>You can discover and connect to controllers from the Control menu after starting the application.</i>
         """)
         instructions.setStyleSheet("background-color: #3B3B3B; border: 1px solid #555555; padding: 10px; color: #FFFFFF;")
         layout.addWidget(instructions)

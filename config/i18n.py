@@ -34,11 +34,11 @@ _STRINGS: Dict[str, Dict[str, str]] = {
     # Setting actions
     "action.screen_setting": {"en": "🖥 Screen Setting", "it": "🖥 Impostazioni Schermo", "pl": "🖥 Ustawienia ekranu"},
     "action.sync_setting": {"en": "🔄 Sync Setting", "it": "🔄 Impostazioni Sync", "pl": "🔄 Ustawienia synchronizacji"},
+    "action.license": {"en": "🔐 License", "it": "🔐 Licenza", "pl": "🔐 Licencja"},
     # Control actions
     "action.device_info": {"en": "🧾 Controller Information", "it": "🧾 Informazioni Controller", "pl": "🧾 Informacje o kontrolerze"},
     "action.clear_program": {"en": "🧹 Clear program", "it": "🧹 Pulisci programma", "pl": "🧹 Wyczyść program"},
     "action.send": {"en": "⬆️ Send", "it": "⬆️ Invia", "pl": "⬆️ Wyślij"},
-    "action.export_to_usb": {"en": "💾 Export to U-Disk", "it": "💾 Esporta su U-Disk", "pl": "💾 Eksportuj na U-Disk"},
     # Help actions
     "action.about": {"en": "About", "it": "Informazioni", "pl": "O programie"},
     # Toolbar groups
@@ -47,7 +47,6 @@ _STRINGS: Dict[str, Dict[str, str]] = {
     "toolbar.control": {"en": "Control", "it": "Controllo", "pl": "Sterowanie"},
     "toolbar.playback": {"en": "Playback", "it": "Riproduzione", "pl": "Odtwarzanie"},
     "toolbar.send": {"en": "Send program to controller via network", "it": "Invia programma al controller via rete", "pl": "Wyślij program do kontrolera przez sieć"},
-    "toolbar.export_to_usb": {"en": "Export program to U-Disk (USB drive)", "it": "Esporta programma su U-Disk (chiavetta USB)", "pl": "Eksportuj program na U-Disk (dysk USB)"},
     "toolbar.insert": {"en": "Insert U-Disk into controller (after export)", "it": "Inserisci U-Disk nel controller (dopo esportazione)", "pl": "Wstaw U-Disk do kontrolera (po eksporcie)"},
     "toolbar.clear": {"en": "Clear program", "it": "Wyczyść program", "pl": "Wyczyść program"},
     "toolbar.clear_tooltip": {"en": "Clear Program", "it": "Pulisci Programma", "pl": "Wyczyść Program"},
@@ -56,15 +55,10 @@ _STRINGS: Dict[str, Dict[str, str]] = {
     "message.program_sent_success": {"en": "Program '{name}' sent successfully to controller.", "it": "Programma '{name}' inviato con successo al controller.", "pl": "Program '{name}' został pomyślnie wysłany do kontrolera."},
     "message.program_send_failed": {"en": "Failed to send program to controller.", "it": "Invio del programma al controller fallito.", "pl": "Nie udało się wysłać programu do kontrolera."},
     "message.program_send_error": {"en": "Error sending program: {error}", "it": "Errore durante l'invio del programma: {error}", "pl": "Błąd podczas wysyłania programu: {error}"},
-    "message.program_exported_success": {"en": "Program '{name}' exported successfully to U-Disk.\n\nPath: {path}\n\nYou can now insert the U-Disk into the controller.", "it": "Programma '{name}' esportato con successo su U-Disk.\n\nPercorso: {path}\n\nOra puoi inserire l'U-Disk nel controller.", "pl": "Program '{name}' został pomyślnie wyeksportowany na U-Disk.\n\nŚcieżka: {path}\n\nMożesz teraz włożyć U-Disk do kontrolera."},
-    "message.program_export_failed": {"en": "Failed to export program to U-Disk.", "it": "Esportazione del programma su U-Disk fallita.", "pl": "Nie udało się wyeksportować programu na U-Disk."},
-    "message.program_export_error": {"en": "Error exporting program: {error}", "it": "Errore durante l'esportazione del programma: {error}", "pl": "Błąd podczas eksportowania programu: {error}"},
-    "message.insert_usb_instructions": {"en": "After exporting to U-Disk:\n\n1. Safely remove the U-Disk from your PC\n2. Insert the U-Disk into the controller's USB port\n3. The controller will automatically detect and load the program\n\nNote: Ensure the U-Disk is formatted as FAT or FAT32.", "it": "Dopo l'esportazione su U-Disk:\n\n1. Rimuovi in sicurezza l'U-Disk dal PC\n2. Inserisci l'U-Disk nella porta USB del controller\n3. Il controller rileverà e caricherà automaticamente il programma\n\nNota: Assicurati che l'U-Disk sia formattato come FAT o FAT32.", "pl": "Po wyeksportowaniu na U-Disk:\n\n1. Bezpiecznie usuń U-Disk z komputera\n2. Włóż U-Disk do portu USB kontrolera\n3. Kontroler automatycznie wykryje i załaduje program\n\nUwaga: Upewnij się, że U-Disk jest sformatowany jako FAT lub FAT32."},
     "message.confirm_clear_program": {"en": "Are you sure you want to clear program '{name}'?", "it": "Sei sicuro di voler cancellare il programma '{name}'?", "pl": "Czy na pewno chcesz wyczyścić program '{name}'?"},
     # Short labels for toolbar button texts
     "label.program": {"en": "Program", "it": "Programma", "pl": "Program"},
     "label.send": {"en": "Send", "it": "Invia", "pl": "Wyślij"},
-    "label.export_to_usb": {"en": "To U-Disk", "it": "Su U-Disk", "pl": "Na U-Disk"},
     "label.insert": {"en": "Insert", "it": "Inserisci", "pl": "Wstaw"},
     "label.clear": {"en": "Clear", "it": "Pulisci", "pl": "Wyczyść"},
     "label.first": {"en": "First", "it": "Pierwszy", "pl": "Pierwszy"},

@@ -14,11 +14,10 @@ class ScreenPropertiesConfig:
     rotation: int = 0
     stretch: int = 0
     zoom_modulus: int = 0
-    brand: str = ""
-    model: str = ""
+    controller_type: str = ""
     
     def to_dict(self) -> Dict[str, Any]:
-        return {k: v for k, v in asdict(self).items() if v or k in ["width", "height", "rotation", "stretch", "zoom_modulus", "brand", "model"]}
+        return {k: v for k, v in asdict(self).items() if v or k in ["width", "height", "rotation", "stretch", "zoom_modulus", "controller_type"]}
     
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'ScreenPropertiesConfig':

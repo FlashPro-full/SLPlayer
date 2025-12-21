@@ -1,4 +1,4 @@
-from typing import Callable, Dict, List, Any, Optional
+from typing import Dict, Optional
 from PyQt5.QtCore import QObject, pyqtSignal, QTimer
 from utils.logger import get_logger
 
@@ -13,7 +13,6 @@ class EventBus(QObject):
     program_selected = pyqtSignal(str)
     program_saved = pyqtSignal(object, str)
     program_sent = pyqtSignal(object)
-    program_exported_to_usb = pyqtSignal(object, str)
     
     screen_created = pyqtSignal(str)
     screen_updated = pyqtSignal(str)
@@ -51,7 +50,7 @@ class EventBus(QObject):
         self._throttle_timers: Dict[str, QTimer] = {}
         self._throttle_last_call: Dict[str, float] = {}
     
-    def emit_debounced(self, signal: pyqtSignal, *args, delay_ms: int = 300, key: str = None):
+    def emit_debounced(self, signal: pyqtSignal, *args, delay_ms: int = 300, key: Optional[str] = None):
         if key is None:
             key = signal.name if hasattr(signal, 'name') else str(signal)
         
@@ -60,11 +59,11 @@ class EventBus(QObject):
         
         timer = QTimer()
         timer.setSingleShot(True)
-        timer.timeout.connect(lambda: signal.emit(*args))
+        timer.timeout.connect(lambda: signal.emit(*args))  # type: ignore
         timer.start(delay_ms)
         self._debounce_timers[key] = timer
     
-    def emit_throttled(self, signal: pyqtSignal, *args, interval_ms: int = 100, key: str = None):
+    def emit_throttled(self, signal: pyqtSignal, *args, interval_ms: int = 100, key: Optional[str] = None):
         import time
         if key is None:
             key = signal.name if hasattr(signal, 'name') else str(signal)
@@ -72,14 +71,14 @@ class EventBus(QObject):
         current_time = time.time() * 1000
         
         if key not in self._throttle_last_call:
-            signal.emit(*args)
+            signal.emit(*args)  # type: ignore
             self._throttle_last_call[key] = current_time
             return
         
         elapsed = current_time - self._throttle_last_call[key]
         
         if elapsed >= interval_ms:
-            signal.emit(*args)
+            signal.emit(*args)  # type: ignore
             self._throttle_last_call[key] = current_time
         else:
             remaining = interval_ms - elapsed
@@ -90,7 +89,7 @@ class EventBus(QObject):
             
             timer = self._throttle_timers[key]
             timer.stop()
-            timer.timeout.connect(lambda: signal.emit(*args))
+            timer.timeout.connect(lambda: signal.emit(*args))  # type: ignore
             timer.start(int(remaining))
             self._throttle_last_call[key] = current_time + remaining
 

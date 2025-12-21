@@ -49,6 +49,7 @@ class ScreenListPanel(QWidget):
         self._last_selected_content = None
         self._clipboard_data = None
         self._clipboard_type = None
+        self._refresh_timer: Optional[QTimer] = None
         self.init_ui()
     
     def set_screen_manager(self, screen_manager: ScreenManager):
@@ -154,23 +155,25 @@ class ScreenListPanel(QWidget):
         
         self._setup_keyboard_shortcuts()
     
-    def keyPressEvent(self, event: QKeyEvent):
+    def keyPressEvent(self, event: Optional[QKeyEvent]):
+        if event is None:
+            return
         modifiers = event.modifiers()
         key = event.key()
         
-        if key == Qt.Key_Delete:
+        if key == Qt.Key_Delete:  # type: ignore
             self.on_delete_clicked()
             event.accept()
-        elif modifiers == Qt.ControlModifier and key == Qt.Key_C:
+        elif modifiers == Qt.ControlModifier and key == Qt.Key_C:  # type: ignore
             self.on_copy_clicked()
             event.accept()
-        elif modifiers == Qt.ControlModifier and key == Qt.Key_V:
+        elif modifiers == Qt.ControlModifier and key == Qt.Key_V:  # type: ignore
             self.on_paste_clicked()
             event.accept()
-        elif key == Qt.Key_Up and modifiers == Qt.AltModifier:
+        elif key == Qt.Key_Up and modifiers == Qt.AltModifier:  # type: ignore
             self.on_move_up()
             event.accept()
-        elif key == Qt.Key_Down and modifiers == Qt.AltModifier:
+        elif key == Qt.Key_Down and modifiers == Qt.AltModifier:  # type: ignore
             self.on_move_down()
             event.accept()
         else:
@@ -197,7 +200,7 @@ class ScreenListPanel(QWidget):
             return
         
         if debounce:
-            if hasattr(self, '_refresh_timer'):
+            if self._refresh_timer is not None:
                 self._refresh_timer.stop()
             
             self._refresh_timer = QTimer()
@@ -349,22 +352,22 @@ class ScreenListPanel(QWidget):
             return
         
         try:
-            item_type = item.data(0, Qt.UserRole)
+            item_type = item.data(0, Qt.UserRole)  # type: ignore
             
             if item_type == "screen":
-                screen_name = item.data(0, Qt.UserRole + 1)
+                screen_name = item.data(0, Qt.UserRole + 1)  # type: ignore
                 self._last_selected_screen = screen_name
                 self._last_selected_program = None
                 self._last_selected_content = None
                 set_screen_name(screen_name)
                 self.screen_selected.emit(screen_name)
             elif item_type == "program":
-                program_id = item.data(0, Qt.UserRole + 1)
+                program_id = item.data(0, Qt.UserRole + 1)  # type: ignore
                 self._last_selected_program = program_id
                 self._last_selected_content = None
                 parent = item.parent()
                 if parent:
-                    parent_screen_name = parent.data(0, Qt.UserRole + 1)
+                    parent_screen_name = parent.data(0, Qt.UserRole + 1)  # type: ignore
                     if parent_screen_name:
                         self._last_selected_screen = parent_screen_name
                         set_screen_name(parent_screen_name)
@@ -372,15 +375,15 @@ class ScreenListPanel(QWidget):
                     self._last_selected_screen = None
                 self.program_selected.emit(program_id)
             elif item_type == "content":
-                program_id = item.data(0, Qt.UserRole + 1)
-                element_id = item.data(0, Qt.UserRole + 2)
+                program_id = item.data(0, Qt.UserRole + 1)  # type: ignore
+                element_id = item.data(0, Qt.UserRole + 2)  # type: ignore
                 self._last_selected_content = (program_id, element_id)
                 self._last_selected_program = None
                 parent = item.parent()
                 if parent:
                     parent_parent = parent.parent()
                     if parent_parent:
-                        parent_screen_name = parent_parent.data(0, Qt.UserRole + 1)
+                        parent_screen_name = parent_parent.data(0, Qt.UserRole + 1)  # type: ignore
                         if parent_screen_name:
                             self._last_selected_screen = parent_screen_name
                             set_screen_name(parent_screen_name)
@@ -396,7 +399,7 @@ class ScreenListPanel(QWidget):
         if item is None:
             return
         
-        item_type = item.data(0, Qt.UserRole)
+        item_type = item.data(0, Qt.UserRole) # type: ignore
         if item_type == "screen":
             item.setExpanded(not item.isExpanded())
     
@@ -421,39 +424,47 @@ class ScreenListPanel(QWidget):
         if item is None:
             return
         
-        item_type = item.data(0, Qt.UserRole)
+        item_type = item.data(0, Qt.UserRole) # type: ignore
         menu = QMenu(self)
         
         if item_type == "screen":
-            screen_name = item.data(0, Qt.UserRole + 1)
+            screen_name = item.data(0, Qt.UserRole + 1) # type: ignore
             
             rename_action = menu.addAction(tr("program_list.rename"))
-            rename_action.triggered.connect(lambda: self._on_screen_rename(screen_name))
+            if rename_action:
+                rename_action.triggered.connect(lambda: self._on_screen_rename(screen_name))
             
             delete_action = menu.addAction(tr("program_list.delete"))
-            delete_action.triggered.connect(lambda: self._on_screen_delete(screen_name))
+            if delete_action:
+                delete_action.triggered.connect(lambda: self._on_screen_delete(screen_name))
             
             menu.addSeparator()
             
             new_screen_action = menu.addAction(tr("program_list.new_screen"))
-            new_screen_action.triggered.connect(self._on_new_screen)
+            if new_screen_action:
+                new_screen_action.triggered.connect(self._on_new_screen)
             
             add_program_action = menu.addAction(tr("program_list.add_program"))
-            add_program_action.triggered.connect(lambda: self._on_add_program(screen_name))
+            if add_program_action:
+                add_program_action.triggered.connect(lambda: self._on_add_program(screen_name))
             
             insert_action = menu.addAction(tr("program_list.insert"))
-            insert_action.triggered.connect(lambda: self._on_screen_insert(screen_name))
+            if insert_action:
+                insert_action.triggered.connect(lambda: self._on_screen_insert(screen_name))
             
             close_action = menu.addAction(tr("program_list.close"))
-            close_action.triggered.connect(lambda: self._on_screen_close(screen_name))
+            if close_action:
+                close_action.triggered.connect(lambda: self._on_screen_close(screen_name))
         else:
             rename_action = menu.addAction(tr("program_list.rename"))
             delete_action = menu.addAction(tr("program_list.delete"))
             
             if item_type == "program":
-                program_id = item.data(0, Qt.UserRole + 1)
-                rename_action.triggered.connect(lambda: self._on_program_rename(program_id))
-                delete_action.triggered.connect(lambda: self._on_program_delete(program_id))
+                program_id = item.data(0, Qt.UserRole + 1)  # type: ignore
+                if rename_action:
+                    rename_action.triggered.connect(lambda: self._on_program_rename(program_id))
+                if delete_action:
+                    delete_action.triggered.connect(lambda: self._on_program_delete(program_id))
                 
                 menu.addSeparator()
                 
@@ -473,18 +484,22 @@ class ScreenListPanel(QWidget):
                 
                 for action_text, content_type in content_actions:
                     action = menu.addAction(action_text)
-                    action.triggered.connect(lambda checked, pid=program_id, ct=content_type: 
-                                           self.content_add_requested.emit(pid, ct))
+                    if action:
+                        action.triggered.connect(lambda checked, pid=program_id, ct=content_type: 
+                                               self.content_add_requested.emit(pid, ct))
                 
                 menu.addSeparator()
                 
                 copy_action = menu.addAction(tr("program_list.copy"))
-                copy_action.triggered.connect(lambda: self.program_copy_requested.emit(program_id))
+                if copy_action:
+                    copy_action.triggered.connect(lambda: self.program_copy_requested.emit(program_id))
             else:  # content
-                program_id = item.data(0, Qt.UserRole + 1)
-                element_id = item.data(0, Qt.UserRole + 2)
-                rename_action.triggered.connect(lambda: self._on_content_rename(program_id, element_id))
-                delete_action.triggered.connect(lambda: self._on_content_delete(program_id, element_id))
+                program_id = item.data(0, Qt.UserRole + 1)  # type: ignore
+                element_id = item.data(0, Qt.UserRole + 2)  # type: ignore
+                if rename_action:
+                    rename_action.triggered.connect(lambda: self._on_content_rename(program_id, element_id))
+                if delete_action:
+                    delete_action.triggered.connect(lambda: self._on_content_delete(program_id, element_id))
                 
                 menu.addSeparator()
                 
@@ -504,13 +519,15 @@ class ScreenListPanel(QWidget):
                 
                 for action_text, content_type in content_actions:
                     action = menu.addAction(action_text)
-                    action.triggered.connect(lambda checked, pid=program_id, ct=content_type: 
-                                           self.content_add_requested.emit(pid, ct))
+                    if action:
+                        action.triggered.connect(lambda checked, pid=program_id, ct=content_type: 
+                                               self.content_add_requested.emit(pid, ct))
                 
                 menu.addSeparator()
                 
                 copy_action = menu.addAction(tr("program_list.copy"))
-                copy_action.triggered.connect(lambda: self.content_copy_requested.emit(program_id, element_id))
+                if copy_action:
+                    copy_action.triggered.connect(lambda: self.content_copy_requested.emit(program_id, element_id))
         
         menu.exec_(self.tree.mapToGlobal(position))
     
@@ -599,7 +616,14 @@ class ScreenListPanel(QWidget):
             next_num = max_num + 1
             program_name = f"Program{next_num}"
             
-            program_manager = ProgramManager()
+            program_manager = None
+            parent = self.parent()
+            if parent and hasattr(parent, 'program_manager'):
+                program_manager = parent.program_manager
+            else:
+                from core.program_manager import ProgramManager
+                program_manager = ProgramManager()
+            
             program = program_manager.create_program(program_name, width, height)
             screen.add_program(program)
             if hasattr(self.screen_manager, '_programs_by_id'):
@@ -842,21 +866,21 @@ class ScreenListPanel(QWidget):
         if item is None:
             return
         
-        item_type = item.data(0, Qt.UserRole)
+        item_type = item.data(0, Qt.UserRole) # type: ignore
         
         if item_type == "program":
             text = item.text(0)
             new_name = text.replace("💽 ", "").strip()
             if new_name:
-                program_id = item.data(0, Qt.UserRole + 1)
+                program_id = item.data(0, Qt.UserRole + 1) # type: ignore
                 self.program_renamed.emit(program_id, new_name)
         elif item_type == "content":
             text = item.text(0)
             parts = text.split(" ", 1)
             if len(parts) > 1:
                 new_name = parts[1]
-                program_id = item.data(0, Qt.UserRole + 1)
-                element_id = item.data(0, Qt.UserRole + 2)
+                program_id = item.data(0, Qt.UserRole + 1) #type: ignore
+                element_id = item.data(0, Qt.UserRole + 2) #type: ignore
                 self.content_renamed.emit(program_id, element_id, new_name)
     
     def _get_selected_screen_item(self):

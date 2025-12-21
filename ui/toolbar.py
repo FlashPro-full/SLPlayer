@@ -1,5 +1,5 @@
 from PyQt5.QtWidgets import QToolBar, QToolButton, QAction, QSizePolicy
-from PyQt5.QtCore import Qt, pyqtSignal, QEvent, QTimer
+from PyQt5.QtCore import Qt, pyqtSignal, QEvent, QTimer  # type: ignore
 from config.constants import ContentType
 from config.i18n import tr
 
@@ -10,10 +10,12 @@ class BaseToolbar(QToolBar):
         super().__init__(title, parent)
         self.setMovable(True)
         self.setFloatable(True)
-        self.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
-        self.setAllowedAreas(Qt.TopToolBarArea | Qt.BottomToolBarArea | Qt.LeftToolBarArea | Qt.RightToolBarArea)
-        self.setLayoutDirection(Qt.LeftToRight)
-        self.toggleViewAction().setVisible(False)
+        self.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)  # type: ignore
+        self.setAllowedAreas(Qt.TopToolBarArea | Qt.BottomToolBarArea | Qt.LeftToolBarArea | Qt.RightToolBarArea)  # type: ignore
+        self.setLayoutDirection(Qt.LeftToRight)  # type: ignore
+        toggle_action = self.toggleViewAction()
+        if toggle_action:
+            toggle_action.setVisible(False)
         self.setWindowTitle("")
         self.apply_style()
         self.topLevelChanged.connect(self._on_top_level_changed)
@@ -228,6 +230,7 @@ class ControlToolbar(BaseToolbar):
     def __init__(self, parent=None):
         super().__init__("Control", parent)
         self.init_ui()
+        self.update_vertical_alignment()
     
     def init_ui(self):
         from config.i18n import tr
@@ -237,11 +240,6 @@ class ControlToolbar(BaseToolbar):
         self.addAction(send_action)
         
         self.addSeparator()
-        
-        export_usb_action = QAction("💾 To U-Disk", self)
-        export_usb_action.setToolTip(tr("toolbar.export_to_usb"))
-        export_usb_action.triggered.connect(lambda: self.action_triggered.emit("export_to_usb"))
-        self.addAction(export_usb_action)
         
         insert_action = QAction("📲 Insert", self)
         insert_action.setToolTip(tr("toolbar.insert"))
@@ -254,6 +252,45 @@ class ControlToolbar(BaseToolbar):
         clear_action.setToolTip(tr("toolbar.clear_tooltip"))
         clear_action.triggered.connect(lambda: self.action_triggered.emit("clear"))
         self.addAction(clear_action)
+
+
+class DeviceToolbar(BaseToolbar):
+    
+    time_requested = pyqtSignal()
+    brightness_requested = pyqtSignal()
+    power_requested = pyqtSignal()
+    schedule_requested = pyqtSignal()
+    network_requested = pyqtSignal()
+    
+    def __init__(self, parent=None):
+        super().__init__("Device", parent)
+        self.init_ui()
+    
+    def init_ui(self):
+        time_action = QAction("⏰ Time", self)
+        time_action.setToolTip("Set time synchronization")
+        time_action.triggered.connect(self.time_requested.emit)
+        self.addAction(time_action)
+        
+        brightness_action = QAction("💡 Brightness", self)
+        brightness_action.setToolTip("Set brightness settings")
+        brightness_action.triggered.connect(self.brightness_requested.emit)
+        self.addAction(brightness_action)
+        
+        power_action = QAction("⚡ Power", self)
+        power_action.setToolTip("Set power schedule")
+        power_action.triggered.connect(self.power_requested.emit)
+        self.addAction(power_action)
+        
+        schedule_action = QAction("📅 Schedule", self)
+        schedule_action.setToolTip("Schedule program playback")
+        schedule_action.triggered.connect(self.schedule_requested.emit)
+        self.addAction(schedule_action)
+        
+        network_action = QAction("🌐 Network", self)
+        network_action.setToolTip("Configure network settings")
+        network_action.triggered.connect(self.network_requested.emit)
+        self.addAction(network_action)
 
 
 class ToolbarManager(QToolBar):

@@ -505,6 +505,15 @@ class DateRangeMultiSelector(QWidget):
                 })
         return all_ranges
     
+    def collapse(self):
+        if self.table_expanded:
+            self.table_expanded = False
+            self.date_table.setVisible(False)
+            toolbar_widget = self.layout().itemAt(2).widget()
+            if toolbar_widget:
+                toolbar_widget.setVisible(False)
+            self.dropdown_arrow.setText("▼")
+    
     def set_enabled(self, enabled: bool):
         self.selector_button.setEnabled(enabled)
         self.date_table.setEnabled(enabled)

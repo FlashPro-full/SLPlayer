@@ -69,70 +69,40 @@ class SyncManager:
             
             logger.info(f"Starting import from controller {controller_id}")
             
-            if hasattr(controller, 'get_program_list'):
-                program_list = controller.get_program_list()
-                logger.info(f"Found {len(program_list)} programs on controller")
+            from core.controller_database import get_controller_database
+            db = get_controller_database()
+            controller_info = db.get_controller(controller_id)
+            
+            screen_width = None
+            screen_height = None
+            
+            if controller_info:
+                screen_width = controller_info.get("screen_width")
+                screen_height = controller_info.get("screen_height")
                 
-                controller_type = "novastar" if hasattr(controller, '_device_sn') or str(type(controller)).lower().find('novastar') >= 0 else "huidu"
+                if screen_width and screen_height:
+                    try:
+                        screen_width = int(screen_width)
+                        screen_height = int(screen_height)
+                    except (ValueError, TypeError):
+                        screen_width = None
+                        screen_height = None
                 
-                for program_info in program_list:
-                    program_id = program_info.get("id") or program_info.get("name")
-                    if program_id:
-                        sdk_program_data = controller.download_program(program_id)
-                        if sdk_program_data:
-                            # Convert SDK format to *.soo format
-                            from core.program_converter import ProgramConverter
-                            soo_program_data = ProgramConverter.sdk_to_soo(sdk_program_data, controller_type)
-                            
-                            imported_data["programs"][program_id] = {
-                                "data": soo_program_data,
-                                "hash": self.calculate_hash(soo_program_data),
-                                "modified": datetime.now().isoformat()
-                            }
-                            
-                            # Save as *.soo file
-                            if screen_manager:
-                                from core.file_manager import FileManager
-                                from utils.app_data import get_app_data_dir
-                                from core.screen_manager import Screen
-                                from core.program_manager import Program
-                                
-                                file_manager = FileManager(screen_manager)
-                                work_dir = get_app_data_dir() / "work"
-                                work_dir.mkdir(parents=True, exist_ok=True)
-                                
-                                program_name = soo_program_data.get("name", f"Imported_{program_id}")
-                                safe_name = program_name.replace(' ', '_').replace('/', '_')
-                                soo_file_path = str(work_dir / f"{safe_name}_{program_id}.soo")
-                                
-                                # Create screen for imported program if needed
-                                screen_name = f"Imported_{controller_id}"
-                                existing_screen = screen_manager.get_screen_by_name(screen_name)
-                                if not existing_screen:
-                                    screen_resolution = imported_data.get("screen_resolution", {})
-                                    screen_width = screen_resolution.get("width", 640) if screen_resolution else 640
-                                    screen_height = screen_resolution.get("height", 480) if screen_resolution else 480
-                                    existing_screen = screen_manager.create_screen(screen_name, screen_width, screen_height)
-                                
-                                # Create and add program
-                                program = Program()
-                                program.from_dict(soo_program_data)
-                                existing_screen.add_program(program)
-                                
-                                # Save to *.soo file
-                                file_manager.save_screen_to_file(existing_screen, soo_file_path)
-                                logger.info(f"Saved downloaded program to {soo_file_path}")
-                            
-                            media_files = self._extract_media_from_program(soo_program_data)
-                            for media_path in media_files:
-                                if media_path and Path(media_path).exists():
-                                    media_hash = self._download_media_file(media_path)
-                                    if media_hash:
-                                        imported_data["media"][media_hash] = {
-                                            "original_path": media_path,
-                                            "local_path": str(self.media_dir / f"{media_hash}{Path(media_path).suffix}"),
-                                            "hash": media_hash
-                                        }
+                if screen_width and screen_height:
+                    imported_data["screen_resolution"] = {"width": screen_width, "height": screen_height}
+                    logger.info(f"Imported controller screen resolution: {screen_width}x{screen_height}")
+            
+            if not screen_width or not screen_height:
+                from config.constants import DEFAULT_CANVAS_WIDTH, DEFAULT_CANVAS_HEIGHT
+                screen_width = DEFAULT_CANVAS_WIDTH
+                screen_height = DEFAULT_CANVAS_HEIGHT
+            
+            existing_screen = None
+            if screen_manager:
+                screen_name = f"Imported_{controller_id}"
+                existing_screen = screen_manager.get_screen_by_name(screen_name)
+                if not existing_screen:
+                    existing_screen = screen_manager.create_screen(screen_name, screen_width, screen_height)
             
             if hasattr(controller, 'get_time'):
                 imported_data["time"] = controller.get_time()
@@ -146,44 +116,75 @@ class SyncManager:
             if hasattr(controller, 'get_network_config'):
                 imported_data["network"] = controller.get_network_config()
             
-            device_info = controller.get_device_info()
-            if device_info:
-                if not imported_data["brightness"]:
-                    imported_data["brightness"] = device_info.get("brightness")
-                if not imported_data["network"]:
-                    imported_data["network"] = device_info.get("network")
+            if hasattr(controller, 'get_program_list'):
+                program_list = controller.get_program_list()
+                logger.info(f"Found {len(program_list)} programs on controller")
                 
-                resolution = (
-                    device_info.get("display_resolution") or
-                    device_info.get("resolution") or
-                    device_info.get("screen_resolution") or
-                    device_info.get("screen_size")
-                )
+                controller_type = "novastar" if hasattr(controller, '_device_sn') or str(type(controller)).lower().find('novastar') >= 0 else "huidu"
                 
-                screen_resolution = {}
-                if resolution:
-                    if isinstance(resolution, str) and "x" in resolution.lower():
-                        try:
-                            parts = resolution.lower().replace(" ", "").split("x")
-                            if len(parts) == 2:
-                                screen_resolution["width"] = int(parts[0])
-                                screen_resolution["height"] = int(parts[1])
-                        except (ValueError, IndexError):
-                            pass
-                    elif isinstance(resolution, dict):
-                        screen_resolution["width"] = resolution.get("width") or resolution.get("w")
-                        screen_resolution["height"] = resolution.get("height") or resolution.get("h")
-                
-                if not screen_resolution:
-                    ctrl_width = device_info.get("width") or device_info.get("screen_width")
-                    ctrl_height = device_info.get("height") or device_info.get("screen_height")
-                    if ctrl_width and ctrl_height:
-                        screen_resolution["width"] = int(ctrl_width)
-                        screen_resolution["height"] = int(ctrl_height)
-                
-                if screen_resolution:
-                    imported_data["screen_resolution"] = screen_resolution
-                    logger.info(f"Imported controller screen resolution: {screen_resolution.get('width')}x{screen_resolution.get('height')}")
+                for program_info in program_list:
+                    program_id = program_info.get("id") or program_info.get("name")
+                    if program_id:
+                        empty_program = None
+                        if screen_manager and existing_screen:
+                            from core.program_manager import Program
+                            empty_program = Program(name=f"Program_{program_id}", width=screen_width, height=screen_height)
+                            existing_screen.add_program(empty_program)
+                            if program_manager:
+                                program_manager.programs.append(empty_program)
+                                program_manager._programs_by_id[empty_program.id] = empty_program
+                        
+                        sdk_program_data = controller.download_program(program_id)
+                        if sdk_program_data:
+                            from core.program_converter import ProgramConverter
+                            soo_program_data = ProgramConverter.sdk_to_soo(sdk_program_data, controller_type)
+                            
+                            imported_data["programs"][program_id] = {
+                                "data": soo_program_data,
+                                "hash": self.calculate_hash(soo_program_data),
+                                "modified": datetime.now().isoformat()
+                            }
+                            
+                            if screen_manager and existing_screen:
+                                from core.file_manager import FileManager
+                                from utils.app_data import get_app_data_dir
+                                from core.program_manager import Program
+                                
+                                program_name = soo_program_data.get("name", f"Imported_{program_id}")
+                                
+                                program_to_update = None
+                                if empty_program:
+                                    program_to_update = empty_program
+                                else:
+                                    program_to_update = existing_screen.get_program_by_id(soo_program_data.get("id"))
+                                
+                                if program_to_update:
+                                    program_to_update.from_dict(soo_program_data)
+                                else:
+                                    program = Program()
+                                    program.from_dict(soo_program_data)
+                                    existing_screen.add_program(program)
+                                
+                                file_manager = FileManager(screen_manager)
+                                work_dir = get_app_data_dir() / "work"
+                                work_dir.mkdir(parents=True, exist_ok=True)
+                                
+                                safe_name = program_name.replace(' ', '_').replace('/', '_')
+                                soo_file_path = str(work_dir / f"{safe_name}_{program_id}.soo")
+                                
+                                file_manager.save_screen_to_file(existing_screen, soo_file_path)
+                                logger.info(f"Saved downloaded program to {soo_file_path}")
+                            
+                            media_files = self._extract_media_from_program(soo_program_data)
+                            for media_path in media_files:
+                                if media_path and Path(media_path).exists():
+                                    media_hash = self._download_media_file(media_path)
+                                    if media_hash:
+                                        imported_data["media"][media_hash] = {
+                                            "original_path": media_path,
+                                            "local_path": str(self.media_dir / f"{media_hash}{Path(media_path).suffix}"),
+                                            "hash": media_hash
+                                        }
             
             self.local_db["controller_id"] = controller_id
             self.local_db.update(imported_data)

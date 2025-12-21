@@ -13,6 +13,7 @@ class ProgramPropertiesComponent(BasePropertiesComponent):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._updating_properties = False
+        self._week_menu = None
         self.init_ui()
     
     def init_ui(self):
@@ -178,6 +179,9 @@ class ProgramPropertiesComponent(BasePropertiesComponent):
         self.specified_time_checkbox.setEnabled(True)
         self.time_range_selector.set_enabled(checked)
         
+        if not checked:
+            self.time_range_selector.collapse()
+        
         if self.current_program:
             if "specified_time" not in self.current_program.play_control:
                 self.current_program.play_control["specified_time"] = {}
@@ -217,6 +221,11 @@ class ProgramPropertiesComponent(BasePropertiesComponent):
         
         self.specify_week_checkbox.setEnabled(True)
         self.week_days_selector.setEnabled(checked)
+        
+        if not checked:
+            if hasattr(self, '_week_menu') and self._week_menu:
+                self._week_menu.close()
+        
         if self.current_program:
             if "specify_week" not in self.current_program.play_control:
                 self.current_program.play_control["specify_week"] = {}
@@ -227,6 +236,7 @@ class ProgramPropertiesComponent(BasePropertiesComponent):
     
     def _show_week_days_menu(self):
         menu = QMenu(self)
+        self._week_menu = menu
         menu.setStyleSheet("""
             QMenu {
                 background-color: #2B2B2B;
@@ -253,6 +263,7 @@ class ProgramPropertiesComponent(BasePropertiesComponent):
         
         button_pos = self.week_days_selector.mapToGlobal(self.week_days_selector.rect().bottomLeft())
         menu.exec_(button_pos)
+        self._week_menu = None
     
     def _on_week_day_toggled(self, day_index, checked):
         if checked:
@@ -295,6 +306,9 @@ class ProgramPropertiesComponent(BasePropertiesComponent):
         
         self.specify_date_checkbox.setEnabled(True)
         self.date_range_selector.set_enabled(checked)
+        
+        if not checked:
+            self.date_range_selector.collapse()
         
         if self.current_program:
             if "specify_date" not in self.current_program.play_control:

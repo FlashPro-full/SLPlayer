@@ -4,6 +4,9 @@ from PyQt5.QtCore import Qt
 from pathlib import Path
 from typing import Optional, Dict, List
 from ui.properties.base_properties_component import BasePropertiesComponent
+from utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 class ScreenPropertiesComponent(BasePropertiesComponent):
@@ -95,16 +98,12 @@ class ScreenPropertiesComponent(BasePropertiesComponent):
         
         screen_config = get_screen_config()
         
-        controller_type = ""
-        if screen_config:
-            brand = screen_config.get("brand", "")
-            model = screen_config.get("model", "")
-            if brand and model:
-                controller_type = f"{brand} {model}"
-            elif model:
-                controller_type = model
-            elif brand:
-                controller_type = brand
+        controller_type = screen_config.get("controller_type", "") if screen_config else ""
+        if self.main_window and hasattr(self.main_window, 'screen_manager') and self.main_window.screen_manager:
+            current_screen = self.main_window.screen_manager.current_screen
+            get_logger().info(f"{current_screen}")
+            if current_screen and hasattr(current_screen, 'properties'):
+                controller_type = current_screen.properties.get("controller_type", controller_type)
         
         self.screen_controller_type_input.setText(controller_type if controller_type else "N/A")
         
