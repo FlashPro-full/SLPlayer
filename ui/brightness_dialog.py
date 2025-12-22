@@ -214,17 +214,6 @@ DIALOG_STYLE = """
     QCheckBox {
         color: #FFFFFF;
     }
-    QCheckBox::indicator {
-        width: 18px;
-        height: 18px;
-        border: 1px solid #555555;
-        background-color: #3B3B3B;
-        border-radius: 3px;
-    }
-    QCheckBox::indicator:checked {
-        background-color: #4A90E2;
-        border: 1px solid #4A90E2;
-    }
     QRadioButton {
         color: #FFFFFF;
     }
