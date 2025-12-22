@@ -256,15 +256,17 @@ class TimeDialog(QDialog):
                 time_info_list = response.get("data", [])
                 if time_info_list and len(time_info_list) > 0:
                     xml_string = time_info_list[0].get("data", {})
-                    time_info = XMLToJSONConverter.convert(xml_string)
-                    time_sync = time_info.get("sync", {})
+                    data = XMLToJSONConverter.convert(xml_string)
+                    output = data.get("out", {})
+                    time_sync = output.get("sync", {})
                     time_sync_value = time_sync.get("value", "none")
+                    
                     if time_sync_value == "ntp":
                         self.sync_method_combo.setCurrentIndex(1)
                     else:
                         self.sync_method_combo.setCurrentIndex(0)
                     
-                    time_zone = time_info.get("timezone", {})
+                    time_zone = output.get("timezone", {})
                     
                     if time_zone:
                         time_zone_value = time_zone.get("value", "")
