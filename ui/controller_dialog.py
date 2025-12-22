@@ -353,10 +353,15 @@ class ControllerDialog(QDialog):
     
     def on_table_double_click(self, index):
         controller_id = self.all_controllers[index.row()].get('controller_id', None)
-        if controller_id:
+        has_license = self.all_controllers[index.row()].get('has_license', 0)
+        if controller_id and has_license == 1:
             self.on_select()
+        elif controller_id and has_license == 0:
+            QMessageBox.warning(self, "No Selection", "Please select a controller with a license.")
+            return
         else:
             QMessageBox.warning(self, "No Selection", "Please select a controller.")
+            return
     
     def on_select(self):
         selected_rows = self.table.selectionModel().selectedRows()

@@ -81,7 +81,6 @@ class VideoPlayer(QWidget):
             self.playButton.setEnabled(True)
 
     def _togglePlayPause(self):
-        """Toggle play/pause (called by playButton click) - matches sample code behavior"""
         if self.mediaPlayer.state() == QMediaPlayer.PlayingState:  # type: ignore
             self.mediaPlayer.pause()
         else:

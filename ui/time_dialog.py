@@ -9,6 +9,7 @@ from controllers.huidu import HuiduController
 from utils.logger import get_logger
 import zoneinfo
 import sys
+from utils.xml_converter import XMLToJSONConverter
 
 logger = get_logger(__name__)
 
@@ -133,7 +134,94 @@ class TimeDialog(QDialog):
         timezone_layout.addWidget(QLabel("Time Zone:"))
         
         self.timezone_combo = QComboBox()
-        timezone_list = self._get_timezone_list()
+        timezone_list = [
+            "(UTC-11:00) Midway Island",
+            "(UTC-10:00) Honolulu",
+            "(UTC-09:00) Anchorage",
+            "(UTC-08:00) Los Angeles",
+            "(UTC-08:00) Tijuana",
+            "(UTC-07:00) Phoenix",
+            "(UTC-07:00) Chihuahua",
+            "(UTC-07:00) Denver",
+            "(UTC-06:00) Costa Rica",
+            "(UTC-06:00) Regina",
+            "(UTC-06:00) Mexico City",
+            "(UTC-06:00) Chicago",
+            "(UTC-05:00) Bogota",
+            "(UTC-05:00) New York",
+            "(UTC-04:30) Caracas",
+            "(UTC-04:00) Barbados",
+            "(UTC-04:00) Manaus",
+            "(UTC-04:00) San Diego",
+            "(UTC-03:30) Newfoundland",
+            "(UTC-03:00) Buenos Aires",
+            "(UTC-03:00) Montevideo",
+            "(UTC-03:00) Sao Paulo",
+            "(UTC-03:00) Gothab",
+            "(UTC-02:00) South Georgia",
+            "(UTC-01:00) Azores",
+            "(UTC-01:00) Cape Verde",
+            "(UTC+00:00) London",
+            "(UTC+00:00) Casablanca",
+            "(UTC+01.00) Brazavi",
+            "(UTC+01:00) Amsterdam",
+            "(UTC+01:00) Belgrade",
+            "(UTC+01:00) Brussels",
+            "(UTC+01:00) Sarajevo",
+            "(UTC+02:00) Windhoek",
+            "(UTC+02:00) Cairo",
+            "(UTC+02:00) Athens",
+            "(UTC+02:00) Harare, Pretoria",
+            "(UTC+02:00) Amman",
+            "(UTC+02:00) Athens",
+            "(UTC+02:00) Beirut",
+            "(UTC+02:00) Helsinki",
+            "(UTC+02:00) Jerusalem",
+            "(UTC+03:00) Minsk",
+            "(UTC+03:00) Baghdad",
+            "(UTC+03:00) Kuwait",
+            "(UTC+03:00) Nairobi",
+            "(UTC+03:00) Moscow",
+            "(UTC+03:30) Tehran",
+            "(UTC+04:00) Tbilisi",
+            "(UTC+04:00) Yerevan",
+            "(UTC+04:00) Dubai",
+            "(UTC+04:00) Baku",
+            "(UTC+04:30) Kabul",
+            "(UTC+05:00) Karachi",
+            "(UTC+05:00) Ural",
+            "(UTC+05:00) Yekaterinburg",
+            "(UTC+05:30) Calcutta",
+            "(UTC+05:30) Colombo",
+            "(UTC+05:45) Kathmandu",
+            "(UTC+06:00) Almaty",
+            "(UTC+06:30) Yangon",
+            "(UTC+07:00) Bangkok",
+            "(UTC+07:00) Krasnoyarsk",
+            "(UTC+08:00) Beijing",
+            "(UTC+08:00) Hong Kong",
+            "(UTC+08:00) Kuala Lumpur",
+            "(UTC+08:00) Perth",
+            "(UTC+08:00) Taipei",
+            "(UTC+08:00) Irkutsk",
+            "(UTC+09:00) Seoul",
+            "(UTC+09:00) Tokyo",
+            "(UTC+09:00) Yakutsk",
+            "(UTC+09:30) Darwin",
+            "(UTC+09:30) Adelaide",
+            "(UTC+10:00) Brisbane",
+            "(UTC+10:00) Guam",
+            "(UTC+10:00) Hobart",
+            "(UTC+10:00) Sydney",
+            "(UTC+10:00) Vladivostok",
+            "(UTC+11:00) Magadan",
+            "(UTC+12:00) Majuro",
+            "(UTC+12:00) Fiji",
+            "(UTC+12:00) Auckland",
+            "(UTC+12:00) Fiji",
+            "(UTC+13:00) Tongatapu",
+        ]
+
         self.timezone_combo.addItems(timezone_list)
         timezone_layout.addWidget(self.timezone_combo, stretch=1)
         sync_layout.addLayout(timezone_layout)
@@ -154,181 +242,42 @@ class TimeDialog(QDialog):
         
         layout.addLayout(button_layout)
     
-    def _get_windows_timezone(self) -> str:
-        try:
-            if sys.platform == "win32":
-                import winreg
-                key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SYSTEM\CurrentControlSet\Control\TimeZoneInformation")
-                try:
-                    timezone_key = winreg.QueryValueEx(key, "TimeZoneKeyName")[0]
-                    winreg.CloseKey(key)
-                    return timezone_key
-                except:
-                    winreg.CloseKey(key)
-            return ""
-        except Exception:
-            return ""
-    
-    def _get_timezone_list(self) -> List[str]:
-        timezones = [
-            "Midway Island (UTC-11:00)",
-            "Honolulu (UTC-10:00)",
-            "Anchorage (UTC-09:00)",
-            "Los Angeles (UTC-08:00)",
-            "Tijuana (UTC-08:00)",
-            "Phoenix (UTC-07:00)",
-            "Chihuahua (UTC-07:00)",
-            "Denver (UTC-07:00)",
-            "Costa Rica (UTC-06:00)",
-            "Regina (UTC-06:00)",
-            "Mexico City (UTC-06:00)",
-            "Chicago (UTC-06:00)",
-            "Bogota (UTC-05:00)",
-            "New York (UTC-05:00)",
-            "Caracas (UTC-04:30)",
-            "Barbados (UTC-04:00)",
-            "Manaus (UTC-04:00)",
-            "San Diego (UTC-04:00)",
-            "Newfoundland (UTC-03:30)",
-            "Buenos Aires (UTC-03:00)",
-            "Montevideo (UTC-03:00)",
-            "Sao Paulo (UTC-03:00)",
-            "Gothab (UTC-03:00)",
-            "South Georgia (UTC-02:00)",
-            "Azores (UTC-01:00)",
-            "Cape Verde (UTC-01:00)",
-            "London (UTC+00:00)",
-            "Casablanca (UTC+00:00)",
-            "Brazavi (UTC+01.00)",
-            "Amsterdam (UTC+01:00)",
-            "Belgrade (UTC+01:00)",
-            "Brussels (UTC+01:00)",
-            "Sarajevo (UTC+01:00)",
-            "Windhoek (UTC+02:00)",
-            "Cairo (UTC+02:00)",
-            "Athens (UTC+02:00)",
-            "Harare, Pretoria (UTC+02:00)",
-            "Amman (UTC+02:00)",
-            "Athens (UTC+02:00)",
-            "Beirut (UTC+02:00)",
-            "Helsinki (UTC+02:00)",
-            "Jerusalem (UTC+02:00)",
-            "Minsk (UTC+03:00)",
-            "Baghdad (UTC+03:00)",
-            "Kuwait (UTC+03:00)",
-            "Nairobi (UTC+03:00)",
-            "Moscow (UTC+03:00)",
-            "Tehran (UTC+03:30)",
-            "Tbilisi (UTC+04:00)",
-            "Yerevan (UTC+04:00)",
-            "Dubai (UTC+04:00)",
-            "Baku (UTC+04:00)",
-            "Kabul (UTC+04:30)",
-            "Karachi (UTC+05:00)",
-            "Ural (UTC+05:00)",
-            "Yekaterinburg (UTC+05:00)",
-            "Calcutta (UTC+05:30)",
-            "Colombo (UTC+05:30)",
-            "Kathmandu (UTC+05:45)",
-            "Almaty (UTC+06:00)",
-            "Yangon (UTC+06:30)",
-            "Bangkok (UTC+07:00)",
-            "Krasnoyarsk (UTC+07:00)",
-            "Beijing (UTC+08:00)",
-            "Hong Kong (UTC+08:00)",
-            "Kuala Lumpur (UTC+08:00)",
-            "Perth (UTC+08:00)",
-            "Taipei (UTC+08:00)",
-            "Irkutsk (UTC+08:00)",
-            "Seoul (UTC+09:00)",
-            "Tokyo (UTC+09:00)",
-            "Yakutsk (UTC+09:00)",
-            "Darwin (UTC+09:30)",
-            "Adelaide (UTC+09:30)",
-            "Brisbane (UTC+10:00)",
-            "Guam (UTC+10:00)",
-            "Hobart (UTC+10:00)",
-            "Sydney (UTC+10:00)",
-            "Vladivostok (UTC+10:00)",
-            "Magadan (UTC+11:00)",
-            "Majuro (UTC+12:00)",
-            "Fiji (UTC+12:00)",
-            "Auckland (UTC+12:00)",
-            "Fiji (UTC+12:00)",
-            "Tongatapu (UTC+13:00)",
-        ]
-        
-        windows_tz = self._get_windows_timezone()
-        if windows_tz:
-            try:
-                tz = zoneinfo.ZoneInfo(windows_tz)
-                now = datetime.now(tz)
-                utc_offset = now.utcoffset()
-                if utc_offset:
-                    offset = utc_offset.total_seconds() / 3600
-                    offset_str = f"UTC{int(offset):+d}:00" if offset == int(offset) else f"UTC{offset:+.2f}"
-                    windows_display = f"{windows_tz} ({offset_str})"
-                    if windows_display not in timezones:
-                        timezones.insert(0, f"System: {windows_display}")
-            except:
-                pass
-        
-        return timezones
-    
     def update_time_display(self):
         self.current_time_label.setText("Current PC Time: " + datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
-    
-    def sync_time(self):
-        try:
-            if not self.controller_id:
-                QMessageBox.warning(self, "No Controller", "No controller connected. Please connect to a controller first.")
-                return
-            
-            use_ntp = self.sync_method_combo.currentIndex() == 1
-            
-            if use_ntp:
-                QMessageBox.information(self, "NTP Sync", 
-                                      "NTP sync will be configured when you save the settings.")
-            else:
-                QMessageBox.information(self, "PC Time", 
-                                      "PC time sync will be configured when you save the settings.")
-                
-        except Exception as e:
-            logger.error(f"Error syncing time: {e}", exc_info=True)
-            QMessageBox.critical(self, "Error", f"Error syncing time: {str(e)}")
     
     def load_from_device(self):
         try:
             if not self.controller_id:
                 return
             
-            property_keys = ["time", "time.timeZone", "time.sync"]
-            response = self.huidu_controller.get_device_property([self.controller_id], property_keys)
+            response = self.huidu_controller.get_time_info([self.controller_id])
             
             if response.get("message") == "ok" and response.get("data"):
-                device_data_list = response.get("data", [])
-                if device_data_list and len(device_data_list) > 0:
-                    device_data = device_data_list[0].get("data", {})
-                    
-                    time_sync = device_data.get("time.sync", "pc")
-                    if time_sync == "ntp":
+                time_info_list = response.get("data", [])
+                if time_info_list and len(time_info_list) > 0:
+                    xml_string = time_info_list[0].get("data", {})
+                    time_info = XMLToJSONConverter.convert(xml_string)
+                    time_sync = time_info.get("sync", {})
+                    time_sync_value = time_sync.get("value", "none")
+                    if time_sync_value == "ntp":
                         self.sync_method_combo.setCurrentIndex(1)
                     else:
                         self.sync_method_combo.setCurrentIndex(0)
                     
-                    time_zone = device_data.get("time.timeZone", "")
+                    time_zone = time_info.get("timezone", {})
+                    
                     if time_zone:
-                        self.time_settings["time.timeZone"] = time_zone
-                        parsed_tz = self._parse_device_timezone(time_zone)
-                        timezone_index = self._find_timezone_index(parsed_tz)
-                        if timezone_index >= 0:
-                            self.timezone_combo.setCurrentIndex(timezone_index)
-                        else:
-                            self._set_default_timezone()
+                        time_zone_value = time_zone.get("value", "")
+                        time_zone_id = time_zone.get("id", "")
+                        timeZone = "(" + time_zone_value + ") " + time_zone_id.split("/")[1]
+                        for timezone in self.timezone_combo.items():
+                            if timezone.text() == timeZone:
+                                self.timezone_combo.setCurrentIndex(timezone.get("index"))
+                                break
                     else:
                         self._set_default_timezone()
                     
-                    logger.info(f"Loaded time settings from device: {device_data}")
+                    logger.info(f"Loaded time settings from device: {time_info}")
         except Exception as e:
             logger.error(f"Error loading time settings from device: {e}", exc_info=True)
     
@@ -340,185 +289,25 @@ class TimeDialog(QDialog):
             
             use_ntp = self.sync_method_combo.currentIndex() == 1
             
-            properties = {
-                "time.sync": "ntp" if use_ntp else "pc"
-            }
-            
-            if use_ntp:
-                properties["time.ntp"] = "ntp.huidu.cn"
+            selected_sync = "ntp" if use_ntp else "none"
             
             selected_timezone = self.timezone_combo.currentText()
-            if selected_timezone:
-                timezone_value = self._format_device_timezone(selected_timezone)
-                if timezone_value:
-                    properties["time.timeZone"] = timezone_value
             
-            response = self.huidu_controller.set_device_property(properties, [self.controller_id])
+            response = self.huidu_controller.set_time_info([self.controller_id], selected_sync, selected_timezone)
             
-            if response.get("message") == "ok":
+            if response.get("message") == "ok" and response.get("data").get("message") == "ok":
                 QMessageBox.information(self, "Success", "Time settings saved and sent to controller.")
-                self.settings_changed.emit(properties)
                 self.accept()
             else:
-                error_msg = response.get("data", "Unknown error")
+                error_msg = response.get("data").get("message", "Unknown error")
                 QMessageBox.warning(self, "Failed", f"Failed to save time settings: {error_msg}")
                 
         except Exception as e:
             logger.error(f"Error saving settings: {e}", exc_info=True)
             QMessageBox.critical(self, "Error", f"Error saving settings: {str(e)}")
-    
-    def _parse_device_timezone(self, timezone_str: str) -> str:
-        if not timezone_str:
-            return ""
-        parts = timezone_str.split(";")
-        if len(parts) >= 2:
-            utc_offset = parts[1].strip()
-            return utc_offset
-        return timezone_str
-    
-    def _format_device_timezone(self, timezone_display: str) -> str:
-        if not timezone_display:
-            return ""
-        tz_name = timezone_display.split("(")[0].strip()
-        utc_offset = self._extract_utc_offset(timezone_display)
-        cities = self._extract_cities(timezone_display)
-        tz_iana = self._get_iana_timezone(tz_name, utc_offset)
-        if utc_offset:
-            if cities:
-                return f"{tz_iana};{utc_offset};{cities}"
-            else:
-                return f"{tz_iana};{utc_offset};{tz_name}"
-        return timezone_display
-    
-    def _extract_cities(self, timezone_display: str) -> str:
-        tz_name = timezone_display.split("(")[0].strip()
-        if "," in tz_name:
-            cities = [c.strip().replace(" ", "") for c in tz_name.split(",")]
-            return ",".join(cities)
-        return tz_name.replace(" ", "")
-    
-    def _get_iana_timezone(self, tz_name: str, utc_offset: str) -> str:
-        tz_mapping = {
-            "Beijing": "Asia/Shanghai",
-            "Hong Kong": "Asia/Hong_Kong",
-            "Tokyo": "Asia/Tokyo",
-            "Seoul": "Asia/Seoul",
-            "Singapore": "Asia/Singapore",
-            "Kuala Lumpur": "Asia/Kuala_Lumpur",
-            "Bangkok": "Asia/Bangkok",
-            "Manila": "Asia/Manila",
-            "Jakarta": "Asia/Jakarta",
-            "New York": "America/New_York",
-            "Los Angeles": "America/Los_Angeles",
-            "Chicago": "America/Chicago",
-            "Denver": "America/Denver",
-            "London": "Europe/London",
-            "Paris": "Europe/Paris",
-            "Berlin": "Europe/Berlin",
-            "Moscow": "Europe/Moscow",
-            "Dubai": "Asia/Dubai",
-            "Sydney": "Australia/Sydney",
-            "Melbourne": "Australia/Melbourne",
-            "Auckland": "Pacific/Auckland"
-        }
-        if tz_name in tz_mapping:
-            return tz_mapping[tz_name]
-        if "," in tz_name:
-            first_city = tz_name.split(",")[0].strip()
-            if first_city in tz_mapping:
-                return tz_mapping[first_city]
-        return tz_name.replace(" ", "_")
-    
-    def _extract_utc_offset(self, timezone_display: str) -> str:
-        if "UTC" in timezone_display:
-            utc_part = timezone_display.split("(")[-1].replace(")", "").strip()
-            if utc_part.startswith("UTC"):
-                offset = utc_part.replace("UTC", "").strip()
-                if offset.startswith("+") or offset.startswith("-"):
-                    offset_str = offset.replace(".", ":")
-                    if ":" not in offset_str:
-                        offset_str = f"{offset_str}:00"
-                    return f"UTC{offset_str}"
-        return ""
-    
-    def _normalize_timezone_value(self, value: str) -> str:
-        if not value:
-            return ""
-        value = value.strip()
-        if ";" in value:
-            parts = value.split(";")
-            if len(parts) >= 2:
-                value = parts[1].strip()
-        if value.startswith("UTC+"):
-            offset = value[4:]
-            try:
-                offset_str = offset.replace(".", ":")
-                if ":" not in offset_str:
-                    offset_str = f"{offset_str}:00"
-                return f"UTC+{offset_str}"
-            except (ValueError, IndexError):
-                return value
-        elif value.startswith("UTC-"):
-            offset = value[4:]
-            try:
-                offset_str = offset.replace(".", ":")
-                if ":" not in offset_str:
-                    offset_str = f"{offset_str}:00"
-                return f"UTC-{offset_str}"
-            except (ValueError, IndexError):
-                return value
-        return value
-    
-    def _find_timezone_index(self, timezone_value: str) -> int:
-        timezone_list = [self.timezone_combo.itemText(i) for i in range(self.timezone_combo.count())]
-        
-        normalized_value = self._normalize_timezone_value(timezone_value)
-        
-        for i, tz_display in enumerate(timezone_list):
-            extracted = self._extract_timezone_value(tz_display)
-            normalized_extracted = self._normalize_timezone_value(extracted)
-            if normalized_value == normalized_extracted or timezone_value in tz_display:
-                return i
-        return -1
-    
-    def _extract_timezone_value(self, timezone_display: str) -> str:
-        if timezone_display.startswith("System:"):
-            parts = timezone_display.split("(")
-            if len(parts) > 1:
-                tz_name = parts[0].replace("System:", "").strip()
-                return tz_name
-        
-        if "UTC" in timezone_display:
-            utc_part = timezone_display.split("(")[-1].replace(")", "").strip()
-            if utc_part.startswith("UTC"):
-                offset = utc_part.replace("UTC", "").strip()
-                if offset.startswith("+") or offset.startswith("-"):
-                    offset_str = offset.replace(".", ":")
-                    if ":" not in offset_str:
-                        offset_str = f"{offset_str}:00"
-                    return f"UTC{offset_str}"
-        
-        return timezone_display.split("(")[0].strip()
-    
+   
     def _set_default_timezone(self):
-        windows_tz = self._get_windows_timezone()
-        if windows_tz:
-            try:
-                tz = zoneinfo.ZoneInfo(windows_tz)
-                now = datetime.now(tz)
-                utc_offset = now.utcoffset()
-                if utc_offset:
-                    offset = utc_offset.total_seconds() / 3600
-                    offset_str = f"UTC{int(offset):+d}:00" if offset == int(offset) else f"UTC{offset:+.2f}"
-                    windows_display = f"System: {windows_tz} ({offset_str})"
-                    timezone_index = self.timezone_combo.findText(windows_display)
-                    if timezone_index >= 0:
-                        self.timezone_combo.setCurrentIndex(timezone_index)
-                        return
-            except:
-                pass
-        
-        utc_index = self.timezone_combo.findText("UTC (UTC+00:00)")
+        utc_index = self.timezone_combo.findText("(UTC+00:00) London")
         if utc_index >= 0:
             self.timezone_combo.setCurrentIndex(utc_index)
         else:
