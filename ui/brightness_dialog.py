@@ -415,8 +415,6 @@ class BrightnessDialog(QDialog):
         
         brightness_layout.addWidget(self.default_widget)
         
-        self.on_mode_changed("Default mode")
-        
         layout.addWidget(brightness_group)
         
         self.onset_time_group = QGroupBox("Onset time")
@@ -424,6 +422,8 @@ class BrightnessDialog(QDialog):
         self.onset_time_label = QLabel("")
         onset_time_layout.addWidget(self.onset_time_label)
         layout.addWidget(self.onset_time_group)
+        
+        self.on_mode_changed("Default mode")
         
         layout.addStretch()
         

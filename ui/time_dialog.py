@@ -381,9 +381,53 @@ class TimeDialog(QDialog):
             return ""
         tz_name = timezone_display.split("(")[0].strip()
         utc_offset = self._extract_utc_offset(timezone_display)
+        cities = self._extract_cities(timezone_display)
+        tz_iana = self._get_iana_timezone(tz_name, utc_offset)
         if utc_offset:
-            return f"{tz_name};{utc_offset};{utc_offset}"
+            if cities:
+                return f"{tz_iana};{utc_offset};{cities}"
+            else:
+                return f"{tz_iana};{utc_offset};{tz_name}"
         return timezone_display
+    
+    def _extract_cities(self, timezone_display: str) -> str:
+        tz_name = timezone_display.split("(")[0].strip()
+        if "," in tz_name:
+            cities = [c.strip().replace(" ", "") for c in tz_name.split(",")]
+            return ",".join(cities)
+        return tz_name.replace(" ", "")
+    
+    def _get_iana_timezone(self, tz_name: str, utc_offset: str) -> str:
+        tz_mapping = {
+            "Beijing": "Asia/Shanghai",
+            "Hong Kong": "Asia/Hong_Kong",
+            "Tokyo": "Asia/Tokyo",
+            "Seoul": "Asia/Seoul",
+            "Singapore": "Asia/Singapore",
+            "Kuala Lumpur": "Asia/Kuala_Lumpur",
+            "Bangkok": "Asia/Bangkok",
+            "Manila": "Asia/Manila",
+            "Jakarta": "Asia/Jakarta",
+            "New York": "America/New_York",
+            "Los Angeles": "America/Los_Angeles",
+            "Chicago": "America/Chicago",
+            "Denver": "America/Denver",
+            "London": "Europe/London",
+            "Paris": "Europe/Paris",
+            "Berlin": "Europe/Berlin",
+            "Moscow": "Europe/Moscow",
+            "Dubai": "Asia/Dubai",
+            "Sydney": "Australia/Sydney",
+            "Melbourne": "Australia/Melbourne",
+            "Auckland": "Pacific/Auckland"
+        }
+        if tz_name in tz_mapping:
+            return tz_mapping[tz_name]
+        if "," in tz_name:
+            first_city = tz_name.split(",")[0].strip()
+            if first_city in tz_mapping:
+                return tz_mapping[first_city]
+        return tz_name.replace(" ", "_")
     
     def _extract_utc_offset(self, timezone_display: str) -> str:
         if "UTC" in timezone_display:
