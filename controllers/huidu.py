@@ -223,14 +223,27 @@ class HuiduController:
     def get_time_info(self, device_ids: Optional[List[str]] = None) -> Dict:
         try:
             device_id_str = ",".join(device_ids) if device_ids else ""
+            url = f"{self.host}/raw/{device_id_str}"
+            headers = {
+                'Content-Type': 'application/xml',
+                'sdkKey': self.sdk_key,
+            }
             body = """
             <?xml version='1.0' encoding='utf-8'?>
                 <sdk guid="##GUID">
                     <in method="GetTimeInfo"/>
                 </sdk>
             """
-            response = self._post(f"{self.host}/raw/{device_id_str}", json.dumps(body))
-            return json.loads(response)
+            result = self._sign_header(headers, body, url)
+            if isinstance(result, str):
+                url = result
+            logger.info(f"SDK API Request: POST {url}")
+            logger.info(f"SDK API Request Body: {body}")
+            response = requests.post(url, data=body, headers=headers)
+            response.raise_for_status()
+            response_text = response.text
+            logger.info(f"SDK API Response Body: {response_text}")
+            return json.loads(response_text)
         except Exception as e:
             logger.error(f"Error getting time info: {e}")
             return {"message": "error", "data": str(e)}
@@ -238,6 +251,20 @@ class HuiduController:
     def set_time_info(self, device_ids: Optional[List[str]] = None, sync: Optional[str] = None, timezone: Optional[str] = None) -> Dict:
         try:
             device_id_str = ",".join(device_ids) if device_ids else ""
+            url = f"{self.host}/raw/{device_id_str}"
+            headers = {
+                'Content-Type': 'application/xml',
+                'sdkKey': self.sdk_key,
+            }
+            body = """
+            <?xml version='1.0' encoding='utf-8'?>
+                <sdk guid="##GUID">
+                    <in method="GetTimeInfo"/>
+                </sdk>
+            """
+            result = self._sign_header(headers, body, url)
+            if isinstance(result, str):
+                url = result
             sync_xml = ""
             if sync == "ntp":
                 sync_xml = '<sync value="ntp"/><ntp value="ntp.huidu.cn" />'
@@ -254,8 +281,13 @@ class HuiduController:
                     </in>
                 </sdk>
             """
-            response = self._post(f"{self.host}/raw/{device_id_str}", json.dumps(body))
-            return json.loads(response)
+            logger.info(f"SDK API Request: POST {url}")
+            logger.info(f"SDK API Request Body: {body}")
+            response = requests.post(url, data=body, headers=headers)
+            response.raise_for_status()
+            response_text = response.text
+            logger.info(f"SDK API Response Body: {response_text}")
+            return json.loads(response_text)
         except Exception as e:
             logger.error(f"Error setting time info: {e}")
             return {"message": "error", "data": str(e)}
