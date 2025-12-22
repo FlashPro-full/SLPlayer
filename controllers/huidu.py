@@ -256,15 +256,6 @@ class HuiduController:
                 'Content-Type': 'application/xml',
                 'sdkKey': self.sdk_key,
             }
-            body = """
-            <?xml version='1.0' encoding='utf-8'?>
-                <sdk guid="##GUID">
-                    <in method="GetTimeInfo"/>
-                </sdk>
-            """
-            result = self._sign_header(headers, body, url)
-            if isinstance(result, str):
-                url = result
             sync_xml = ""
             if sync == "ntp":
                 sync_xml = '<sync value="ntp"/><ntp value="ntp.huidu.cn" />'
@@ -281,6 +272,9 @@ class HuiduController:
                     </in>
                 </sdk>
             """
+            result = self._sign_header(headers, body, url)
+            if isinstance(result, str):
+                url = result
             logger.info(f"SDK API Request: POST {url}")
             logger.info(f"SDK API Request Body: {body}")
             response = requests.post(url, data=body, headers=headers)
