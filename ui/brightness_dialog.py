@@ -382,7 +382,7 @@ class BrightnessDialog(QDialog):
         add_btn_layout.addStretch()
         add_schedule_btn = QPushButton("+")
         add_schedule_btn.setFixedSize(30, 30)
-        add_schedule_btn.clicked.connect(self.add_schedule_item)
+        add_schedule_btn.clicked.connect(lambda: self.add_schedule_item())
         add_btn_layout.addWidget(add_schedule_btn)
         custom_layout.addLayout(add_btn_layout)
         
@@ -435,7 +435,7 @@ class BrightnessDialog(QDialog):
         self.default_widget.setVisible(mode == "Default mode")
         self.onset_time_group.setVisible(mode == "Custom mode")
         if mode == "Custom mode" and not self.schedule_items:
-            self.add_schedule_item("08:00:00", 100)
+            self.add_schedule_item(time_str="08:00:00", brightness=100)
     
     def on_brightness_range_changed(self, min_val, max_val):
         self.brightness_range_label.setText(f"{min_val}% - {max_val}%")
