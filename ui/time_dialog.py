@@ -319,7 +319,8 @@ class TimeDialog(QDialog):
                     time_zone = device_data.get("time.timeZone", "")
                     if time_zone:
                         self.time_settings["time.timeZone"] = time_zone
-                        timezone_index = self._find_timezone_index(time_zone)
+                        parsed_tz = self._parse_device_timezone(time_zone)
+                        timezone_index = self._find_timezone_index(parsed_tz)
                         if timezone_index >= 0:
                             self.timezone_combo.setCurrentIndex(timezone_index)
                         else:
@@ -348,7 +349,7 @@ class TimeDialog(QDialog):
             
             selected_timezone = self.timezone_combo.currentText()
             if selected_timezone:
-                timezone_value = self._extract_timezone_value(selected_timezone)
+                timezone_value = self._format_device_timezone(selected_timezone)
                 if timezone_value:
                     properties["time.timeZone"] = timezone_value
             
@@ -366,10 +367,73 @@ class TimeDialog(QDialog):
             logger.error(f"Error saving settings: {e}", exc_info=True)
             QMessageBox.critical(self, "Error", f"Error saving settings: {str(e)}")
     
+    def _parse_device_timezone(self, timezone_str: str) -> str:
+        if not timezone_str:
+            return ""
+        parts = timezone_str.split(";")
+        if len(parts) >= 2:
+            utc_offset = parts[1].strip()
+            return utc_offset
+        return timezone_str
+    
+    def _format_device_timezone(self, timezone_display: str) -> str:
+        if not timezone_display:
+            return ""
+        tz_name = timezone_display.split("(")[0].strip()
+        utc_offset = self._extract_utc_offset(timezone_display)
+        if utc_offset:
+            return f"{tz_name};{utc_offset};{utc_offset}"
+        return timezone_display
+    
+    def _extract_utc_offset(self, timezone_display: str) -> str:
+        if "UTC" in timezone_display:
+            utc_part = timezone_display.split("(")[-1].replace(")", "").strip()
+            if utc_part.startswith("UTC"):
+                offset = utc_part.replace("UTC", "").strip()
+                if offset.startswith("+") or offset.startswith("-"):
+                    offset_str = offset.replace(".", ":")
+                    if ":" not in offset_str:
+                        offset_str = f"{offset_str}:00"
+                    return f"UTC{offset_str}"
+        return ""
+    
+    def _normalize_timezone_value(self, value: str) -> str:
+        if not value:
+            return ""
+        value = value.strip()
+        if ";" in value:
+            parts = value.split(";")
+            if len(parts) >= 2:
+                value = parts[1].strip()
+        if value.startswith("UTC+"):
+            offset = value[4:]
+            try:
+                offset_str = offset.replace(".", ":")
+                if ":" not in offset_str:
+                    offset_str = f"{offset_str}:00"
+                return f"UTC+{offset_str}"
+            except (ValueError, IndexError):
+                return value
+        elif value.startswith("UTC-"):
+            offset = value[4:]
+            try:
+                offset_str = offset.replace(".", ":")
+                if ":" not in offset_str:
+                    offset_str = f"{offset_str}:00"
+                return f"UTC-{offset_str}"
+            except (ValueError, IndexError):
+                return value
+        return value
+    
     def _find_timezone_index(self, timezone_value: str) -> int:
         timezone_list = [self.timezone_combo.itemText(i) for i in range(self.timezone_combo.count())]
+        
+        normalized_value = self._normalize_timezone_value(timezone_value)
+        
         for i, tz_display in enumerate(timezone_list):
-            if timezone_value in tz_display or self._extract_timezone_value(tz_display) == timezone_value:
+            extracted = self._extract_timezone_value(tz_display)
+            normalized_extracted = self._normalize_timezone_value(extracted)
+            if normalized_value == normalized_extracted or timezone_value in tz_display:
                 return i
         return -1
     
@@ -384,24 +448,11 @@ class TimeDialog(QDialog):
             utc_part = timezone_display.split("(")[-1].replace(")", "").strip()
             if utc_part.startswith("UTC"):
                 offset = utc_part.replace("UTC", "").strip()
-                if offset.startswith("+"):
-                    offset_num = int(offset[1:].split(":")[0])
-                    return f"GMT+{offset_num}" if offset_num > 0 else "GMT+0"
-                elif offset.startswith("-"):
-                    offset_num = int(offset[1:].split(":")[0])
-                    return f"GMT-{offset_num}"
-                else:
-                    return "GMT+0"
-        
-        if "GMT" in timezone_display:
-            if "GMT+" in timezone_display or "GMT-" in timezone_display:
-                gmt_part = timezone_display.split("(")[-1].replace(")", "").strip()
-                if "GMT+" in gmt_part:
-                    offset = gmt_part.split("GMT+")[-1].split(")")[0].strip()
-                    return f"GMT+{offset}"
-                elif "GMT-" in gmt_part:
-                    offset = gmt_part.split("GMT-")[-1].split(")")[0].strip()
-                    return f"GMT-{offset}"
+                if offset.startswith("+") or offset.startswith("-"):
+                    offset_str = offset.replace(".", ":")
+                    if ":" not in offset_str:
+                        offset_str = f"{offset_str}:00"
+                    return f"UTC{offset_str}"
         
         return timezone_display.split("(")[0].strip()
     
