@@ -275,6 +275,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.screen_manager
             )
             if hasattr(self, 'content_widget'):
+                if hasattr(self.content_widget, '_initialize_videos_for_program'):
+                    self.content_widget._initialize_videos_for_program()
                 self.content_widget.update()
     
     def _on_program_selected(self, program_id: str):
@@ -289,6 +291,8 @@ class MainWindow(QtWidgets.QMainWindow):
             self.properties_panel.set_program(program)
         if hasattr(self, 'content_widget'):
             self.content_widget.set_selected_element(None)
+            if hasattr(self.content_widget, '_initialize_videos_for_program'):
+                self.content_widget._initialize_videos_for_program()
             self.content_widget.update()
     
     def _on_content_selected(self, program_id: str, element_id: str):
@@ -466,8 +470,13 @@ class MainWindow(QtWidgets.QMainWindow):
     def load_soo_file(self, file_path: str, clear_existing: bool = False):
         result = self.file_manager.load_soo_file(file_path, clear_existing)
         logger.info(f"Loaded file: {file_path}, result: {result}")
-        if result and hasattr(self, 'screen_list_panel'):
-            self.screen_list_panel.refresh_screens(debounce=False)
+        if result:
+            if hasattr(self, 'screen_list_panel'):
+                self.screen_list_panel.refresh_screens(debounce=False)
+            if hasattr(self, 'content_widget'):
+                if hasattr(self.content_widget, '_initialize_videos_for_program'):
+                    self.content_widget._initialize_videos_for_program()
+                self.content_widget.update()
         return result
     
     def _on_save_requested(self, file_path: str = ""):

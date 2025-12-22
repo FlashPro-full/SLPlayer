@@ -293,6 +293,7 @@ class ContentWidget(QtWidgets.QWidget):
                 self._animation_timer.start()
             if not self._clock_timer.isActive():
                 self._clock_timer.start()
+            self._initialize_videos_for_program()
         else:
             if self._animation_timer.isActive():
                 self._animation_timer.stop()
@@ -368,6 +369,23 @@ class ContentWidget(QtWidgets.QWidget):
             self.update()
         else:
             cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+    
+    def _initialize_videos_for_program(self):
+        elements = self._get_current_program_elements()
+        for element in elements:
+            element_type = element.get("type", "")
+            if element_type == "video":
+                element_id = element.get("id", "")
+                element_props = element.get("properties", {})
+                video_list = element_props.get("video_list", [])
+                if video_list and len(video_list) > 0:
+                    active_index = self._get_video_active_index(element_id, video_list)
+                    if 0 <= active_index < len(video_list):
+                        video_path = video_list[active_index].get("path", "")
+                        if video_path:
+                            from pathlib import Path
+                            if Path(video_path).exists():
+                                self._setup_video_player(element_id, video_path)
     
     
     def _cleanup_video_player(self, element_id: str):
