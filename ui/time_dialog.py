@@ -303,7 +303,7 @@ class TimeDialog(QDialog):
             
             response = self.huidu_controller.set_time_info([self.controller_id], selected_sync, selected_timezone)
             
-            if response.get("message") == "ok" and response.get("data").get("message") == "ok":
+            if response.get("message") == "ok":
                 QMessageBox.information(self, "Success", "Time settings saved and sent to controller.")
                 self.accept()
             else:
