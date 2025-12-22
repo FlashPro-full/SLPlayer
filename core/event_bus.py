@@ -34,14 +34,14 @@ class EventBus(QObject):
     ui_status_update = pyqtSignal(str)
     
     _instance: Optional['EventBus'] = None
-    _initialized = False
+    _initialized: bool = False
     
     def __new__(cls):
         if cls._instance is None:
             cls._instance = super().__new__(cls)
         return cls._instance
     
-    def __init__(self):
+    def __init__(self) -> None:
         if EventBus._initialized:
             return
         super().__init__()
@@ -50,7 +50,7 @@ class EventBus(QObject):
         self._throttle_timers: Dict[str, QTimer] = {}
         self._throttle_last_call: Dict[str, float] = {}
     
-    def emit_debounced(self, signal: pyqtSignal, *args, delay_ms: int = 300, key: Optional[str] = None):
+    def emit_debounced(self, signal: pyqtSignal, *args, delay_ms: int = 300, key: Optional[str] = None) -> None:
         if key is None:
             key = signal.name if hasattr(signal, 'name') else str(signal)
         
@@ -63,7 +63,7 @@ class EventBus(QObject):
         timer.start(delay_ms)
         self._debounce_timers[key] = timer
     
-    def emit_throttled(self, signal: pyqtSignal, *args, interval_ms: int = 100, key: Optional[str] = None):
+    def emit_throttled(self, signal: pyqtSignal, *args, interval_ms: int = 100, key: Optional[str] = None) -> None:
         import time
         if key is None:
             key = signal.name if hasattr(signal, 'name') else str(signal)

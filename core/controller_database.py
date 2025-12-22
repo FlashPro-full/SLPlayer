@@ -256,9 +256,6 @@ class ControllerDatabase:
 
     def update_license_info(self, controller_id: str, license_file_name: Optional[str] = None) -> Dict:
         try:
-            if license_file_name is None:
-                license_file_name = f"{controller_id}.slp"
-            
             conn = sqlite3.connect(str(self.db_path))
             cursor = conn.cursor()
             

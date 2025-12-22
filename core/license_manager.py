@@ -1,6 +1,6 @@
 import json
-import base64
 import requests # type: ignore
+import uuid
 from pathlib import Path
 from typing import Optional, Dict, List, Any
 from utils.logger import get_logger
@@ -28,8 +28,8 @@ class LicenseManager:
         self.license_dir.mkdir(parents=True, exist_ok=True)
         self.verifier = LicenseVerifier()
     
-    def get_license_file_path(self, controller_id: str) -> Path:
-        safe_id = controller_id.replace('/', '_').replace('\\', '_')
+    def get_license_file_path(self, license_file_name: str) -> Path:
+        safe_id = license_file_name.replace('/', '_').replace('\\', '_')
         return self.license_dir / f"{safe_id}.slp"
     
     def activate_license(self, controller_id: str, email: str, 
@@ -65,8 +65,6 @@ class LicenseManager:
             print(f"\nURL-encoded format: {url_encoded}")
             print("=" * 60)
             
-            # Send POST request with form data (PHP backend uses $_REQUEST for form data)
-            # Backend logic: $_REQUEST['controllerId'] ?? $_REQUEST['controller_id'] ?? ''
             response = requests.post(
                 api_url, 
                 data=request_data,  # Form data - PHP $_REQUEST can read this
@@ -96,9 +94,6 @@ class LicenseManager:
                 print(response.text[:500])
             print("=" * 60 + "\n")
             
-            # Backend returns 200 for all responses (even errors)
-            # Errors are indicated by 'success': false in JSON body
-            # Only 400/500 are actual HTTP errors
             if response.status_code == 400:
                 # Missing parameters
                 if result:
@@ -128,7 +123,6 @@ class LicenseManager:
                         'message': 'Server error'
                     }
             
-            # For 200 responses, check JSON success field
             if not result:
                 return {
                     'success': False,
@@ -140,8 +134,8 @@ class LicenseManager:
             if result.get('success'):
                 license_data = result.get('license', {})
                 if license_data:
-                    # Save license file
-                    if self.save_license_file(license_data, controller_id):
+                    license_file_name = str(uuid.uuid4().hex)
+                    if self.save_license_file(license_data, controller_id, license_file_name):
                         logger.info(f"License activated and saved for controller {controller_id}")
                         return {
                             'success': True,
@@ -161,7 +155,6 @@ class LicenseManager:
                         'message': 'Server returned success but no license data'
                     }
             
-            # Handle error cases (backend returns 200 with success: false for these)
             error_code = result.get('code', 'UNKNOWN_ERROR')
             error_message = result.get('message', 'Unknown error')
             actions = result.get('actions', [])
@@ -226,18 +219,9 @@ class LicenseManager:
                 'message': f'License activation failed: {e}'
             }
     
-    def save_license_file(self, license_data: Dict[str, str], controller_id: str) -> bool:
-        """
-        Save license file in .slp format.
-        
-        Format:
-        -----BEGIN SLPLAYER LICENSE-----
-        payload: <base64>
-        signature: <base64>
-        -----END SLPLAYER LICENSE-----
-        """
+    def save_license_file(self, license_data: Dict[str, str], controller_id: str, license_file_name: str) -> bool:
         try:
-            license_file = self.get_license_file_path(controller_id)
+            license_file = self.get_license_file_path(license_file_name)
             
             payload = license_data.get('payload', '')
             signature = license_data.get('signature', '')
@@ -270,35 +254,17 @@ class LicenseManager:
         return self.verifier.parse_license_file(license_file)
     
     def verify_license_offline(self, controller_id: str, device_id: Optional[str] = None) -> bool:
-        """
-        Verify license offline (without server connection).
-        
-        Args:
-            controller_id: Controller ID to verify
-            device_id: Device ID (auto-generated if not provided)
-        
-        Returns:
-            True if license is valid and matches, False otherwise
-        """
         if device_id is None:
             device_id = get_device_id()
         
-        # Load license file
         license_data = self.load_license_file(controller_id)
         if not license_data:
             logger.warning(f"No license file found for controller {controller_id}")
             return False
         
-        # Validate license
         return self.verifier.validate_license_data(license_data, controller_id, device_id)
     
     def get_controller_licenses(self) -> List[Dict[str, Any]]:
-        """
-        Get all stored licenses.
-        
-        Returns:
-            List of license info dictionaries
-        """
         licenses = []
         
         for license_file in self.license_dir.glob("*.slp"):
@@ -316,29 +282,13 @@ class LicenseManager:
     def request_transfer(self, controller_id: str, email: str, 
                         new_device_id: Optional[str] = None,
                         note: Optional[str] = None) -> bool:
-        """
-        Request license transfer to new device.
-        
-        NOTE: The backend does not provide a transfer_request endpoint.
-        This method only sends an email to Starled Italia with transfer request details.
-        
-        Args:
-            controller_id: Controller ID
-            email: User email
-            new_device_id: New device ID (auto-generated if not provided)
-            note: Optional note/message for the transfer request
-        
-        Returns:
-            True if email was sent successfully, False otherwise
-        """
+
         if new_device_id is None:
             new_device_id = get_device_id()
         
         try:
             logger.info(f"Transfer request: controller={controller_id}, email={email}, new_device={new_device_id}")
             
-            # Backend does not provide transfer_request.php endpoint
-            # Send email to Starled Italia for manual processing
             email_success = self._send_transfer_email(controller_id, email, new_device_id, note)
             
             return email_success
@@ -349,19 +299,12 @@ class LicenseManager:
     
     def _send_transfer_email(self, controller_id: str, email: str, 
                              new_device_id: str, note: Optional[str]) -> bool:
-        """
-        Send transfer request via email to Starled Italia.
-        
-        Returns:
-            True if email was sent successfully, False otherwise
-        """
         try:
             import smtplib
             from email.mime.text import MIMEText
             from email.mime.multipart import MIMEMultipart
             from datetime import datetime
             
-            # Get email configuration from settings
             try:
                 from config.settings import settings
                 smtp_server = settings.get("license.smtp_server", "smtp.gmail.com")
@@ -370,18 +313,14 @@ class LicenseManager:
                 smtp_password = settings.get("license.smtp_password", "")
                 transfer_email = settings.get("license.transfer_email", "license@starled-italia.com")
             except (ImportError, AttributeError, KeyError):
-                # Use defaults if settings not available
                 smtp_server = "smtp.gmail.com"
                 smtp_port = 587
                 smtp_user = ""
                 smtp_password = ""
                 transfer_email = "license@starled-italia.com"
             
-            # If SMTP credentials not configured, try to send without authentication
-            # (some SMTP servers allow this for specific domains)
             if not smtp_user or not smtp_password:
                 logger.warning("SMTP credentials not configured. Email transfer request will be logged only.")
-                # Log the request details for manual processing
                 logger.info(f"""
                 ===== LICENSE TRANSFER REQUEST =====
                 Controller ID: {controller_id}
@@ -393,32 +332,29 @@ class LicenseManager:
                 """)
                 return False
             
-            # Create email message
             msg = MIMEMultipart()
             msg['From'] = smtp_user
             msg['To'] = transfer_email
             msg['Subject'] = f"SLPlayer License Transfer Request - {controller_id}"
             
-            # Email body
             body = f"""
-License Transfer Request
+                    License Transfer Request
 
-Controller ID: {controller_id}
-User Email: {email}
-New Device ID: {new_device_id}
-Request Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+                    Controller ID: {controller_id}
+                    User Email: {email}
+                    New Device ID: {new_device_id}
+                    Request Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 
-Note:
-{note or 'No note provided'}
+                    Note:
+                    {note or 'No note provided'}
 
-Please process this license transfer request.
+                    Please process this license transfer request.
 
-This is an automated message from SLPlayer.
-"""
+                    This is an automated message from SLPlayer.
+                    """
             
             msg.attach(MIMEText(body, 'plain'))
             
-            # Send email
             try:
                 server = smtplib.SMTP(smtp_server, smtp_port)
                 server.starttls()
@@ -446,7 +382,6 @@ This is an automated message from SLPlayer.
             return False
     
     def delete_license(self, controller_id: str) -> bool:
-        """Delete license file for a controller"""
         try:
             license_file = self.get_license_file_path(controller_id)
             if license_file.exists():
@@ -459,11 +394,9 @@ This is an automated message from SLPlayer.
             return False
     
     def has_valid_license(self, controller_id: str) -> bool:
-        """Check if controller has a valid license"""
         return self.verify_license_offline(controller_id)
     
     def get_license_info(self, controller_id: str) -> Optional[Dict[str, Any]]:
-        """Get license information for a controller"""
         license_data = self.load_license_file(controller_id)
         if license_data:
             return self.verifier.get_license_info(license_data)

@@ -5,7 +5,7 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5.QtCore import Qt, pyqtSignal, QThread
 from PyQt5.QtGui import QColor
-from typing import List, Dict
+from typing import List, Dict, Optional
 from core.controller_database import get_controller_database
 from services.controller_service import get_controller_service
 from utils.logger import get_logger
@@ -48,7 +48,8 @@ class ControllerDialog(QDialog):
         self.controller_service = get_controller_service()
         self.controller_db = get_controller_database()
         self.discovery_thread = None
-        self.is_admin = False
+        self.selected_controller_id = None
+        self.all_controllers = []
         self.main_window = None
         
         self.init_ui()
@@ -84,7 +85,7 @@ class ControllerDialog(QDialog):
         self.table = QTableWidget()
         self.table.setColumnCount(6)
         self.table.setHorizontalHeaderLabels([
-            "Controller Type", "Controller ID", "IP Address", "Resolution", "Connection Status", "License"
+            "Controller Type", "Controller Name", "IP Address", "Resolution", "Connection Status", "License"
         ])
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.table.setSelectionBehavior(QTableWidget.SelectRows)
@@ -103,13 +104,12 @@ class ControllerDialog(QDialog):
         button_layout.addStretch()
         
         self.license_btn = QPushButton("License")
-        self.license_btn.setEnabled(False)
+        self.license_btn.hide()
         self.license_btn.clicked.connect(self.on_license)
         button_layout.addWidget(self.license_btn)
         
         self.select_btn = QPushButton("Edit")
-        self.select_btn.setDefault(True)
-        self.select_btn.setEnabled(False)
+        self.select_btn.hide()
         self.select_btn.clicked.connect(self.on_select)
         button_layout.addWidget(self.select_btn)
         
@@ -278,12 +278,12 @@ class ControllerDialog(QDialog):
     
     def _refresh_table_after_discovery(self, discovered_controllers):
         try:
-            controllers = discovered_controllers.get('all_controllers', [])
+            self.all_controllers = discovered_controllers.get('all_controllers', [])
             online_controller_ids = discovered_controllers.get('online_controller_ids', [])
 
-            self.update_table_with_controllers(controllers, online_controller_ids)
+            self.update_table_with_controllers(self.all_controllers, online_controller_ids)
             connected_count = len(online_controller_ids)
-            total_count = len(controllers)
+            total_count = len(self.all_controllers)
             self.status_label.setText(f"Connected: {connected_count} / Total: {total_count}")
             self.loading_spinner.stop()
         except Exception as e:
@@ -298,6 +298,7 @@ class ControllerDialog(QDialog):
         for row, controller in enumerate(controllers):
             controller_type = controller.get('controller_type', 'Unknown')
             controller_id = controller.get('controller_id', 'Unknown')
+            controller_name = controller.get('name', 'Unknown')
             ip = controller.get('eth_ip', 'Unknown')
             screen_width = controller.get('screen_width')
             screen_height = controller.get('screen_height')
@@ -307,7 +308,7 @@ class ControllerDialog(QDialog):
                 resolution = 'Unknown'
             
             self.table.setItem(row, 0, QTableWidgetItem(controller_type))
-            self.table.setItem(row, 1, QTableWidgetItem(controller_id))
+            self.table.setItem(row, 1, QTableWidgetItem(controller_name))
             self.table.setItem(row, 2, QTableWidgetItem(ip))
             self.table.setItem(row, 3, QTableWidgetItem(resolution))
             
@@ -322,10 +323,14 @@ class ControllerDialog(QDialog):
             status_item.setForeground(status_color)
             self.table.setItem(row, 4, status_item)
             
-            license_file_name = controller.get('license_file_name', '') or ''
-            license_item = QTableWidgetItem(license_file_name)
-            if license_file_name:
+            license_status = int(controller.get('has_license', '')) or 0
+            license_item = None
+            if license_status == 1:
+                license_item = QTableWidgetItem("Verified")
                 license_item.setForeground(QColor(0, 255, 0))
+            else:
+                license_item = QTableWidgetItem("Unverified")
+                license_item.setForeground(QColor(255, 0, 0))
             self.table.setItem(row, 5, license_item)
             
             self.table.setRowHeight(row, 30)
@@ -336,15 +341,22 @@ class ControllerDialog(QDialog):
     
     def on_selection_changed(self):
         selected_rows = self.table.selectionModel().selectedRows()
-        if selected_rows:
-            self.select_btn.setEnabled(True)
-            self.license_btn.setEnabled(True)
+        row = selected_rows[0].row()
+
+        license_file_name = self.all_controllers[row].get('license_file_name', None)
+        if license_file_name:
+            self.license_btn.hide()
+            self.select_btn.show()
         else:
-            self.select_btn.setEnabled(False)
-            self.license_btn.setEnabled(False)
+            self.license_btn.show()
+            self.select_btn.hide()
     
     def on_table_double_click(self, index):
-        self.on_select()
+        controller_id = self.all_controllers[index.row()].get('controller_id', None)
+        if controller_id:
+            self.on_select()
+        else:
+            QMessageBox.warning(self, "No Selection", "Please select a controller.")
     
     def on_select(self):
         selected_rows = self.table.selectionModel().selectedRows()
@@ -353,14 +365,17 @@ class ControllerDialog(QDialog):
             return
         
         row = selected_rows[0].row()
+        controller_id = self.all_controllers[row].get('controller_id', None)
+        license_file_name = self.all_controllers[row].get('license_file_name', None)
+
+        if not controller_id:
+            QMessageBox.warning(self, "No Selection", "Please select a controller.")
+            return
         
         controller_type_item = self.table.item(row, 0)
-        controller_id_item = self.table.item(row, 1)
         controller_resolution_item = self.table.item(row, 3)
-        controller_status_item = self.table.item(row, 4)
         
         controller_type = controller_type_item.text()
-        controller_id = controller_id_item.text()
         resolution_text = controller_resolution_item.text()
         resolution_parts = resolution_text.split("x")
         width_str = resolution_parts[0] if len(resolution_parts) > 0 else "1920"
@@ -373,112 +388,18 @@ class ControllerDialog(QDialog):
             height = int(height_str) if height_str.isdigit() else 1080
         except (ValueError, AttributeError):
             height = 1080
-        is_online = controller_status_item.text() == "ON"
-        
-        from core.license_manager import LicenseManager
-        license_manager = LicenseManager()
-        license_file = license_manager.get_license_file_path(controller_id)
-        
-        if not license_file.exists() and not self.is_admin:
-            from ui.password_dialog import PasswordDialog
-            password_dialog = PasswordDialog(parent=self)
-            result = password_dialog.exec()
-            
-            if result and password_dialog.is_password_correct():
-                self.is_admin = True
-            else:
-                return
-        
-        controllerType = controller_type + " " + controller_id.split("-")[0]
  
-        if is_online:
-            reply = QMessageBox.question(
-                self.main_window,
-                "Upload Program",
-                "Do you want to upload the program from the device?",
-                QMessageBox.Yes | QMessageBox.No,
-                QMessageBox.Yes
-            )
-            
-            if reply == QMessageBox.Yes:
-                try:
-                    from controllers.huidu import HuiduController
-                    from utils.app_data import get_app_data_dir
-                    
-                    controller = HuiduController()
-                    response = controller.get_programs([controller_id])
-                    
-                    if response.get("message") == "ok":
-                        response_data = response.get("data")
-                        xml_string = None
-                        
-                        if isinstance(response_data, str):
-                            try:
-                                json_data = json.loads(response_data)
-                                xml_string = json_data.get("raw") or json_data.get("xml") or json_data.get("data") or response_data
-                            except (json.JSONDecodeError, AttributeError):
-                                xml_string = response_data
-                        
-                        elif isinstance(response_data, dict):
-                            xml_string = response_data.get("raw") or response_data.get("xml") or response_data.get("data")
-                        elif isinstance(response_data, list) and len(response_data) > 0:
-                            first_item = response_data[0]
-                            if isinstance(first_item, dict):
-                                xml_string = first_item.get("raw") or first_item.get("xml") or first_item.get("data")
-                        
-                        logger.info(f"XML string: {xml_string}")
-                        
-                        if not xml_string or not isinstance(xml_string, str):
-                            logger.warning(f"Could not extract XML from response: {response}")
-                            raise ValueError("Could not extract XML from response")
-                        
-                        from core.xml_converter import XMLConverter
-                        
-                        soo_programs, parsed_width, parsed_height = XMLConverter.huidu_xml_to_soo_programs(xml_string, width, height)
-                        try:
-                            parsed_width_int = int(parsed_width) if isinstance(parsed_width, str) else parsed_width
-                            if parsed_width_int > 0:
-                                width = parsed_width_int
-                        except (ValueError, TypeError):
-                            pass
-                        try:
-                            parsed_height_int = int(parsed_height) if isinstance(parsed_height, str) else parsed_height
-                            if parsed_height_int > 0:
-                                height = parsed_height_int
-                        except (ValueError, TypeError):
-                            pass
-                        
-                        sdk_programs = soo_programs
-
-                        logger.info(f"SDK programs: {sdk_programs}")
-                        
-                        if sdk_programs:
-                            work_dir = get_app_data_dir() / "work"
-                            work_dir.mkdir(parents=True, exist_ok=True)
-                            soo_file_path = work_dir / f"{controller_id}.soo"
-                            
-                            if soo_file_path.exists():
-                                soo_file_path.unlink()
-                            
-                            from core.soo_file_config import SOOFileConfig, ScreenPropertiesConfig
-                            screen_props = ScreenPropertiesConfig(
-                                screen_name=controller_id,
-                                width=width,
-                                height=height,
-                                controller_type=controllerType
-                            )
-                            file_config = SOOFileConfig(
-                                screen_properties=screen_props,
-                                programs=sdk_programs
-                            )
-                            
-                            with open(soo_file_path, 'w', encoding='utf-8') as f:
-                                json.dump(file_config.to_dict(), f, indent=2, ensure_ascii=False)
-
-                except Exception as e:
-                    logger.error(f"Error uploading programs to device {controller_id}: {e}", exc_info=True)
-    
         try:
+            # from core.license_manager import LicenseManager
+            # license_manager = LicenseManager()
+            # if not license_manager.has_valid_license(license_file_name):
+            #     QMessageBox.warning(
+            #         self, 
+            #         "License Required", 
+            #         f"Controller {controller_id} does not have a valid license. Please activate a license first."
+            #     )
+            #     return
+            
             if self.main_window:
                 self.main_window.close()
                 self.main_window = None
@@ -499,20 +420,10 @@ class ControllerDialog(QDialog):
             IconManager.setup_taskbar_icon(self.main_window, base_path)
             
             from core.screen_config import set_screen_config
-            from utils.app_data import get_app_data_dir
-
-            logger.info(f"Setting screen config: {controllerType}, {width}, {height}, 0, None")
             
-            set_screen_config(controllerType, width, height, 0, None)
+            set_screen_config(controller_type, width, height, 0, None)
             
-            controller_dict = {
-                "controller_id": controller_id,
-                "controller_type": controller_type,
-                "screen_width": width if isinstance(width, int) else (int(width) if str(width).isdigit() else 1920),
-                "screen_height": height if isinstance(height, int) else (int(height) if str(height).isdigit() else 1080),
-                "is_online": is_online
-            }
-            self.controller_service.set_current_controller(controller_id, controller_dict)
+            self.controller_service.set_current_controller(controller_id)
             
             if self.main_window:
                 self.main_window.update_controller(self.controller_service.get_current_controller())
@@ -536,12 +447,11 @@ class ControllerDialog(QDialog):
         
         row = selected_rows[0].row()
         
-        controller_id_item = self.table.item(row, 1)
-        
-        if not controller_id_item:
+        controller_id = self.all_controllers[row].get('controller_id', None)
+
+        if not controller_id:
+            QMessageBox.warning(self, "No Selection", "Please select a controller.")
             return
-        
-        controller_id = controller_id_item.text()
         
         from ui.login_dialog import LoginDialog
         login_dialog = LoginDialog(controller_id=controller_id, parent=self)

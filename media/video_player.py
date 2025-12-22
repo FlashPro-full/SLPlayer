@@ -88,19 +88,15 @@ class VideoPlayer(QWidget):
             self.mediaPlayer.play()
 
     def play(self):
-        """Play the media (for programmatic control)"""
         self.mediaPlayer.play()
 
     def pause(self):
-        """Pause the media"""
         self.mediaPlayer.pause()
 
     def stop(self):
-        """Stop the media"""
         self.mediaPlayer.stop()
 
     def setMedia(self, file_path: str):
-        """Set media file to play"""
         if file_path:
             media_url = QUrl.fromLocalFile(file_path)
             media_content = QMediaContent(media_url)
@@ -109,27 +105,21 @@ class VideoPlayer(QWidget):
                 self.playButton.setEnabled(True)
 
     def setVolume(self, volume: int):
-        """Set volume (0-100)"""
         self.mediaPlayer.setVolume(volume)
 
     def getVideoWidget(self) -> QVideoWidget:
-        """Get the video widget for external positioning"""
         return self.videoWidget
 
     def getState(self) -> QMediaPlayer.State:
-        """Get current media player state"""
         return self.mediaPlayer.state()
 
     def getError(self) -> int:
-        """Get current media player error"""
         return self.mediaPlayer.error()  # type: ignore
 
     def getErrorString(self) -> str:
-        """Get error string from media player"""
         return self.mediaPlayer.errorString()
 
     def isPlaying(self) -> bool:
-        """Check if video is currently playing"""
         return self.mediaPlayer.state() == QMediaPlayer.PlayingState  # type: ignore
 
     def mediaStateChanged(self, state):
@@ -185,7 +175,6 @@ class VideoPlayer(QWidget):
         self.mediaPlayer.setPosition(position)
 
     def handleError(self):
-        """Handle media errors"""
         error_string = self.mediaPlayer.errorString()
         if hasattr(self, 'playButton'):
             self.playButton.setEnabled(False)

@@ -185,6 +185,39 @@ class VideoPropertiesComponent(BasePropertiesComponent):
         dims_row.addWidget(self.video_dims_height)
         area_layout.addLayout(dims_row)
         
+        fit_mode_row = QHBoxLayout()
+        fit_mode_row.setSpacing(6)
+        fit_mode_label = QLabel("Fit Mode:")
+        self.video_fit_mode = QComboBox()
+        self.video_fit_mode.setStyleSheet("""
+            QComboBox {
+                border: 1px solid #555555;
+                border-radius: 3px;
+                padding: 4px 6px;
+                background-color: #3B3B3B;
+                color: #FFFFFF;
+                font-size: 12px;
+            }
+            QComboBox:focus {
+                border: 1px solid #4A90E2;
+            }
+            QComboBox QAbstractItemView {
+                border: 1px solid #555555;
+                border-radius: 3px;
+                background-color: #2B2B2B;
+                color: #FFFFFF;
+                selection-background-color: #3B3B3B;
+                selection-color: #FFFFFF;
+                padding: 2px;
+            }
+        """)
+        self.video_fit_mode.addItems(["Keep Aspect Ratio", "Stretch"])
+        self.video_fit_mode.currentTextChanged.connect(self._on_fit_mode_changed)
+        fit_mode_row.addWidget(fit_mode_label)
+        fit_mode_row.addWidget(self.video_fit_mode, stretch=1)
+        fit_mode_row.addStretch()
+        area_layout.addLayout(fit_mode_row)
+        
         area_layout.addStretch()
         layout.addWidget(area_group)
         
@@ -218,6 +251,7 @@ class VideoPropertiesComponent(BasePropertiesComponent):
         self.video_list.setMinimumHeight(150)
         self.video_list.item_selected.connect(self._on_video_item_selected)
         self.video_list.item_deleted.connect(self._on_video_item_deleted)
+        self.video_list.active_changed.connect(self._on_video_active_changed)
         video_list_layout.addWidget(self.video_list, stretch=1)
         
         layout.addWidget(video_list_group, stretch=1)
@@ -306,6 +340,16 @@ class VideoPropertiesComponent(BasePropertiesComponent):
         self.video_dims_height.setText(str(height))
         self.video_dims_width.blockSignals(False)
         self.video_dims_height.blockSignals(False)
+        
+        fit_mode = element_props.get("fit_mode", "Keep Aspect Ratio")
+        self.video_fit_mode.blockSignals(True)
+        fit_mode_index = self.video_fit_mode.findText(fit_mode)
+        if fit_mode_index >= 0:
+            self.video_fit_mode.setCurrentIndex(fit_mode_index)
+        else:
+            self.video_fit_mode.setCurrentIndex(0)
+        self.video_fit_mode.blockSignals(False)
+        
         frame_props = element_props.get("frame", {})
         if hasattr(self, 'video_frame_checkbox'):
             frame_enabled = frame_props.get("enabled", False) if isinstance(frame_props, dict) else False
@@ -346,7 +390,10 @@ class VideoPropertiesComponent(BasePropertiesComponent):
                     self.video_frame_speed_combo.setCurrentIndex(1)
         
         video_list = element_props.get("video_list", [])
+        active_index = element_props.get("active_video_index", 0)
         self.video_list.set_videos(video_list)
+        if video_list and len(video_list) > 0 and 0 <= active_index < len(video_list):
+            self.video_list.set_active_index(active_index)
         
         video_shot = element_props.get("video_shot", {})
         video_shot_enabled = video_shot.get("enabled", False) if isinstance(video_shot, dict) else False
@@ -479,6 +526,18 @@ class VideoPropertiesComponent(BasePropertiesComponent):
         self.property_changed.emit("video_size", (width, height))
         self._trigger_autosave()
     
+    def _on_fit_mode_changed(self, fit_mode: str):
+        if not self.current_element or not self.current_program:
+            return
+        
+        if "properties" not in self.current_element:
+            self.current_element["properties"] = {}
+        
+        self.current_element["properties"]["fit_mode"] = fit_mode
+        self.current_program.modified = datetime.now().isoformat()
+        self.property_changed.emit("fit_mode", fit_mode)
+        self._trigger_autosave()
+    
     def _on_video_frame_enabled_changed(self, enabled: bool):
         if not hasattr(self, 'video_frame_checkbox'):
             return
@@ -559,12 +618,36 @@ class VideoPropertiesComponent(BasePropertiesComponent):
                 if "video_list" not in self.current_element["properties"]:
                     self.current_element["properties"]["video_list"] = []
                 self.current_element["properties"]["video_list"].append({"path": file_path})
-                self.video_list.set_videos(self.current_element["properties"]["video_list"])
-                self.property_changed.emit("video_list", self.current_element["properties"]["video_list"])
+                video_list = self.current_element["properties"]["video_list"]
+                new_index = len(video_list) - 1
+                self.video_list.set_videos(video_list)
+                self.video_list.set_active_index(new_index)
+                if "properties" not in self.current_element:
+                    self.current_element["properties"] = {}
+                self.current_element["properties"]["active_video_index"] = new_index
+                if self.current_program:
+                    self.current_program.modified = datetime.now().isoformat()
+                self.property_changed.emit("video_list", video_list)
+                self.property_changed.emit("active_video_index", new_index)
                 self._trigger_autosave()
     
     def _on_video_item_selected(self, index: int):
-        pass
+        if self.current_element and self.current_program:
+            if "properties" not in self.current_element:
+                self.current_element["properties"] = {}
+            self.current_element["properties"]["active_video_index"] = index
+            self.current_program.modified = datetime.now().isoformat()
+            self.property_changed.emit("active_video_index", index)
+            self._trigger_autosave()
+    
+    def _on_video_active_changed(self, index: int):
+        if self.current_element and self.current_program:
+            if "properties" not in self.current_element:
+                self.current_element["properties"] = {}
+            self.current_element["properties"]["active_video_index"] = index
+            self.current_program.modified = datetime.now().isoformat()
+            self.property_changed.emit("active_video_index", index)
+            self._trigger_autosave()
     
     def _on_video_item_deleted(self, index: int):
         if self.current_element and self.current_program:
@@ -579,6 +662,9 @@ class VideoPropertiesComponent(BasePropertiesComponent):
                     self.video_list.set_videos(video_list)
                     if new_active >= 0:
                         self.video_list.set_active_index(new_active)
+                        if "properties" not in self.current_element:
+                            self.current_element["properties"] = {}
+                        self.current_element["properties"]["active_video_index"] = new_active
                 self.current_program.modified = datetime.now().isoformat()
                 self.property_changed.emit("video_list", video_list)
                 self._trigger_autosave()
@@ -597,6 +683,9 @@ class VideoPropertiesComponent(BasePropertiesComponent):
                     self.video_list.set_videos(self.current_element["properties"]["video_list"])
                     if new_active >= 0:
                         self.video_list.set_active_index(new_active)
+                        if "properties" not in self.current_element:
+                            self.current_element["properties"] = {}
+                        self.current_element["properties"]["active_video_index"] = new_active
                 self.current_program.modified = datetime.now().isoformat()
                 self.property_changed.emit("video_list", self.current_element["properties"]["video_list"])
                 self._trigger_autosave()

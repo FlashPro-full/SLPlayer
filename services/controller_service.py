@@ -45,35 +45,18 @@ class ControllerService(QObject):
     def get_current_controller(self) -> Optional[Dict]:
         return self.current_controller
     
-    def set_current_controller(self, controller_id: str, controller_dict: Optional[Dict] = None):
-        if controller_dict:
-            controller_dict = controller_dict.copy()
-            controller_id_from_dict = controller_dict.get('controller_id', controller_id)
-            controller_dict['controller_id'] = controller_id_from_dict
-            controller_dict['is_online'] = controller_id_from_dict in self.online_controller_ids
-            self.current_controller = controller_dict
-        else:
-            found_controller = None
-            for controller in self.all_controllers:
-                if controller.get('controller_id') == controller_id:
-                    found_controller = controller.copy()
-                    found_controller['is_online'] = controller_id in self.online_controller_ids
-                    break
-            
-            if found_controller:
-                self.current_controller = found_controller
-            else:
-                self.current_controller = self.controller_db.find_huidu_controller_by_id(controller_id)
-                if self.current_controller:
-                    self.current_controller = self.current_controller.copy()
-                    self.current_controller['is_online'] = controller_id in self.online_controller_ids
-        
+    def set_current_controller(self, controller_id: str):
+        for controller in self.all_controllers:
+            if controller['controller_id'] == controller_id:
+                self.current_controller = controller
+                break
         if self.current_controller:
+            self.current_controller['is_online'] = controller_id in self.online_controller_ids
             event_bus.controller_connected.emit(self.current_controller)
     
     def load_controllers_from_db(self):
         huidu_controllers = self.controller_db.get_all_huidu_controllers()
-        self.all_controllers = huidu_controllers.copy()
+        self.all_controllers.extend(huidu_controllers)
     
     def get_online_controller_ids(self):
         try:

@@ -46,10 +46,10 @@ class StatusBarWidget(QStatusBar):
         self.progress_label = QLabel("")
         self.addPermanentWidget(self.progress_label)
     
-    def set_connection_status(self, status: bool, device_name: str = ""):
+    def set_connection_status(self, status: bool, controller_name: str = ""):
         if status:
             base_text = tr("status.connected")
-            text = f"{base_text} ({device_name})" if device_name else base_text
+            text = f"{base_text} ({controller_name})" if controller_name else base_text
             self.connection_label.setText(text)
             self.connection_label.setStyleSheet("color: green;")
         else:
@@ -79,7 +79,7 @@ class StatusBarWidget(QStatusBar):
         current_controller = self.controller_service.get_current_controller()
         if current_controller:
             is_online = self.controller_service.is_online()
-            controller_id = current_controller.get("controller_id", "")
-            self.set_connection_status(is_online, controller_id)
+            controller_name = current_controller.get("name", "")
+            self.set_connection_status(is_online, controller_name)
         else:
             self.set_connection_status(False, "")

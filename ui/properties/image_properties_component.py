@@ -188,6 +188,39 @@ class ImagePropertiesComponent(BasePropertiesComponent):
         dims_row.addWidget(self.image_dims_height)
         area_layout.addLayout(dims_row)
         
+        fit_mode_row = QHBoxLayout()
+        fit_mode_row.setSpacing(6)
+        fit_mode_label = QLabel("Fit Mode:")
+        self.image_fit_mode = QComboBox()
+        self.image_fit_mode.setStyleSheet("""
+            QComboBox {
+                border: 1px solid #555555;
+                border-radius: 3px;
+                padding: 4px 6px;
+                background-color: #3B3B3B;
+                color: #FFFFFF;
+                font-size: 12px;
+            }
+            QComboBox:focus {
+                border: 1px solid #4A90E2;
+            }
+            QComboBox QAbstractItemView {
+                border: 1px solid #555555;
+                border-radius: 3px;
+                background-color: #2B2B2B;
+                color: #FFFFFF;
+                selection-background-color: #3B3B3B;
+                selection-color: #FFFFFF;
+                padding: 2px;
+            }
+        """)
+        self.image_fit_mode.addItems(["Keep Aspect Ratio", "Stretch"])
+        self.image_fit_mode.currentTextChanged.connect(self._on_fit_mode_changed)
+        fit_mode_row.addWidget(fit_mode_label)
+        fit_mode_row.addWidget(self.image_fit_mode, stretch=1)
+        fit_mode_row.addStretch()
+        area_layout.addLayout(fit_mode_row)
+        
         area_layout.addStretch()
         layout.addWidget(area_group)
         
@@ -414,6 +447,15 @@ class ImagePropertiesComponent(BasePropertiesComponent):
         self.image_dims_height.setText(str(height))
         self.image_dims_width.blockSignals(False)
         self.image_dims_height.blockSignals(False)
+        
+        fit_mode = element_props.get("fit_mode", "Keep Aspect Ratio")
+        self.image_fit_mode.blockSignals(True)
+        fit_mode_index = self.image_fit_mode.findText(fit_mode)
+        if fit_mode_index >= 0:
+            self.image_fit_mode.setCurrentIndex(fit_mode_index)
+        else:
+            self.image_fit_mode.setCurrentIndex(0)
+        self.image_fit_mode.blockSignals(False)
         
         animation = element_props.get("animation", {})
         
@@ -645,6 +687,18 @@ class ImagePropertiesComponent(BasePropertiesComponent):
         except ValueError:
             pass
     
+    def _on_fit_mode_changed(self, fit_mode: str):
+        if not self.current_element or not self.current_program:
+            return
+        
+        if "properties" not in self.current_element:
+            self.current_element["properties"] = {}
+        
+        self.current_element["properties"]["fit_mode"] = fit_mode
+        self.current_program.modified = datetime.now().isoformat()
+        self.property_changed.emit("fit_mode", fit_mode)
+        self._trigger_autosave()
+    
     def _on_photo_add(self):
         file_path, _ = QFileDialog.getOpenFileName(
             self, "Select Image File", "",
@@ -657,8 +711,13 @@ class ImagePropertiesComponent(BasePropertiesComponent):
                 if "photo_list" not in self.current_element["properties"]:
                     self.current_element["properties"]["photo_list"] = []
                 self.current_element["properties"]["photo_list"].append({"path": file_path})
-                self.photo_list.set_photos(self.current_element["properties"]["photo_list"])
-                self.property_changed.emit("photo_list", self.current_element["properties"]["photo_list"])
+                photo_list = self.current_element["properties"]["photo_list"]
+                new_index = len(photo_list) - 1
+                self.photo_list.set_photos(photo_list)
+                self.photo_list.set_active_index(new_index)
+                if self.current_program:
+                    self.current_program.modified = datetime.now().isoformat()
+                self.property_changed.emit("photo_list", photo_list)
                 self._trigger_autosave()
     
     def _on_photo_item_selected(self, index: int):

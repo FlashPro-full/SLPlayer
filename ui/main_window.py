@@ -10,7 +10,7 @@ from core.file_manager import FileManager
 from core.screen_config import get_screen_config_manager
 from services.controller_service import get_controller_service
 from utils.logger import get_logger
-from ui.toolbar import ProgramToolbar, ContentTypesToolbar, ControlToolbar, PlaybackToolbar, DeviceToolbar
+from ui.toolbar import ProgramToolbar, ContentTypesToolbar, ControlToolbar, DeviceToolbar
 from ui.screen_list_panel import ScreenListPanel
 from ui.content_widget import ContentWidget
 from ui.properties_panel import PropertiesPanel
@@ -56,9 +56,6 @@ class MainWindow(QtWidgets.QMainWindow):
         self.control_toolbar = ControlToolbar(self)
         self.addToolBar(Qt.TopToolBarArea, self.control_toolbar)
         self.control_toolbar.setOrientation(Qt.Horizontal)
-        self.playback_toolbar = PlaybackToolbar(self)
-        self.addToolBar(Qt.TopToolBarArea, self.playback_toolbar)
-        self.playback_toolbar.setOrientation(Qt.Horizontal)
         self.device_toolbar = DeviceToolbar(self)
         self.addToolBar(Qt.TopToolBarArea, self.device_toolbar)
         self.device_toolbar.setOrientation(Qt.Horizontal)
@@ -109,7 +106,6 @@ class MainWindow(QtWidgets.QMainWindow):
     
     def _connect_signals(self):
         self.control_toolbar.action_triggered.connect(self.on_toolbar_action)
-        self.playback_toolbar.action_triggered.connect(self.on_playback_action)
         self.program_toolbar.new_program_requested.connect(self._on_new_program)
         self.program_toolbar.new_screen_requested.connect(self._on_new_screen)
         self.device_toolbar.time_requested.connect(self._on_time_requested)
@@ -218,20 +214,6 @@ class MainWindow(QtWidgets.QMainWindow):
     
     def on_clear(self):
         pass
-    
-    def on_playback_action(self, action: str):
-        if not hasattr(self, 'content_widget'):
-            return
-        
-        if action == "play":
-            self.content_widget.set_playing(True)
-        elif action == "pause":
-            self.content_widget.set_playing(False)
-        elif action == "stop":
-            self.content_widget.set_playing(False)
-            self.content_widget._cleanup_all_video_players()
-            self.content_widget._photo_animations.clear()
-            self.content_widget.update()
     
     def _on_screen_selected(self, screen_name: str):
         if not self.screen_manager:
@@ -833,8 +815,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.status_bar._update_status()
             elif controller_dict:
                 is_online = controller_dict.get("is_online", False)
-                controller_id = controller_dict.get("controller_id", "")
-                self.status_bar.set_connection_status(is_online, controller_id)
+                controller_name = controller_dict.get("name", "")
+                self.status_bar.set_connection_status(is_online, controller_name)
             else:
                 self.status_bar.set_connection_status(False, "")
     

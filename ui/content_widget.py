@@ -1,9 +1,11 @@
 from PyQt5 import QtWidgets, QtGui, QtCore
 from PyQt5.QtCore import QSize, Qt, QUrl, QTimer
 from PyQt5.QtWidgets import QWidget
-from PyQt5.QtMultimedia import QMediaContent, QMediaPlayer
-from PyQt5.QtMultimedia import QMediaPlayer as QMP
-from PyQt5.QtMultimediaWidgets import QVideoWidget
+try:
+    import cv2
+    CV2_AVAILABLE = True
+except ImportError:
+    CV2_AVAILABLE = False
 try:
     from PyQt5.QtWebEngineWidgets import QWebEngineView
     WEBENGINE_AVAILABLE = True
@@ -40,11 +42,14 @@ class ContentWidget(QtWidgets.QWidget):
         self.selected_element_id: Optional[str] = None
         self.properties_panel = None
         self.screen_list_panel = None
-        self._video_players: Dict[str, QMediaPlayer] = {}
-        self._video_widgets: Dict[str, QVideoWidget] = {}
+        self._video_captures: Dict[str, Any] = {}
+        self._video_frames: Dict[str, Optional[QtGui.QPixmap]] = {}
+        self._video_timers: Dict[str, QTimer] = {}
+        self._video_paths: Dict[str, str] = {}
         self._html_widgets: Dict[str, QWidget] = {}
         self._html_refresh_timers: Dict[str, QTimer] = {}
         self._is_playing = False
+        self._media_order: list = []
         self._photo_animations: Dict[str, Dict] = {}
         self._text_animations: Dict[str, Dict] = {}
         self._text_flow_animations: Dict[str, Dict] = {}
@@ -282,13 +287,6 @@ class ContentWidget(QtWidgets.QWidget):
     
     def set_playing(self, playing: bool):
         self._is_playing = playing
-        for player in self._video_players.values():
-            if playing:
-                if player.state() != QMediaPlayer.PlayingState:  # type: ignore
-                    player.play()
-            else:
-                if player.state() == QMediaPlayer.PlayingState:  # type: ignore
-                    player.pause()
         
         if playing:
             if not self._animation_timer.isActive():
@@ -300,18 +298,21 @@ class ContentWidget(QtWidgets.QWidget):
                 self._animation_timer.stop()
         self.update()
     
-    def _handle_video_error(self, element_id: str, error):
-        try:
-            if error != QMediaPlayer.NoError:  # type: ignore
-                logger.debug(f"Video player error for {element_id}: {error}")
-        except Exception:
-            pass
     
     def _setup_video_player(self, element_id: str, video_path: str):
-        if element_id in self._video_players:
-            return
+        from pathlib import Path
+        video_file = Path(video_path)
+        video_path_abs = str(video_file.absolute())
+        
+        if element_id in self._video_paths:
+            if self._video_paths[element_id] == video_path_abs:
+                return
+            self._cleanup_video_player(element_id)
         
         if not video_path or not video_path.strip():
+            return
+        
+        if not CV2_AVAILABLE:
             return
         
         from pathlib import Path
@@ -320,120 +321,92 @@ class ContentWidget(QtWidgets.QWidget):
             return
         
         try:
-            player = QMediaPlayer(None, QMediaPlayer.VideoSurface)  # type: ignore
-            video_widget = QVideoWidget(self)
-            video_widget.setAttribute(Qt.WA_OpaquePaintEvent, False)  # type: ignore
-            video_widget.setAutoFillBackground(False)
-            video_widget.setStyleSheet("background-color: transparent;")
-            video_widget.hide()
+            cap = cv2.VideoCapture(str(video_file.absolute()))
+            if not cap.isOpened():
+                return
             
-            player.setVideoOutput(video_widget)
+            fps = cap.get(cv2.CAP_PROP_FPS)
+            if fps <= 0:
+                fps = 30
             
-            from PyQt5.QtCore import QUrl
-            video_url = QUrl.fromLocalFile(str(video_file.absolute()))
-            if video_url.isValid():
-                player.setMedia(QMediaContent(video_url))
-                player.error.connect(lambda error, eid=element_id: self._handle_video_error(eid, error))
-        
-            self._video_players[element_id] = player
-            self._video_widgets[element_id] = video_widget
+            self._video_captures[element_id] = cap
+            self._video_frames[element_id] = None
+            self._video_paths[element_id] = video_path_abs
+            
+            timer = QTimer(self)
+            timer.timeout.connect(lambda eid=element_id: self._update_video_frame(eid))
+            timer.start(int(1000 / fps))
+            self._video_timers[element_id] = timer
+            
+            if ('video', element_id) not in self._media_order:
+                self._media_order.append(('video', element_id))
+            else:
+                self._media_order.remove(('video', element_id))
+                self._media_order.append(('video', element_id))
+            
+            self._update_video_frame(element_id)
         except Exception as e:
             logger.warning(f"Failed to setup video player for {element_id}: {e}")
             return
     
-    def _update_video_widget_position(self, element_id: str, x: int, y: int, width: int, height: int):
-        if element_id in self._video_widgets:
-            video_widget = self._video_widgets[element_id]
-            
-            video_width = width
-            video_height = height
-            video_x = x
-            video_y = y
-            
-            if element_id in self._video_players:
-                player = self._video_players[element_id]
-
-                try:
-                    video_url = player.media().canonicalUrl()
-                    if video_url.isLocalFile():
-                        video_path = video_url.toLocalFile()
-                        try:
-                            import cv2 #type: ignore
-                            video_file = cv2.VideoCapture(video_path)
-                            if video_file.isOpened():
-                                actual_width = int(video_file.get(cv2.CAP_PROP_FRAME_WIDTH))
-                                actual_height = int(video_file.get(cv2.CAP_PROP_FRAME_HEIGHT))
-                                video_file.release()
-                                
-                                if actual_width > 0 and actual_height > 0:
-                                    # Calculate aspect ratio and center the video
-                                    video_aspect = actual_width / actual_height
-                                    element_aspect = width / height
-                                    
-                                    if video_aspect > element_aspect:
-                                        # Video is wider - fit to width
-                                        video_width = width
-                                        video_height = int(width / video_aspect)
-                                        video_x = x
-                                        video_y = y + (height - video_height) // 2
-                                    else:
-                                        # Video is taller - fit to height
-                                        video_width = int(height * video_aspect)
-                                        video_height = height
-                                        video_x = x + (width - video_width) // 2
-                                        video_y = y
-                        except ImportError:
-                            # cv2 not available, use full area
-                            pass
-                        except Exception:
-                            # Error reading video, use full area
-                            pass
-                except Exception:
-                    # If we can't get video dimensions, use full area
-                    pass
-            
-            video_widget.setGeometry(video_x, video_y, video_width, video_height)
-            # Ensure video widget is behind other elements (lower z-order)
-            video_widget.lower()
-            video_widget.show()
-            
-            if self._is_playing and element_id in self._video_players:
-                player = self._video_players[element_id]
-                if player.state() != QMediaPlayer.PlayingState:  # type: ignore
-                    player.play()
+    def _update_video_frame(self, element_id: str):
+        if element_id not in self._video_captures:
+            return
+        
+        cap = self._video_captures[element_id]
+        if not cap.isOpened():
+            return
+        
+        ret, frame = cap.read()
+        if ret:
+            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            h, w, ch = frame_rgb.shape
+            bytes_per_line = ch * w
+            qt_image = QtGui.QImage(frame_rgb.data, w, h, bytes_per_line, QtGui.QImage.Format_RGB888)
+            pixmap = QtGui.QPixmap.fromImage(qt_image)
+            self._video_frames[element_id] = pixmap
+            self.update()
+        else:
+            cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+    
+    
+    def _cleanup_video_player(self, element_id: str):
+        try:
+            if element_id in self._video_captures:
+                cap = self._video_captures[element_id]
+                cap.release()
+                del self._video_captures[element_id]
+            if element_id in self._video_frames:
+                del self._video_frames[element_id]
+            if element_id in self._video_timers:
+                self._video_timers[element_id].stop()
+                del self._video_timers[element_id]
+            if element_id in self._video_paths:
+                del self._video_paths[element_id]
+            self._media_order = [(t, eid) for t, eid in self._media_order if not (t == 'video' and eid == element_id)]
+        except Exception as e:
+            logger.warning(f"Error cleaning up video player {element_id}: {e}")
     
     def _cleanup_video_players(self):
         current_elements = {e.get("id") for e in self._get_current_program_elements() if e.get("type") == "video"}
         
-        for element_id in list(self._video_players.keys()):
+        for element_id in list(self._video_captures.keys()):
             if element_id not in current_elements:
-                try:
-                    if element_id in self._video_players:
-                        player = self._video_players[element_id]
-                        player.stop()
-                        if player.state() != QMediaPlayer.StoppedState:
-                            player.stop()
-                        del self._video_players[element_id]
-                    if element_id in self._video_widgets:
-                        self._video_widgets[element_id].hide()
-                        self._video_widgets[element_id].deleteLater()
-                        del self._video_widgets[element_id]
-                except Exception as e:
-                    logger.warning(f"Error cleaning up video player {element_id}: {e}")
+                self._cleanup_video_player(element_id)
     
     def _cleanup_all_video_players(self):
-        for element_id in list(self._video_players.keys()):
+        for element_id in list(self._video_captures.keys()):
             try:
-                if element_id in self._video_players:
-                    player = self._video_players[element_id]
-                    player.stop()
-                    if player.state() != QMediaPlayer.StoppedState:
-                        player.stop()
-                    del self._video_players[element_id]
-                if element_id in self._video_widgets:
-                    self._video_widgets[element_id].hide()
-                    self._video_widgets[element_id].deleteLater()
-                    del self._video_widgets[element_id]
+                if element_id in self._video_captures:
+                    cap = self._video_captures[element_id]
+                    cap.release()
+                    del self._video_captures[element_id]
+                if element_id in self._video_frames:
+                    del self._video_frames[element_id]
+                if element_id in self._video_timers:
+                    self._video_timers[element_id].stop()
+                    del self._video_timers[element_id]
+                self._media_order = [(t, eid) for t, eid in self._media_order if not (t == 'video' and eid == element_id)]
             except Exception as e:
                 logger.warning(f"Error cleaning up video player {element_id}: {e}")
     
@@ -453,18 +426,46 @@ class ContentWidget(QtWidgets.QWidget):
             return anim_state.get("current_photo_index", 0)
         return 0
     
+    def _get_video_active_index(self, element_id: str, video_list: list) -> int:
+        if self.properties_panel and hasattr(self.properties_panel, 'video_properties_widget'):
+            video_widget = self.properties_panel.video_properties_widget
+            if video_widget and hasattr(video_widget, 'video_list'):
+                if video_widget.current_element and video_widget.current_element.get("id") == element_id:
+                    active_idx = video_widget.video_list.get_active_index()
+                    if 0 <= active_idx < len(video_list):
+                        return active_idx
+        
+        elements = self._get_current_program_elements()
+        element = next((e for e in elements if e.get("id") == element_id), None)
+        if element:
+            element_props = element.get("properties", {})
+            active_idx = element_props.get("active_video_index", 0)
+            if 0 <= active_idx < len(video_list):
+                return active_idx
+        return 0
+    
     def _draw_photo_with_animation(self, painter, pixmap, x, y, width, height, element_id, animation_props, element_rect, is_selected):
         import random
         
         entrance_anim = animation_props.get("entrance", "None")
         exit_anim = animation_props.get("exit", "None")
         
+        elements = self._get_current_program_elements()
+        element = next((e for e in elements if e.get("id") == element_id), None)
+        element_props = element.get("properties", {}) if element else {}
+        fit_mode = element_props.get("fit_mode", "Keep Aspect Ratio")
+        
         if entrance_anim == "Immediate Show" and exit_anim == "Immediate Clear":
-            scaled_pixmap = pixmap.scaled(width, height, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            aspect_ratio_mode = Qt.IgnoreAspectRatio if fit_mode == "Stretch" else Qt.KeepAspectRatio
+            scaled_pixmap = pixmap.scaled(width, height, aspect_ratio_mode, Qt.SmoothTransformation)
             scaled_width = scaled_pixmap.width()
             scaled_height = scaled_pixmap.height()
-            draw_x = x + (width - scaled_width) // 2
-            draw_y = y + (height - scaled_height) // 2
+            if fit_mode == "Stretch":
+                draw_x = x
+                draw_y = y
+            else:
+                draw_x = x + (width - scaled_width) // 2
+                draw_y = y + (height - scaled_height) // 2
             painter.drawPixmap(draw_x, draw_y, scaled_pixmap)
             if is_selected:
                 painter.setPen(QtGui.QPen(QtGui.QColor(255, 0, 0), 2))
@@ -572,13 +573,22 @@ class ContentWidget(QtWidgets.QWidget):
                 else:
                     anim_state["progress"] = elapsed / duration if duration > 0 else 1.0
         
-        scaled_pixmap = pixmap.scaled(width, height, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+        elements = self._get_current_program_elements()
+        element = next((e for e in elements if e.get("id") == element_id), None)
+        element_props = element.get("properties", {}) if element else {}
+        fit_mode = element_props.get("fit_mode", "Keep Aspect Ratio")
+        aspect_ratio_mode = Qt.IgnoreAspectRatio if fit_mode == "Stretch" else Qt.KeepAspectRatio
         
-        # Calculate centered position
+        scaled_pixmap = pixmap.scaled(width, height, aspect_ratio_mode, Qt.SmoothTransformation)
+        
         scaled_width = scaled_pixmap.width()
         scaled_height = scaled_pixmap.height()
-        draw_x = x + (width - scaled_width) // 2
-        draw_y = y + (height - scaled_height) // 2
+        if fit_mode == "Stretch":
+            draw_x = x
+            draw_y = y
+        else:
+            draw_x = x + (width - scaled_width) // 2
+            draw_y = y + (height - scaled_height) // 2
         
         if anim_state["phase"] == "entrance":
             self._apply_entrance_animation(painter, scaled_pixmap, draw_x, draw_y, width, height, entrance_anim, anim_state["progress"])
@@ -1530,19 +1540,39 @@ class ContentWidget(QtWidgets.QWidget):
         if element_type == "video":
             video_list = element_props.get("video_list", [])
             if video_list and len(video_list) > 0:
-                video_path = video_list[0].get("path", "")
-                if video_path:
-                    self._setup_video_player(element_id, video_path)
-                    self._update_video_widget_position(element_id, scaled_x, scaled_y, scaled_width, scaled_height)
+                active_index = self._get_video_active_index(element_id, video_list)
+                if 0 <= active_index < len(video_list):
+                    video_path = video_list[active_index].get("path", "")
+                    if video_path:
+                        self._setup_video_player(element_id, video_path)
+            
+            if element_id in self._video_frames and self._video_frames[element_id]:
+                pixmap = self._video_frames[element_id]
+                if not pixmap.isNull():
+                    fit_mode = element_props.get("fit_mode", "Keep Aspect Ratio")
+                    aspect_ratio_mode = Qt.IgnoreAspectRatio if fit_mode == "Stretch" else Qt.KeepAspectRatio
+                    scaled_pixmap = pixmap.scaled(scaled_width, scaled_height, aspect_ratio_mode, Qt.SmoothTransformation)
+                    if fit_mode == "Stretch":
+                        pixmap_x = scaled_x
+                        pixmap_y = scaled_y
+                    else:
+                        pixmap_x = scaled_x + (scaled_width - scaled_pixmap.width()) // 2
+                        pixmap_y = scaled_y + (scaled_height - scaled_pixmap.height()) // 2
+                    painter.drawPixmap(pixmap_x, pixmap_y, scaled_pixmap)
+                    if is_selected:
+                        painter.setPen(QtGui.QPen(QtGui.QColor(255, 0, 0), 2))
+                        painter.setBrush(QtGui.QBrush(QtGui.QColor(255, 0, 0, 50)))
+                        painter.drawRect(element_rect)
                     return
             
-            if element_id not in self._video_widgets or not self._video_widgets[element_id].isVisible():
-                painter.setPen(QtGui.QPen(QtGui.QColor(255, 0, 0) if is_selected else QtGui.QColor(100, 100, 100), 2))
-                painter.setBrush(QtGui.QBrush(QtGui.QColor(0, 0, 0, 0)))
-                painter.drawRect(element_rect)
-                painter.setPen(QtGui.QPen(QtGui.QColor(255, 255, 255), 1))
-                painter.drawText(element_rect, Qt.AlignCenter, "VIDEO")
+            painter.setPen(QtGui.QPen(QtGui.QColor(255, 0, 0) if is_selected else QtGui.QColor(100, 100, 100), 2))
+            painter.setBrush(QtGui.QBrush(QtGui.QColor(0, 0, 0, 0)))
+            painter.drawRect(element_rect)
+            painter.setPen(QtGui.QPen(QtGui.QColor(255, 255, 255), 1))
+            painter.drawText(element_rect, Qt.AlignCenter, "VIDEO")
         elif element_type == "photo":
+            if ('photo', element_id) not in self._media_order:
+                self._media_order.append(('photo', element_id))
             photo_list = element_props.get("photo_list", element_props.get("image_list", []))
             if photo_list and len(photo_list) > 0:
                 active_index = self._get_photo_active_index(element_id, photo_list)
@@ -1569,6 +1599,8 @@ class ContentWidget(QtWidgets.QWidget):
             painter.setPen(QtGui.QPen(QtGui.QColor(255, 255, 255), 1))
             painter.drawText(element_rect, Qt.AlignCenter, "PHOTO")
         elif element_type == "text":
+            if ('text', element_id) not in self._media_order:
+                self._media_order.append(('text', element_id))
             text_props = element_props.get("text", {})
             if isinstance(text_props, dict):
                 text_content = text_props.get("content", "")
@@ -1604,6 +1636,8 @@ class ContentWidget(QtWidgets.QWidget):
                     painter.setBrush(QtGui.QBrush(QtGui.QColor(255, 0, 0, 50)))
                     painter.drawRect(element_rect)
         elif element_type == "singleline_text":
+            if ('text', element_id) not in self._media_order:
+                self._media_order.append(('text', element_id))
             text_props = element_props.get("text", {})
             if isinstance(text_props, dict):
                 text_content = text_props.get("content", "")
@@ -2963,9 +2997,6 @@ class ContentWidget(QtWidgets.QWidget):
                 
                 painter.setClipRect(black_rect)
                 
-                for widget in self._video_widgets.values():
-                    widget.hide()
-                
                 for widget in self._html_widgets.values():
                     widget.hide()
                 
@@ -2994,8 +3025,6 @@ class ContentWidget(QtWidgets.QWidget):
             self.scale_factor = 1.0
             self.screen_offset_x = 0
             self.screen_offset_y = 0
-            for widget in self._video_widgets.values():
-                widget.hide()
             for widget in self._html_widgets.values():
                 widget.hide()
             self._cleanup_video_players()
