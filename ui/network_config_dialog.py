@@ -6,6 +6,11 @@ from PyQt5.QtCore import Qt, pyqtSignal
 from typing import Optional, Dict
 from controllers.huidu import HuiduController
 from utils.logger import get_logger
+import socket
+import subprocess
+import platform
+import re
+from pathlib import Path
 
 logger = get_logger(__name__)
 
@@ -141,11 +146,11 @@ class NetworkConfigDialog(QDialog):
         button_layout = QHBoxLayout()
         button_layout.addStretch()
         
-        save_btn = QPushButton("💾 Save & Apply")
+        save_btn = QPushButton("💾 Save")
         save_btn.clicked.connect(self.save_and_apply)
         button_layout.addWidget(save_btn)
         
-        reboot_btn = QPushButton("🔄 Reboot Controller")
+        reboot_btn = QPushButton("🔄 Reboot")
         reboot_btn.setStyleSheet("QPushButton { background-color: #F44336; color: white; font-weight: bold; } QPushButton:hover { background-color: #E53935; }")
         reboot_btn.clicked.connect(self.reboot_controller)
         button_layout.addWidget(reboot_btn)
@@ -173,11 +178,13 @@ class NetworkConfigDialog(QDialog):
 
         self.subnet_mask_edit = QLineEdit()
         self.subnet_mask_edit.setPlaceholderText("255.255.255.0")
+        self.subnet_mask_edit.setEnabled(False)
         ip_layout.addRow("Subnet Mask:", self.subnet_mask_edit)
         
 
         self.gateway_edit = QLineEdit()
         self.gateway_edit.setPlaceholderText("192.168.1.1")
+        self.gateway_edit.setEnabled(False)
         ip_layout.addRow("Gateway:", self.gateway_edit)
         
 
@@ -227,6 +234,14 @@ class NetworkConfigDialog(QDialog):
         )
         wifi_layout.addRow("", self.show_password_check)
         
+        self.mode_edit = QLineEdit()
+        self.mode_edit.setPlaceholderText("ap or sta")
+        wifi_layout.addRow("Mode:", self.mode_edit)
+        
+        self.channel_edit = QLineEdit()
+        self.channel_edit.setPlaceholderText("1-13")
+        wifi_layout.addRow("Channel:", self.channel_edit)
+        
         layout.addWidget(wifi_group)
         layout.addStretch()
         
@@ -244,12 +259,124 @@ class NetworkConfigDialog(QDialog):
         self.subnet_mask_edit.setEnabled(enabled)
         self.gateway_edit.setEnabled(enabled)
     
+    def _get_system_network_settings(self) -> Dict[str, str]:
+        subnet = ""
+        gateway = ""
+        try:
+            system = platform.system()
+            if system == "Windows":
+                result = subprocess.run(['ipconfig'], capture_output=True, text=True, timeout=5)
+                output = result.stdout
+                
+                for line in output.split('\n'):
+                    if 'Subnet Mask' in line or 'Subnetmask' in line:
+                        match = re.search(r'(\d+\.\d+\.\d+\.\d+)', line)
+                        if match:
+                            subnet = match.group(1)
+                    if 'Default Gateway' in line or 'Standardgateway' in line:
+                        match = re.search(r'(\d+\.\d+\.\d+\.\d+)', line)
+                        if match:
+                            gateway = match.group(1)
+            elif system == "Linux":
+                result = subprocess.run(['ip', 'route'], capture_output=True, text=True, timeout=5)
+                output = result.stdout
+                
+                default_route = None
+                for line in output.split('\n'):
+                    if 'default via' in line:
+                        default_route = line
+                        match = re.search(r'via\s+(\d+\.\d+\.\d+\.\d+)', line)
+                        if match:
+                            gateway = match.group(1)
+                        break
+                
+                result = subprocess.run(['ip', 'addr'], capture_output=True, text=True, timeout=5)
+                output = result.stdout
+                for line in output.split('\n'):
+                    if '/24' in line or '/16' in line or '/8' in line:
+                        parts = line.strip().split()
+                        for part in parts:
+                            if '/' in part and '.' in part:
+                                ip_with_mask = part.split('/')[0]
+                                cidr = part.split('/')[1]
+                                subnet = self._cidr_to_subnet(int(cidr))
+                                break
+            elif system == "Darwin":
+                result = subprocess.run(['netstat', '-rn'], capture_output=True, text=True, timeout=5)
+                output = result.stdout
+                for line in output.split('\n'):
+                    if 'default' in line and 'UG' in line:
+                        parts = line.split()
+                        if len(parts) > 1:
+                            gateway = parts[1]
+                
+                result = subprocess.run(['ifconfig'], capture_output=True, text=True, timeout=5)
+                output = result.stdout
+                for line in output.split('\n'):
+                    if 'netmask' in line:
+                        match = re.search(r'netmask\s+0x([0-9a-fA-F]+)', line)
+                        if match:
+                            hex_mask = match.group(1)
+                            subnet = self._hex_to_subnet(hex_mask)
+        except Exception as e:
+            logger.error(f"Error getting system network settings: {e}")
+        
+        return {"subnet": subnet, "gateway": gateway}
+    
+    def _cidr_to_subnet(self, cidr: int) -> str:
+        mask = (0xffffffff >> (32 - cidr)) << (32 - cidr)
+        return f"{(mask >> 24) & 0xff}.{(mask >> 16) & 0xff}.{(mask >> 8) & 0xff}.{mask & 0xff}"
+    
+    def _hex_to_subnet(self, hex_str: str) -> str:
+        try:
+            mask = int(hex_str, 16)
+            return f"{(mask >> 24) & 0xff}.{(mask >> 16) & 0xff}.{(mask >> 8) & 0xff}.{mask & 0xff}"
+        except:
+            return ""
+    
+    def _update_devicehost_config(self, new_ip: str):
+        try:
+            config_path = Path(__file__).parent.parent / "publish" / "huidu_sdk" / "config" / "devicehost.config"
+            if not config_path.exists():
+                logger.warning(f"devicehost.config not found at {config_path}")
+                return
+            
+            with open(config_path, 'r', encoding='utf-8') as f:
+                content = f.read().strip()
+            
+            if not content:
+                logger.warning("devicehost.config is empty")
+                return
+            
+            parts = content.split('\t,')
+            if len(parts) != 2:
+                logger.warning(f"Invalid devicehost.config format: {content}")
+                return
+            
+            ip_port_part = parts[0].strip()
+            device_id = parts[1].strip()
+            
+            if ':' in ip_port_part:
+                old_ip, port = ip_port_part.rsplit(':', 1)
+                new_content = f"{new_ip}:{port}\t,{device_id}"
+            else:
+                new_content = f"{new_ip}\t,{device_id}"
+            
+            with open(config_path, 'w', encoding='utf-8') as f:
+                f.write(new_content)
+            
+            logger.info(f"Updated devicehost.config with new IP: {new_ip}")
+        except Exception as e:
+            logger.error(f"Error updating devicehost.config: {e}", exc_info=True)
+    
     def load_from_device(self):
         try:
             if not self.controller_id:
                 return
             
-            response = self.huidu_controller.get_device_property([self.controller_id])
+            system_network = self._get_system_network_settings()
+            
+            response = self.huidu_controller.get_device_property([self.controller_id], ["eth.dhcp", "eth.ip"])
             
             if response.get("message") == "ok" and response.get("data"):
                 device_data_list = response.get("data", [])
@@ -257,19 +384,36 @@ class NetworkConfigDialog(QDialog):
                     device_data = device_data_list[0].get("data", {})
                     
                     ip = device_data.get("eth.ip", "")
+                    subnet = device_data.get("eth.subnet", system_network.get("subnet", ""))
+                    gateway = device_data.get("eth.gateway", system_network.get("gateway", ""))
                     dhcp_str = device_data.get("eth.dhcp", "false")
                     dhcp = dhcp_str == "true" or dhcp_str == True if dhcp_str else False
                     
                     self.ip_address_edit.setText(ip)
+                    self.subnet_mask_edit.setText(subnet)
+                    self.gateway_edit.setText(gateway)
                     self.dhcp_check.setChecked(dhcp)
                     self.on_dhcp_toggled(dhcp)
                     
-                    wifi_enabled_str = device_data.get("wifi.enabled", "false")
-                    wifi_enabled = wifi_enabled_str == "true" or wifi_enabled_str == True if wifi_enabled_str else False
-                    ssid = device_data.get("wifi.ap.ssid", "")
+            response = self.huidu_controller.get_device_property([self.controller_id], ["wifi.enabled", "wifi.mode", "wifi.ap.ssid", "wifi.ap.passwd", "wifi.ap.channel"])
+            
+            if response.get("message") == "ok" and response.get("data"):
+                device_data_list = response.get("data", [])
+                if device_data_list and len(device_data_list) > 0:
+                    device_data = device_data_list[0].get("data", {})
                     
+                    wifi_enabled_str = device_data.get("wifi.enabled", "false")
+                    wifi_enabled = wifi_enabled_str == "true"
+                    ssid = device_data.get("wifi.ap.ssid", "")
+                    mode = device_data.get("wifi.mode", "")
+                    channel = device_data.get("wifi.ap.channel", "")
                     self.enable_wifi_check.setChecked(wifi_enabled)
                     self.ssid_edit.setText(ssid)
+                    self.mode_edit.setText(mode)
+                    self.channel_edit.setText(channel)
+                    
+                    password = device_data.get("wifi.ap.passwd", "")
+                    self.password_edit.setText(password)
                     
                     logger.info(f"Loaded network settings from device")
         except Exception as e:
@@ -286,6 +430,14 @@ class NetworkConfigDialog(QDialog):
                 if not ip or not self.validate_ip(ip):
                     QMessageBox.warning(self, "Invalid IP", "Please enter a valid IP address.")
                     return
+                subnet = self.subnet_mask_edit.text().strip()
+                if subnet and not self.validate_ip(subnet):
+                    QMessageBox.warning(self, "Invalid Subnet Mask", "Please enter a valid subnet mask.")
+                    return
+                gateway = self.gateway_edit.text().strip()
+                if gateway and not self.validate_ip(gateway):
+                    QMessageBox.warning(self, "Invalid Gateway", "Please enter a valid gateway address.")
+                    return
             
             properties = {}
             
@@ -293,17 +445,31 @@ class NetworkConfigDialog(QDialog):
                 properties["eth.dhcp"] = "true"
             else:
                 properties["eth.dhcp"] = "false"
-                properties["eth.ip"] = self.ip_address_edit.text().strip()
+                new_ip = self.ip_address_edit.text().strip()
+                properties["eth.ip"] = new_ip
+                self._update_devicehost_config(new_ip)
+                subnet = self.subnet_mask_edit.text().strip()
+                if subnet:
+                    properties["eth.subnet"] = subnet
+                gateway = self.gateway_edit.text().strip()
+                if gateway:
+                    properties["eth.gateway"] = gateway
             
             if self.enable_wifi_check.isChecked():
                 properties["wifi.enabled"] = "true"
                 properties["wifi.ap.ssid"] = self.ssid_edit.text().strip()
+                mode = self.mode_edit.text().strip()
+                if mode:
+                    properties["wifi.mode"] = mode
+                channel = self.channel_edit.text().strip()
+                if channel:
+                    properties["wifi.ap.channel"] = channel
                 if self.password_edit.text():
                     properties["wifi.ap.passwd"] = self.password_edit.text()
             else:
                 properties["wifi.enabled"] = "false"
             
-            response = self.huidu_controller.set_device_property(properties, [self.controller_id])
+            response = self.huidu_controller.set_device_property([self.controller_id], properties)
             
             if response.get("message") == "ok":
                 reply = QMessageBox.question(
@@ -331,7 +497,6 @@ class NetworkConfigDialog(QDialog):
             QMessageBox.critical(self, "Error", f"Error saving network settings: {str(e)}")
     
     def reboot_controller(self):
-        """Reboot controller with confirmation dialog"""
         try:
             if not self.controller_id:
                 QMessageBox.warning(self, "No Controller", "No controller connected.")
@@ -353,7 +518,6 @@ class NetworkConfigDialog(QDialog):
             QMessageBox.critical(self, "Error", f"Error rebooting controller: {str(e)}")
     
     def reboot_controller_silent(self):
-        """Reboot controller without confirmation (called after network changes)"""
         try:
             if not self.controller_id:
                 return

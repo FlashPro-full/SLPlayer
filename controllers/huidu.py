@@ -220,6 +220,20 @@ class HuiduController:
             logger.error(f"Error getting device property: {e}")
             return {"message": "error", "data": str(e)}
 
+    def set_device_property(self, device_ids: Optional[List[str]] = None, properties: Optional[Dict] = None) -> Dict:
+        try:
+            device_id_str = ",".join(device_ids) if device_ids else ""
+            body = {
+                "method": "setDeviceProperty",
+                "data": properties,
+                "id": device_id_str
+            }
+            response = self._post(f"{self.host}/api/device", json.dumps(body))
+            return json.loads(response)
+        except Exception as e:
+            logger.error(f"Error setting device property: {e}")
+            return {"message": "error", "data": str(e)}
+
     def get_time_info(self, device_ids: Optional[List[str]] = None) -> Dict:
         try:
             device_id_str = ",".join(device_ids) if device_ids else ""
@@ -285,7 +299,68 @@ class HuiduController:
         except Exception as e:
             logger.error(f"Error setting time info: {e}")
             return {"message": "error", "data": str(e)}
+    
+    def get_luminance_info(self, device_ids: Optional[List[str]] = None) -> Dict:
+        try:
+            device_id_str = ",".join(device_ids) if device_ids else ""
+            url = f"{self.host}/raw/{device_id_str}"
+            headers = {
+                'Content-Type': 'application/xml',
+                'sdkKey': self.sdk_key,
+            }
+            body = """
+            <?xml version='1.0' encoding='utf-8'?>
+                <sdk guid="##GUID">
+                    <in method="GetLuminancePoly"/>
+                </sdk>
+            """
+            result = self._sign_header(headers, body, url)
+            if isinstance(result, str):
+                url = result
+            logger.info(f"SDK API Request: POST {url}")
+            logger.info(f"SDK API Request Body: {body}")
+            response = requests.post(url, data=body, headers=headers)
+            response.raise_for_status()
+            response_text = response.text
+            logger.info(f"SDK API Response Body: {response_text}")
+            return json.loads(response_text)
+        except Exception as e:
+            logger.error(f"Error getting time info: {e}")
+            return {"message": "error", "data": str(e)}
 
+    def set_luminance_info(self, device_ids: Optional[List[str]] = None, max: Optional[int] = None, min: Optional[int] = None, time: Optional[int] = None) -> Dict:
+        try:
+            device_id_str = ",".join(device_ids) if device_ids else ""
+            url = f"{self.host}/raw/{device_id_str}"
+            headers = {
+                'Content-Type': 'application/xml',
+                'sdkKey': self.sdk_key,
+            }
+
+            body = f"""
+            <?xml version='1.0' encoding='utf-8'?>
+                <sdk guid="##GUID">
+                    <in method="SetLuminancePoly">
+                        <mode value="sensor"/>
+                        <default value=""/>
+                        <sensor max="{max}" min="{min}" time="{time}" />
+                    </in>
+                </sdk>
+            """
+            result = self._sign_header(headers, body, url)
+            if isinstance(result, str):
+                url = result
+            logger.info(f"SDK API Request: POST {url}")
+            logger.info(f"SDK API Request Body: {body}")
+            response = requests.post(url, data=body, headers=headers)
+            response.raise_for_status()
+            response_text = response.text
+            logger.info(f"SDK API Response Body: {response_text}")
+            return json.loads(response_text)
+        except Exception as e:
+            logger.error(f"Error setting time info: {e}")
+            return {"message": "error", "data": str(e)}
+    
     def get_device_status(self, device_ids: Optional[List[str]] = None) -> Dict:
         try:
             device_id_str = ",".join(device_ids) if device_ids else ""
@@ -298,20 +373,6 @@ class HuiduController:
             return json.loads(response)
         except Exception as e:
             logger.error(f"Error getting device status: {e}")
-            return {"message": "error", "data": str(e)}
-    
-    def set_device_property(self, properties: Dict, device_ids: Optional[List[str]] = None) -> Dict:
-        try:
-            device_id_str = ",".join(device_ids) if device_ids else ""
-            body = {
-                "method": "setDeviceProperty",
-                "data": properties,
-                "id": device_id_str
-            }
-            response = self._post(f"{self.host}/api/device", json.dumps(body))
-            return json.loads(response)
-        except Exception as e:
-            logger.error(f"Error setting device property: {e}")
             return {"message": "error", "data": str(e)}
     
     def get_schedule_task(self, device_ids: Optional[List[str]] = None, data: Optional[List[str]] = None) -> Dict:
@@ -370,12 +431,14 @@ class HuiduController:
             logger.error(f"Error setting period task: {e}")
             return {"message": "error", "data": str(e)}
 
-    def reboot_device(self, device_ids: Optional[List[str]] = None, data: Optional[Dict[str, str | bool | int]] = None) -> Dict:
+    def reboot_device(self, device_ids: Optional[List[str]] = None) -> Dict:
         try:
             device_id_str = ",".join(device_ids) if device_ids else ""
             body = {
                 "method": "rebootDevice",
-                "data": data,
+                "data": {
+                    "delay": 5
+                },
                 "id": device_id_str
             }
             response = self._post(f"{self.host}/api/device", json.dumps(body))
@@ -384,12 +447,12 @@ class HuiduController:
             logger.error(f"Error rebooting device: {e}")
             return {"message": "error", "data": str(e)}
 
-    def turn_on_screen(self, device_ids: Optional[List[str]] = None, data: Optional[Dict[str, str | bool | int]] = None) -> Dict:
+    def turn_on_screen(self, device_ids: Optional[List[str]] = None) -> Dict:
         try:
             device_id_str = ",".join(device_ids) if device_ids else ""
             body = {
                 "method": "openDeviceScreen",
-                "data": data,
+                "data": {},
                 "id": device_id_str
             }
             response = self._post(f"{self.host}/api/device", json.dumps(body))
@@ -398,12 +461,12 @@ class HuiduController:
             logger.error(f"Error turning on screen: {e}")
             return {"message": "error", "data": str(e)}
 
-    def turn_off_screen(self, device_ids: Optional[List[str]] = None, data: Optional[Dict[str, str | bool | int]] = None) -> Dict:
+    def turn_off_screen(self, device_ids: Optional[List[str]] = None) -> Dict:
         try:
             device_id_str = ",".join(device_ids) if device_ids else ""
             body = {
                 "method": "closeDeviceScreen",
-                "data": data,
+                "data": {},
                 "id": device_id_str
             }
             response = self._post(f"{self.host}/api/device", json.dumps(body))
@@ -537,60 +600,3 @@ class HuiduController:
         except Exception as e:
             logger.error(f"Error removing program: {e}")
             return {"message": "error", "data": str(e)}
-    
-    def get_program_list(self) -> List[Dict]:
-        try:
-            from publish.huidu_sdk.sdk.Program import Program
-            from publish.huidu_sdk.sdk.common.Config import Config
-            
-            Config.sdk_key = self.sdk_key
-            Config.sdk_secret = self.sdk_secret
-            Config.host = self.host
-            
-            program_client = Program(self.host)
-            response = program_client.get_program_ids("")
-            if response.get("message") == "ok" and response.get("data"):
-                program_list = []
-                for item in response.get("data", []):
-                    if item.get("message") == "ok" and item.get("data"):
-                        programs = item.get("data", [])
-                        for prog in programs:
-                            program_list.append({
-                                "id": prog.get("uuid", ""),
-                                "name": prog.get("name", "")
-                            })
-                return program_list
-            return []
-        except Exception as e:
-            logger.error(f"Error getting program list: {e}")
-            return []
-    
-    def download_program(self, program_id: Optional[str] = None) -> Optional[Dict]:
-        try:
-            from publish.huidu_sdk.sdk.Program import Program
-            from publish.huidu_sdk.sdk.data.ProgramNode import ProgramNode
-            from publish.huidu_sdk.sdk.common.Config import Config
-            
-            Config.sdk_key = self.sdk_key
-            Config.sdk_secret = self.sdk_secret
-            Config.host = self.host
-            
-            program_client = Program(self.host)
-            response = program_client.get_program_ids("")
-            if response.get("message") == "ok" and response.get("data"):
-                for item in response.get("data", []):
-                    if item.get("message") == "ok" and item.get("data"):
-                        programs = item.get("data", [])
-                        for prog_data in programs:
-                            prog_uuid = prog_data.get("uuid", "")
-                            if not program_id or prog_uuid == program_id:
-                                if isinstance(prog_data, dict) and "area" in prog_data:
-                                    return prog_data
-                                else:
-                                    program_node = ProgramNode(prog_data)
-                                    program_dict = program_node.to_dict()
-                                    return program_dict
-            return None
-        except Exception as e:
-            logger.error(f"Error downloading program: {e}")
-            return None

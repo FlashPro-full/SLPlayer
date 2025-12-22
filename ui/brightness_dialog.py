@@ -9,6 +9,7 @@ from PyQt5.QtGui import QPainter, QColor, QPen, QBrush
 from typing import Optional, Dict, Any
 from controllers.huidu import HuiduController
 from utils.logger import get_logger
+from utils.xml_converter import XMLToJSONConverter
 
 logger = get_logger(__name__)
 
@@ -307,42 +308,16 @@ class BrightnessDialog(QDialog):
         automatic_layout = QVBoxLayout(self.automatic_widget)
         automatic_layout.setContentsMargins(0, 0, 0, 0)
         
-        sensitivity_layout = QHBoxLayout()
-        sensitivity_layout.addWidget(QLabel("Sensitivity:"))
-        self.sensitivity_group = QButtonGroup(self)
-        self.sensitivity_high = QRadioButton("high")
-        self.sensitivity_medium = QRadioButton("in")
-        self.sensitivity_low = QRadioButton("low")
-        self.sensitivity_medium.setChecked(True)
-        self.sensitivity_group.addButton(self.sensitivity_high, 0)
-        self.sensitivity_group.addButton(self.sensitivity_medium, 1)
-        self.sensitivity_group.addButton(self.sensitivity_low, 2)
-        sensitivity_layout.addWidget(self.sensitivity_high)
-        sensitivity_layout.addWidget(self.sensitivity_medium)
-        sensitivity_layout.addWidget(self.sensitivity_low)
-        sensitivity_layout.addStretch()
-        automatic_layout.addLayout(sensitivity_layout)
-        
-        testing_cycle_layout = QHBoxLayout()
-        testing_cycle_layout.addWidget(QLabel("Testing cycle:"))
-        self.testing_cycle_spin = QSpinBox()
-        self.testing_cycle_spin.setMinimum(1)
-        self.testing_cycle_spin.setMaximum(3600)
-        self.testing_cycle_spin.setValue(1)
-        self.testing_cycle_spin.setSuffix("S")
-        testing_cycle_layout.addWidget(self.testing_cycle_spin)
-        testing_cycle_layout.addStretch()
-        automatic_layout.addLayout(testing_cycle_layout)
-        
-        read_count_layout = QHBoxLayout()
-        read_count_layout.addWidget(QLabel("Read Count:"))
-        self.read_count_spin = QSpinBox()
-        self.read_count_spin.setMinimum(1)
-        self.read_count_spin.setMaximum(100)
-        self.read_count_spin.setValue(1)
-        read_count_layout.addWidget(self.read_count_spin)
-        read_count_layout.addStretch()
-        automatic_layout.addLayout(read_count_layout)
+        time_layout = QHBoxLayout()
+        time_layout.addWidget(QLabel("Time:"))
+        self.time_spin = QSpinBox()
+        self.time_spin.setMinimum(1)
+        self.time_spin.setMaximum(3600)
+        self.time_spin.setValue(1)
+        self.time_spin.setSuffix("S")
+        time_layout.addWidget(self.time_spin)
+        time_layout.addStretch()
+        automatic_layout.addLayout(time_layout)
         
         brightness_range_layout = QHBoxLayout()
         brightness_range_layout.addWidget(QLabel("Brightness range:"))
@@ -354,17 +329,6 @@ class BrightnessDialog(QDialog):
         self.brightness_range_label.setMinimumWidth(100)
         brightness_range_layout.addWidget(self.brightness_range_label)
         automatic_layout.addLayout(brightness_range_layout)
-        
-        monitoring_interval_layout = QHBoxLayout()
-        monitoring_interval_layout.addWidget(QLabel("Brightness monitoring interval:"))
-        self.monitoring_interval_slider = RangeSlider(1000, 20000)
-        self.monitoring_interval_slider.setValues(3400, 14000)
-        self.monitoring_interval_slider.valueChanged.connect(self.on_monitoring_interval_changed)
-        monitoring_interval_layout.addWidget(self.monitoring_interval_slider, stretch=1)
-        self.monitoring_interval_label = QLabel("3400 - 14000")
-        self.monitoring_interval_label.setMinimumWidth(120)
-        monitoring_interval_layout.addWidget(self.monitoring_interval_label)
-        automatic_layout.addLayout(monitoring_interval_layout)
         
         brightness_layout.addWidget(self.automatic_widget)
         
@@ -434,25 +398,20 @@ class BrightnessDialog(QDialog):
         self.custom_widget.setVisible(mode == "Custom mode")
         self.default_widget.setVisible(mode == "Default mode")
         self.onset_time_group.setVisible(mode == "Custom mode")
-        if mode == "Custom mode" and not self.schedule_items:
-            self.add_schedule_item(time_str="08:00:00", brightness=100)
     
     def on_brightness_range_changed(self, min_val, max_val):
         self.brightness_range_label.setText(f"{min_val}% - {max_val}%")
     
-    def on_monitoring_interval_changed(self, min_val, max_val):
-        self.monitoring_interval_label.setText(f"{min_val} - {max_val}")
-    
     def on_default_brightness_changed(self, value: int):
         self.default_brightness_label.setText(f"{value}%")
     
-    def add_schedule_item(self, time_str="08:00:00", brightness=100):
+    def add_schedule_item(self, checked=False, time_str="08:00:00", brightness=100):
         item_widget = QWidget()
         item_layout = QHBoxLayout(item_widget)
         item_layout.setContentsMargins(0, 0, 0, 0)
         
         checkbox = QCheckBox()
-        checkbox.setChecked(True)
+        checkbox.setChecked(checked)
         item_layout.addWidget(checkbox)
         
         time_edit = QTimeEdit()
@@ -521,6 +480,7 @@ class BrightnessDialog(QDialog):
             self.onset_time_label.setText("")
             return
         
+        self.luminance_schedule = []
         lines = []
         for i, item in enumerate(sorted_items):
             time_str = item["time_edit"].time().toString("HH:mm:ss")
@@ -529,6 +489,10 @@ class BrightnessDialog(QDialog):
             next_item = sorted_items[(i + 1) % len(sorted_items)]
             next_time_str = next_item["time_edit"].time().toString("HH:mm:ss")
             
+            self.luminance_schedule.append({
+                "timeRange": f"{time_str}~{next_time_str}",
+                "data": f"{brightness}"
+            })
             lines.append(f"{i+1}. {time_str} ~ {next_time_str} : {brightness}%")
         
         self.onset_time_label.setText("\n".join(lines))
@@ -538,32 +502,38 @@ class BrightnessDialog(QDialog):
             if not self.controller_id:
                 return
             
-            property_keys = ["luminance", "luminance.mode"]
-            response = self.huidu_controller.get_device_property([self.controller_id], property_keys)
+            response = self.huidu_controller.get_luminance_info([self.controller_id])
             
             if response.get("message") == "ok" and response.get("data"):
-                device_data_list = response.get("data", [])
-                if device_data_list and len(device_data_list) > 0:
-                    device_data = device_data_list[0].get("data", {})
+                time_info_list = response.get("data", [])
+                if time_info_list and len(time_info_list) > 0:
+                    xml_string = time_info_list[0].get("data", {})
+                    data = XMLToJSONConverter.convert(xml_string)
+                    output = data.get("out", {})
                     
-                    mode = device_data.get("luminance.mode", "manual")
-                    if mode == "automatic":
-                        self.mode_combo.setCurrentText("Automatic mode")
-                    elif mode == "time" or mode == "custom":
-                        self.mode_combo.setCurrentText("Custom mode")
-                    else:
-                        self.mode_combo.setCurrentText("Default mode")
+                    mode = output.get("mode", {}).get("value", "none")
+                    default_luminance = output.get("default", {}).get("value", "none")
+                    sensor_max_luminance = output.get("sensor", {}).get("max", "none")
+                    sensor_min_luminance = output.get("sensor", {}).get("min", "none")
+                    sensor_time = output.get("sensor", {}).get("time", "none")
+                    schedule = output.get("poly", {}).get("item", [])
+
+                    if schedule:
+                        for data in schedule:
+                            item = data.get("@attributes", {})
+                            checked = True if item.get("enable", "false") == "true" else False
+                            time_str = item.get("start", {}).get("value", "08:00:00")
+                            brightness = item.get("percent", {}).get("value", "100")
+                            self.add_schedule_item(checked, time_str, brightness)
                     
-                    luminance = device_data.get("luminance", "")
-                    if luminance:
-                        try:
-                            brightness_val = int(luminance)
-                            self.default_brightness_slider.setValue(brightness_val)
-                            self.default_brightness_label.setText(f"{brightness_val}%")
-                        except (ValueError, TypeError):
-                            pass
+                    self.default_widget.setVisible(mode == "default")
+                    self.custom_widget.setVisible(mode == "poly")
+                    self.automatic_widget.setVisible(mode == "sensor")
+
+                    self.default_brightness_slider.setValue(default_luminance)
+                    self.brightness_range_slider.setValues(sensor_min_luminance, sensor_max_luminance)
+                    self.time_spin.setValue(sensor_time)
                     
-                    logger.info(f"Loaded brightness settings from device: {device_data}")
         except Exception as e:
             logger.error(f"Error loading brightness settings from device: {e}", exc_info=True)
     
@@ -573,37 +543,23 @@ class BrightnessDialog(QDialog):
                 QMessageBox.warning(self, "No Controller", "No controller connected.")
                 return
             
-            properties = {}
             mode = self.mode_combo.currentText()
             
             if mode == "Default mode":
+                properties = {}
                 properties["luminance"] = str(self.default_brightness_slider.value())
-                properties["luminance.mode"] = "manual"
+                properties["luminance.mode"] = "default"
+                response = self.huidu_controller.set_device_property([self.controller_id], properties)
             elif mode == "Automatic mode":
-                properties["luminance.mode"] = "automatic"
-                sensitivity_map = {0: "high", 1: "in", 2: "low"}
-                properties["luminance.sensitivity"] = sensitivity_map.get(self.sensitivity_group.checkedId(), "in")
-                properties["luminance.testingCycle"] = str(self.testing_cycle_spin.value())
-                properties["luminance.readCount"] = str(self.read_count_spin.value())
-                min_bright, max_bright = self.brightness_range_slider.getValues()
-                properties["luminance.brightnessRange"] = f"{min_bright}-{max_bright}"
-                min_interval, max_interval = self.monitoring_interval_slider.getValues()
-                properties["luminance.monitoringInterval"] = f"{min_interval}-{max_interval}"
+                time = str(self.time_spin.value())
+                max = self.brightness_range_slider.getValues()[1]
+                min = self.brightness_range_slider.getValues()[0]
+                response = self.huidu_controller.set_luminance_info([self.controller_id], max, min, time)
             elif mode == "Custom mode":
-                properties["luminance.mode"] = "time"
-                schedule_data = []
-                sorted_items = sorted(
-                    [item for item in self.schedule_items if item["checkbox"].isChecked()],
-                    key=lambda x: x["time_edit"].time().msecsSinceStartOfDay()
-                )
-                for item in sorted_items:
-                    time_str = item["time_edit"].time().toString("HH:mm:ss")
-                    brightness = item["slider"].value()
-                    schedule_data.append({"time": time_str, "brightness": brightness})
-                if schedule_data:
-                    properties["luminance.schedule"] = str(schedule_data)
-            
-            response = self.huidu_controller.set_device_property(properties, [self.controller_id])
+                data = {
+                    "luminance": self.luminance_schedule
+                }
+                response = self.huidu_controller.set_schedule_task([self.controller_id], data)
             
             if response.get("message") == "ok":
                 QMessageBox.information(self, "Success", "Brightness settings saved and sent to controller.")

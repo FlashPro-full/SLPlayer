@@ -1,9 +1,9 @@
 from PyQt5.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QGroupBox,
     QCheckBox, QTableWidget, QTableWidgetItem, QHeaderView, QTimeEdit,
-    QMessageBox
+    QMessageBox, QDateEdit, QLineEdit, QWidget
 )
-from PyQt5.QtCore import Qt, QTime, pyqtSignal
+from PyQt5.QtCore import Qt, QTime, QDate, pyqtSignal
 from typing import Optional, Dict, Any, List
 from controllers.huidu import HuiduController
 from utils.logger import get_logger
@@ -106,19 +106,28 @@ DIALOG_STYLE = """
     QTimeEdit:hover {
         border: 1px solid #4A90E2;
     }
-    QCheckBox {
+    QDateEdit {
+        background-color: #3B3B3B;
+        border: 1px solid #555555;
+        border-radius: 4px;
+        padding: 4px 8px;
         color: #FFFFFF;
     }
-    QCheckBox::indicator {
-        width: 18px;
-        height: 18px;
-        border: 1px solid #555555;
-        background-color: #3B3B3B;
-        border-radius: 3px;
-    }
-    QCheckBox::indicator:checked {
-        background-color: #4A90E2;
+    QDateEdit:hover {
         border: 1px solid #4A90E2;
+    }
+    QLineEdit {
+        background-color: #3B3B3B;
+        border: 1px solid #555555;
+        border-radius: 4px;
+        padding: 4px 8px;
+        color: #FFFFFF;
+    }
+    QLineEdit:hover {
+        border: 1px solid #4A90E2;
+    }
+    QCheckBox {
+        color: #FFFFFF;
     }
 """ + TABLE_STYLE
 
@@ -138,7 +147,7 @@ class PowerDialog(QDialog):
             except:
                 pass
         
-        self.setWindowTitle(f"⚡ Power Schedule" + (f" - {screen_name}" if screen_name else ""))
+        self.setWindowTitle(f"Power Schedule" + (f" - {screen_name}" if screen_name else ""))
         self.setMinimumWidth(600)
         self.setMinimumHeight(500)
         self.setStyleSheet(DIALOG_STYLE)
@@ -154,6 +163,14 @@ class PowerDialog(QDialog):
         layout.setSpacing(15)
         layout.setContentsMargins(20, 20, 20, 20)
         
+        header_layout = QHBoxLayout()
+        header_layout.addStretch()
+        self.power_toggle_btn = QPushButton("Turn On")
+        self.power_toggle_btn.setFixedWidth(100)
+        self.power_toggle_btn.clicked.connect(self.toggle_power)
+        header_layout.addWidget(self.power_toggle_btn)
+        layout.addLayout(header_layout)
+        
         schedule_group = QGroupBox("On/Off Schedule")
         schedule_layout = QVBoxLayout(schedule_group)
         
@@ -163,33 +180,16 @@ class PowerDialog(QDialog):
         
         self.schedule_table = QTableWidget()
         self.schedule_table.setColumnCount(4)
-        self.schedule_table.setHorizontalHeaderLabels(["Day", "On Time", "Off Time", "Enabled"])
+        self.schedule_table.setHorizontalHeaderLabels(["Date Range", "Time Range", "Week Filter", "Enabled"])
         self.schedule_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.schedule_table.setSelectionBehavior(QTableWidget.SelectRows)
         self.schedule_table.setEditTriggers(QTableWidget.NoEditTriggers)
         self.schedule_table.verticalHeader().setVisible(False)
+        self.schedule_table.setRowCount(0)
         
-        days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
-        self.schedule_table.setRowCount(len(days))
-        
-        for i, day in enumerate(days):
-            day_item = QTableWidgetItem(day)
-            day_item.setFlags(day_item.flags() & ~Qt.ItemIsEditable)
-            self.schedule_table.setItem(i, 0, day_item)
-            
-            on_time = QTimeEdit()
-            on_time.setTime(QTime(8, 0))
-            on_time.setDisplayFormat("HH:mm")
-            self.schedule_table.setCellWidget(i, 1, on_time)
-            
-            off_time = QTimeEdit()
-            off_time.setTime(QTime(22, 0))
-            off_time.setDisplayFormat("HH:mm")
-            self.schedule_table.setCellWidget(i, 2, off_time)
-            
-            enabled_check = QCheckBox()
-            enabled_check.setChecked(True)
-            self.schedule_table.setCellWidget(i, 3, enabled_check)
+        add_row_btn = QPushButton("+ Add Schedule")
+        add_row_btn.clicked.connect(lambda: self.add_schedule_row())
+        schedule_layout.addWidget(add_row_btn)
         
         schedule_layout.addWidget(self.schedule_table)
         
@@ -199,7 +199,7 @@ class PowerDialog(QDialog):
         button_layout = QHBoxLayout()
         button_layout.addStretch()
         
-        save_btn = QPushButton("💾 Save & Send")
+        save_btn = QPushButton("OK")
         save_btn.clicked.connect(self.save_and_send)
         button_layout.addWidget(save_btn)
         
@@ -209,105 +209,171 @@ class PowerDialog(QDialog):
         
         layout.addLayout(button_layout)
     
+    def add_schedule_row(self, date_range="", time_range="", week_filter="", enabled=True):
+        row = self.schedule_table.rowCount()
+        self.schedule_table.insertRow(row)
+        
+        date_range_widget = QWidget()
+        date_layout = QHBoxLayout(date_range_widget)
+        date_layout.setContentsMargins(2, 2, 2, 2)
+        date_layout.setSpacing(4)
+        start_date = QDateEdit()
+        start_date.setCalendarPopup(True)
+        start_date.setDate(QDate.currentDate())
+        start_date.setDisplayFormat("yyyy-MM-dd")
+        end_date = QDateEdit()
+        end_date.setCalendarPopup(True)
+        end_date.setDate(QDate.currentDate())
+        end_date.setDisplayFormat("yyyy-MM-dd")
+        if date_range:
+            try:
+                start_str, end_str = date_range.split("~")
+                start_date.setDate(QDate.fromString(start_str.strip(), "yyyy-MM-dd"))
+                end_date.setDate(QDate.fromString(end_str.strip(), "yyyy-MM-dd"))
+            except:
+                pass
+        date_layout.addWidget(start_date)
+        date_layout.addWidget(QLabel("~"))
+        date_layout.addWidget(end_date)
+        self.schedule_table.setCellWidget(row, 0, date_range_widget)
+        
+        time_range_widget = QWidget()
+        time_layout = QHBoxLayout(time_range_widget)
+        time_layout.setContentsMargins(2, 2, 2, 2)
+        time_layout.setSpacing(4)
+        start_time = QTimeEdit()
+        start_time.setTime(QTime(0, 0))
+        start_time.setDisplayFormat("HH:mm:ss")
+        end_time = QTimeEdit()
+        end_time.setTime(QTime(23, 59, 59))
+        end_time.setDisplayFormat("HH:mm:ss")
+        if time_range:
+            try:
+                start_str, end_str = time_range.split("~")
+                start_parts = start_str.strip().split(":")
+                end_parts = end_str.strip().split(":")
+                if len(start_parts) >= 3:
+                    start_time.setTime(QTime(int(start_parts[0]), int(start_parts[1]), int(start_parts[2])))
+                if len(end_parts) >= 3:
+                    end_time.setTime(QTime(int(end_parts[0]), int(end_parts[1]), int(end_parts[2])))
+            except:
+                pass
+        time_layout.addWidget(start_time)
+        time_layout.addWidget(QLabel("~"))
+        time_layout.addWidget(end_time)
+        self.schedule_table.setCellWidget(row, 1, time_range_widget)
+        
+        week_filter_edit = QLineEdit()
+        week_filter_edit.setPlaceholderText("Mon, Tue, Wed, Thu, Fri, Sat, Sun")
+        week_filter_edit.setText(week_filter)
+        self.schedule_table.setCellWidget(row, 2, week_filter_edit)
+        
+        enabled_check = QCheckBox()
+        enabled_check.setChecked(enabled)
+        self.schedule_table.setCellWidget(row, 3, enabled_check)
+        
+        delete_btn = QPushButton("🗑")
+        delete_btn.setFixedSize(30, 30)
+        delete_btn.clicked.connect(lambda: self.remove_schedule_row(row))
+        
+        delete_layout = QHBoxLayout()
+        delete_layout.setContentsMargins(2, 2, 2, 2)
+        delete_layout.addWidget(enabled_check)
+        delete_layout.addWidget(delete_btn)
+        delete_widget = QWidget()
+        delete_widget.setLayout(delete_layout)
+        self.schedule_table.setCellWidget(row, 3, delete_widget)
+    
+    def remove_schedule_row(self, row: int):
+        if row >= 0 and row < self.schedule_table.rowCount():
+            self.schedule_table.removeRow(row)
+    
     def get_power_schedule(self) -> List[Dict]:
         schedule = []
         for i in range(self.schedule_table.rowCount()):
-            day_item = self.schedule_table.item(i, 0)
-            if not day_item:
-                continue
-            
-            day = day_item.text()
-            on_time_widget = self.schedule_table.cellWidget(i, 1)
-            off_time_widget = self.schedule_table.cellWidget(i, 2)
+            date_range_widget = self.schedule_table.cellWidget(i, 0)
+            time_range_widget = self.schedule_table.cellWidget(i, 1)
+            week_filter_widget = self.schedule_table.cellWidget(i, 2)
             enabled_widget = self.schedule_table.cellWidget(i, 3)
             
-            if on_time_widget and off_time_widget and enabled_widget:
-                on_time = on_time_widget.time().toString("HH:mm")
-                off_time = off_time_widget.time().toString("HH:mm")
-                enabled = enabled_widget.isChecked()
+            if not (date_range_widget and time_range_widget and week_filter_widget and enabled_widget):
+                continue
+            
+            start_date = date_range_widget.layout().itemAt(0).widget()
+            end_date = date_range_widget.layout().itemAt(2).widget()
+            start_time = time_range_widget.layout().itemAt(0).widget()
+            end_time = time_range_widget.layout().itemAt(2).widget()
+            
+            if start_date and end_date and start_time and end_time:
+                date_range = f"{start_date.date().toString('yyyy-MM-dd')}~{end_date.date().toString('yyyy-MM-dd')}"
+                time_range = f"{start_time.time().toString('HH:mm:ss')}~{end_time.time().toString('HH:mm:ss')}"
+                week_filter = week_filter_widget.text().strip()
+                
+                enabled_layout = enabled_widget.layout()
+                enabled_check = enabled_layout.itemAt(0).widget() if enabled_layout else None
+                enabled = enabled_check.isChecked() if enabled_check else False
                 
                 schedule.append({
-                    "day": day,
-                    "on_time": on_time,
-                    "off_time": off_time,
-                    "enabled": enabled
+                    "timeRange": time_range,
+                    "dateRange": date_range,
+                    "WeekFilter": week_filter,
+                    "data": "true" if enabled else "false"
                 })
         
         return schedule
-    
-    def load_power_schedule(self, schedule):
-        try:
-            if not schedule:
-                return
-            
-            days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
-            day_map = {day.lower(): day for day in days}
-            
-            if isinstance(schedule, list):
-                for day_schedule in schedule:
-                    day_name = day_schedule.get("day", "")
-                    day_key = day_name.lower()
-                    
-                    if day_key in day_map:
-                        day_index = days.index(day_map[day_key])
-                        if day_index < self.schedule_table.rowCount():
-                            on_time_str = day_schedule.get("on_time", "08:00")
-                            off_time_str = day_schedule.get("off_time", "22:00")
-                            enabled = day_schedule.get("enabled", True)
-                            
-                            on_hour, on_min = map(int, on_time_str.split(':'))
-                            off_hour, off_min = map(int, off_time_str.split(':'))
-                            
-                            on_time_widget = self.schedule_table.cellWidget(day_index, 1)
-                            off_time_widget = self.schedule_table.cellWidget(day_index, 2)
-                            enabled_widget = self.schedule_table.cellWidget(day_index, 3)
-                            
-                            if on_time_widget:
-                                on_time_widget.setTime(QTime(on_hour, on_min))
-                            if off_time_widget:
-                                off_time_widget.setTime(QTime(off_hour, off_min))
-                            if enabled_widget:
-                                enabled_widget.setChecked(enabled)
-        except Exception as e:
-            logger.error(f"Error loading power schedule: {e}", exc_info=True)
-    
+     
     def load_from_device(self):
         try:
             if not self.controller_id:
                 return
             
-            response = self.huidu_controller.get_period_task([self.controller_id])
+            response = self.huidu_controller.get_schedule_task([self.controller_id], ["screen"])
             
             if response.get("message") == "ok" and response.get("data"):
-                period_tasks = response.get("data", [])
-                if period_tasks and len(period_tasks) > 0:
-                    task_data = period_tasks[0].get("data", [])
-                    if task_data:
-                        days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
-                        for task in task_data:
-                            day_index = task.get("day", 0)
-                            if 0 <= day_index < len(days):
-                                on_time_str = task.get("onTime", "08:00")
-                                off_time_str = task.get("offTime", "22:00")
-                                enabled = task.get("enabled", True)
-                                
-                                on_hour, on_min = map(int, on_time_str.split(':'))
-                                off_hour, off_min = map(int, off_time_str.split(':'))
-                                
-                                on_time_widget = self.schedule_table.cellWidget(day_index, 1)
-                                off_time_widget = self.schedule_table.cellWidget(day_index, 2)
-                                enabled_widget = self.schedule_table.cellWidget(day_index, 3)
-                                
-                                if on_time_widget:
-                                    on_time_widget.setTime(QTime(on_hour, on_min))
-                                if off_time_widget:
-                                    off_time_widget.setTime(QTime(off_hour, off_min))
-                                if enabled_widget:
-                                    enabled_widget.setChecked(enabled)
+                schedule_tasks = response.get("data", {})
+                if schedule_tasks:
+                    power_schedule = schedule_tasks.get("screen", [])
+                    if power_schedule:
+                        for task in power_schedule:
+                            date_range = task.get("dateRange", "")
+                            time_range = task.get("timeRange", "")
+                            week_filter = task.get("WeekFilter", "")
+                            data = task.get("data", "false")
+                            enabled = data.lower() == "true"
+                            
+                            self.add_schedule_row(date_range, time_range, week_filter, enabled)
                         
                         logger.info(f"Loaded power schedule from device")
         except Exception as e:
             logger.error(f"Error loading power schedule from device: {e}", exc_info=True)
+    
+    def toggle_power(self):
+        try:
+            if not self.controller_id:
+                QMessageBox.warning(self, "No Controller", "No controller connected.")
+                return
+            
+            current_text = self.power_toggle_btn.text()
+            if current_text == "Turn On":
+                response = self.huidu_controller.turn_on_screen([self.controller_id])
+                if response.get("message") == "ok":
+                    self.power_toggle_btn.setText("Turn Off")
+                    QMessageBox.information(self, "Success", "Device turned on.")
+                else:
+                    error_msg = response.get("data", "Unknown error")
+                    QMessageBox.warning(self, "Failed", f"Failed to turn device on: {error_msg}.")
+            else:
+                response = self.huidu_controller.turn_off_screen([self.controller_id])
+                if response.get("message") == "ok":
+                    self.power_toggle_btn.setText("Turn On")
+                    QMessageBox.information(self, "Success", "Device turned off.")
+                else:
+                    error_msg = response.get("data", "Unknown error")
+                    QMessageBox.warning(self, "Failed", f"Failed to turn device off: {error_msg}.")
+            
+        except Exception as e:
+            logger.error(f"Error toggling power: {e}", exc_info=True)
+            QMessageBox.critical(self, "Error", f"Error toggling power: {str(e)}")
     
     def save_and_send(self):
         try:
@@ -317,29 +383,18 @@ class PowerDialog(QDialog):
             
             schedule = self.get_power_schedule()
             
-            period_tasks = []
-            days_map = {"Monday": 0, "Tuesday": 1, "Wednesday": 2, "Thursday": 3, "Friday": 4, "Saturday": 5, "Sunday": 6}
+            schedule_data = {
+                "screen": schedule
+            }
             
-            for day_schedule in schedule:
-                if day_schedule.get("enabled", False):
-                    day_name = day_schedule.get("day", "")
-                    day_index = days_map.get(day_name, -1)
-                    if day_index >= 0:
-                        period_tasks.append({
-                            "day": day_index,
-                            "onTime": day_schedule.get("on_time", "08:00"),
-                            "offTime": day_schedule.get("off_time", "22:00"),
-                            "enabled": True
-                        })
+            response = self.huidu_controller.set_schedule_task([self.controller_id], schedule_data)
             
-            response = self.huidu_controller.set_period_task([self.controller_id], period_tasks)
-            
-            if response.get("message") == "ok":
+            if response.get("message") == "ok" and response.get("data")[0].get("message") == "ok":
                 QMessageBox.information(self, "Success", "Power schedule saved and sent to controller.")
                 self.settings_changed.emit({"power_schedule": schedule})
                 self.accept()
             else:
-                error_msg = response.get("data", "Unknown error")
+                error_msg = response.get("data")[0].get("message", "Unknown error")
                 QMessageBox.warning(self, "Failed", f"Failed to save power schedule: {error_msg}")
                 
         except Exception as e:
