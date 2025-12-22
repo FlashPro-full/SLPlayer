@@ -8,6 +8,19 @@ from typing import Optional, Dict, Any, List
 from controllers.huidu import HuiduController
 from utils.logger import get_logger
 
+try:
+    from zoneinfo import ZoneInfo
+    import zoneinfo
+    ZONEINFO_AVAILABLE = True
+    PYTZ_AVAILABLE = False
+except ImportError:
+    ZONEINFO_AVAILABLE = False
+    try:
+        import pytz  # type: ignore
+        PYTZ_AVAILABLE = True
+    except ImportError:
+        PYTZ_AVAILABLE = False
+
 logger = get_logger(__name__)
 
 DIALOG_STYLE = """
@@ -100,6 +113,7 @@ class TimeDialog(QDialog):
         
         self.time_settings: Dict[str, Any] = {}
         self.huidu_controller = HuiduController()
+        self.timezone_list = self._get_system_timezones()
         
         self.init_ui()
         self.load_from_device()
@@ -131,7 +145,10 @@ class TimeDialog(QDialog):
         timezone_layout.addWidget(QLabel("Time Zone:"))
         
         self.timezone_combo = QComboBox()
-        self.timezone_combo.addItems(["UTC", "Local", "GMT+0", "GMT+1", "GMT+2", "GMT+3", "GMT+4", "GMT+5", "GMT+6", "GMT+7", "GMT+8", "GMT+9", "GMT+10", "GMT+11", "GMT+12", "GMT-1", "GMT-2", "GMT-3", "GMT-4", "GMT-5", "GMT-6", "GMT-7", "GMT-8", "GMT-9", "GMT-10", "GMT-11", "GMT-12"])
+        if self.timezone_list:
+            self.timezone_combo.addItems(self.timezone_list)
+        else:
+            self.timezone_combo.addItems(["UTC", "Local", "GMT+0", "GMT+1", "GMT+2", "GMT+3", "GMT+4", "GMT+5", "GMT+6", "GMT+7", "GMT+8", "GMT+9", "GMT+10", "GMT+11", "GMT+12", "GMT-1", "GMT-2", "GMT-3", "GMT-4", "GMT-5", "GMT-6", "GMT-7", "GMT-8", "GMT-9", "GMT-10", "GMT-11", "GMT-12"])
         timezone_layout.addWidget(self.timezone_combo, stretch=1)
         sync_layout.addLayout(timezone_layout)
         
@@ -150,6 +167,43 @@ class TimeDialog(QDialog):
         button_layout.addWidget(cancel_btn)
         
         layout.addLayout(button_layout)
+    
+    def _get_system_timezones(self) -> List[str]:
+        timezones = []
+        try:
+            if ZONEINFO_AVAILABLE:
+                all_zones = sorted(zoneinfo.available_timezones())
+                for tz_name in all_zones:
+                    try:
+                        tz = ZoneInfo(tz_name)
+                        now = datetime.now(tz)
+                        offset = now.strftime("%z")
+                        offset_str = f"UTC{offset[:3]}:{offset[3:]}" if offset else "UTC+00:00"
+                        city = tz_name.split("/")[-1].replace("_", " ")
+                        display_name = f"{tz_name} ({offset_str}) - {city}"
+                        timezones.append(display_name)
+                    except Exception:
+                        timezones.append(tz_name)
+            elif PYTZ_AVAILABLE:
+                import pytz
+                all_zones = sorted(pytz.all_timezones)
+                for tz_name in all_zones:
+                    try:
+                        tz = pytz.timezone(tz_name)
+                        now = datetime.now(tz)
+                        offset = now.strftime("%z")
+                        offset_str = f"UTC{offset[:3]}:{offset[3:]}" if offset else "UTC+00:00"
+                        city = tz_name.split("/")[-1].replace("_", " ")
+                        display_name = f"{tz_name} ({offset_str}) - {city}"
+                        timezones.append(display_name)
+                    except Exception:
+                        timezones.append(tz_name)
+            else:
+                timezones = ["UTC", "Local", "GMT+0", "GMT+1", "GMT+2", "GMT+3", "GMT+4", "GMT+5", "GMT+6", "GMT+7", "GMT+8", "GMT+9", "GMT+10", "GMT+11", "GMT+12", "GMT-1", "GMT-2", "GMT-3", "GMT-4", "GMT-5", "GMT-6", "GMT-7", "GMT-8", "GMT-9", "GMT-10", "GMT-11", "GMT-12"]
+        except Exception as e:
+            logger.error(f"Error getting system timezones: {e}")
+            timezones = ["UTC", "Local", "GMT+0", "GMT+1", "GMT+2", "GMT+3", "GMT+4", "GMT+5", "GMT+6", "GMT+7", "GMT+8", "GMT+9", "GMT+10", "GMT+11", "GMT+12", "GMT-1", "GMT-2", "GMT-3", "GMT-4", "GMT-5", "GMT-6", "GMT-7", "GMT-8", "GMT-9", "GMT-10", "GMT-11", "GMT-12"]
+        return timezones
     
     def update_time_display(self):
         self.current_time_label.setText("Current PC Time: " + datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
@@ -195,13 +249,24 @@ class TimeDialog(QDialog):
                     time_zone = device_data.get("time.timeZone", "")
                     if time_zone:
                         self.time_settings["time.timeZone"] = time_zone
-                        timezone_index = self.timezone_combo.findText(time_zone)
-                        if timezone_index >= 0:
-                            self.timezone_combo.setCurrentIndex(timezone_index)
-                        else:
-                            self.timezone_combo.setCurrentIndex(1)
+                        timezone_found = False
+                        for i, tz_display in enumerate(self.timezone_list):
+                            if tz_display.startswith(time_zone) or time_zone in tz_display:
+                                self.timezone_combo.setCurrentIndex(i)
+                                timezone_found = True
+                                break
+                        if not timezone_found:
+                            timezone_index = self.timezone_combo.findText(time_zone)
+                            if timezone_index >= 0:
+                                self.timezone_combo.setCurrentIndex(timezone_index)
+                            else:
+                                if "Local" in self.timezone_list:
+                                    local_index = self.timezone_list.index("Local")
+                                    self.timezone_combo.setCurrentIndex(local_index)
                     else:
-                        self.timezone_combo.setCurrentIndex(1)
+                        if "Local" in self.timezone_list:
+                            local_index = self.timezone_list.index("Local")
+                            self.timezone_combo.setCurrentIndex(local_index)
                     
                     logger.info(f"Loaded time settings from device: {device_data}")
         except Exception as e:
@@ -224,7 +289,11 @@ class TimeDialog(QDialog):
             
             selected_timezone = self.timezone_combo.currentText()
             if selected_timezone:
-                properties["time.timeZone"] = selected_timezone
+                if "(" in selected_timezone:
+                    timezone_value = selected_timezone.split(" (")[0]
+                else:
+                    timezone_value = selected_timezone
+                properties["time.timeZone"] = timezone_value
             
             response = self.huidu_controller.set_device_property(properties, [self.controller_id])
             
