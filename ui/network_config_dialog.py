@@ -68,17 +68,6 @@ DIALOG_STYLE = """
     QCheckBox {
         color: #FFFFFF;
     }
-    QCheckBox::indicator {
-        width: 18px;
-        height: 18px;
-        border: 1px solid #555555;
-        background-color: #3B3B3B;
-        border-radius: 3px;
-    }
-    QCheckBox::indicator:checked {
-        background-color: #4A90E2;
-        border: 1px solid #4A90E2;
-    }
     QTabWidget::pane {
         background-color: #2B2B2B;
         border: 1px solid #555555;
@@ -114,7 +103,7 @@ class NetworkConfigDialog(QDialog):
             except:
                 pass
         
-        self.setWindowTitle("🌐 Network Configuration")
+        self.setWindowTitle("Network Configuration")
         self.setMinimumWidth(600)
         self.setMinimumHeight(500)
         self.setStyleSheet(DIALOG_STYLE)
@@ -166,11 +155,9 @@ class NetworkConfigDialog(QDialog):
         layout = QVBoxLayout(widget)
         layout.setSpacing(15)
         
-
         ip_group = QGroupBox("IP Address Configuration")
         ip_layout = QFormLayout(ip_group)
         
-
         self.ip_address_edit = QLineEdit()
         self.ip_address_edit.setPlaceholderText("192.168.1.100")
         ip_layout.addRow("IP Address:", self.ip_address_edit)
@@ -264,10 +251,11 @@ class NetworkConfigDialog(QDialog):
         gateway = ""
         try:
             system = platform.system()
+            logger.info(f"System: {system}")
             if system == "Windows":
                 result = subprocess.run(['ipconfig'], capture_output=True, text=True, timeout=5)
                 output = result.stdout
-                
+                logger.info(f"Output: {output}")
                 for line in output.split('\n'):
                     if 'Subnet Mask' in line or 'Subnetmask' in line:
                         match = re.search(r'(\d+\.\d+\.\d+\.\d+)', line)
@@ -277,6 +265,8 @@ class NetworkConfigDialog(QDialog):
                         match = re.search(r'(\d+\.\d+\.\d+\.\d+)', line)
                         if match:
                             gateway = match.group(1)
+                logger.info(f"Subnet: {subnet}")
+                logger.info(f"Gateway: {gateway}")
             elif system == "Linux":
                 result = subprocess.run(['ip', 'route'], capture_output=True, text=True, timeout=5)
                 output = result.stdout
@@ -375,6 +365,7 @@ class NetworkConfigDialog(QDialog):
                 return
             
             system_network = self._get_system_network_settings()
+            logger.info(f"System network: {system_network}")
             
             response = self.huidu_controller.get_device_property([self.controller_id], ["eth.dhcp", "eth.ip"])
             
@@ -384,8 +375,8 @@ class NetworkConfigDialog(QDialog):
                     device_data = device_data_list[0].get("data", {})
                     
                     ip = device_data.get("eth.ip", "")
-                    subnet = device_data.get("eth.subnet", system_network.get("subnet", ""))
-                    gateway = device_data.get("eth.gateway", system_network.get("gateway", ""))
+                    subnet = system_network.get("subnet", "")
+                    gateway = system_network.get("gateway", "")
                     dhcp_str = device_data.get("eth.dhcp", "false")
                     dhcp = dhcp_str == "true" or dhcp_str == True if dhcp_str else False
                     

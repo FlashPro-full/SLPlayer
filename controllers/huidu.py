@@ -379,7 +379,7 @@ class HuiduController:
         try:
             device_id_str = ",".join(device_ids) if device_ids else ""
             body = {
-                "method": "getScheduledTask",    
+                "method": "getScheduleTask",    
                 "data": data,
                 "id": device_id_str
             }
@@ -393,7 +393,7 @@ class HuiduController:
         try:
             device_id_str = ",".join(device_ids) if device_ids else ""
             body = {
-                "method": "setScheduledTask",
+                "method": "setScheduleTask",
                 "data": data,
                 "id": device_id_str
             }

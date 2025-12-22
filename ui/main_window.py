@@ -162,7 +162,7 @@ class MainWindow(QtWidgets.QMainWindow):
             sdk_program = ProgramConverter.soo_to_sdk(program_dict, "huidu")
             sdk_program_list = [sdk_program]
             
-            response = huidu_controller.add_program(sdk_program_list, [controller_id])
+            response = huidu_controller.replace_program(sdk_program_list, [controller_id])
             
             if response.get("message") == "ok":
                 QMessageBox.information(self, "Success", f"Program sent successfully.")
@@ -439,6 +439,10 @@ class MainWindow(QtWidgets.QMainWindow):
             elif not autosaved_screens:
                 if not self.screen_manager.screens:
                     self.open_screen_settings_on_startup()
+        
+        if hasattr(self, 'content_widget') and self.screen_manager and self.screen_manager.current_screen:
+            if self.screen_manager.current_screen.programs:
+                self.content_widget.set_playing(True)
     
     def _on_open_file_requested(self, file_path: str):
         if not file_path:
@@ -447,6 +451,7 @@ class MainWindow(QtWidgets.QMainWindow):
         result = self.load_soo_file(file_path, clear_existing=False)
         if result:
             if hasattr(self, 'content_widget'):
+                self.content_widget.set_playing(True)
                 self.content_widget.update()
             if self.screen_manager and self.screen_manager.current_screen:
                 if self.screen_manager.current_screen.programs:
@@ -474,8 +479,7 @@ class MainWindow(QtWidgets.QMainWindow):
             if hasattr(self, 'screen_list_panel'):
                 self.screen_list_panel.refresh_screens(debounce=False)
             if hasattr(self, 'content_widget'):
-                if hasattr(self.content_widget, '_initialize_videos_for_program'):
-                    self.content_widget._initialize_videos_for_program()
+                self.content_widget.set_playing(True)
                 self.content_widget.update()
         return result
     
