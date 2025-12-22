@@ -44,24 +44,16 @@ def _element_to_sdk_area(element: Dict) -> Optional[Dict]:
     properties = element.get("properties", {})
     
     item = None
-    if element_type in ["text", "singleline_text"]:
-        item = _text_element_to_sdk_item(properties)
+    if element_type == "text":
+        item = _text_element_to_sdk_item(properties, multi_line=True)
+    elif element_type == "singleline_text":
+        item = _text_element_to_sdk_item(properties, multi_line=False)
     elif element_type in ["photo", "image"]:
         item = _image_element_to_sdk_item(properties)
     elif element_type == "video":
         item = _video_element_to_sdk_item(properties)
     elif element_type == "clock":
         item = _clock_element_to_sdk_item(properties)
-    elif element_type == "html":
-        item = _html_element_to_sdk_item(properties)
-    elif element_type == "hdmi":
-        item = _hdmi_element_to_sdk_item(properties)
-    elif element_type == "sensor":
-        item = _sensor_element_to_sdk_item(properties)
-    elif element_type == "weather":
-        item = _weather_element_to_sdk_item(properties)
-    elif element_type == "timing":
-        item = _timing_element_to_sdk_item(properties)
     else:
         return None
     
@@ -73,7 +65,13 @@ def _element_to_sdk_area(element: Dict) -> Optional[Dict]:
         "y": y,
         "width": width,
         "height": height,
-        "item": [item]
+        "item": [item],
+        "_metadata": {
+            "id": element.get("id"),
+            "type": element_type,
+            "name": element.get("name", ""),
+            "properties": properties.copy()
+        }
     }
     
     border = properties.get("border", {})
@@ -90,7 +88,7 @@ def _element_to_sdk_area(element: Dict) -> Optional[Dict]:
     
     return area
 
-def _text_element_to_sdk_item(properties: Dict) -> Optional[Dict]:
+def _text_element_to_sdk_item(properties: Dict, multi_line: bool = True) -> Optional[Dict]:
     text_props = properties.get("text", "")
     if isinstance(text_props, dict):
         text = text_props.get("content", "")
@@ -101,7 +99,7 @@ def _text_element_to_sdk_item(properties: Dict) -> Optional[Dict]:
         bold = format_props.get("bold") if format_props.get("bold") is not None else properties.get("bold", False)
         italic = format_props.get("italic") if format_props.get("italic") is not None else properties.get("italic", False)
         underline = format_props.get("underline") if format_props.get("underline") is not None else properties.get("underline", False)
-        multi_line = text_props.get("multiLine", False)
+        multi_line = text_props.get("multiLine", multi_line) if multi_line else False
     else:
         text = str(text_props) if text_props else ""
         font_family = properties.get("font_family", "Arial")
@@ -110,7 +108,7 @@ def _text_element_to_sdk_item(properties: Dict) -> Optional[Dict]:
         bold = properties.get("bold", False)
         italic = properties.get("italic", False)
         underline = properties.get("underline", False)
-        multi_line = properties.get("multiLine", False)
+        multi_line = properties.get("multiLine", multi_line) if multi_line else False
     
     animation = properties.get("animation", {})
     if isinstance(animation, dict):
@@ -168,6 +166,9 @@ def _text_element_to_sdk_item(properties: Dict) -> Optional[Dict]:
 
 def _image_element_to_sdk_item(properties: Dict) -> Optional[Dict]:
     photo_props = properties.get("photo", {})
+    photo_list = properties.get("photo_list", properties.get("image_list", []))
+    active_photo_index = properties.get("active_photo_index", 0)
+    
     if isinstance(photo_props, dict):
         file_path = photo_props.get("file_path", "") or properties.get("file_path", "")
         fit_mode = photo_props.get("fit_mode") or properties.get("fit_mode", "stretch")
@@ -180,6 +181,16 @@ def _image_element_to_sdk_item(properties: Dict) -> Optional[Dict]:
         file_size = properties.get("fileSize")
         file_md5 = properties.get("fileMd5")
         duration = properties.get("duration", 5000)
+    
+    if photo_list and isinstance(photo_list, list) and len(photo_list) > 0:
+        if 0 <= active_photo_index < len(photo_list):
+            active_photo = photo_list[active_photo_index]
+            if isinstance(active_photo, dict):
+                file_path = active_photo.get("path", file_path)
+        elif len(photo_list) > 0:
+            first_photo = photo_list[0]
+            if isinstance(first_photo, dict):
+                file_path = first_photo.get("path", file_path)
     
     animation = properties.get("animation", {})
     if isinstance(animation, dict):
@@ -237,6 +248,9 @@ def _image_element_to_sdk_item(properties: Dict) -> Optional[Dict]:
 
 def _video_element_to_sdk_item(properties: Dict) -> Optional[Dict]:
     video_props = properties.get("video", {})
+    video_list = properties.get("video_list", [])
+    active_video_index = properties.get("active_video_index", 0)
+    
     if isinstance(video_props, dict):
         file_path = video_props.get("file_path", "") or properties.get("file_path", "")
         file_size = video_props.get("fileSize") or properties.get("fileSize")
@@ -246,11 +260,15 @@ def _video_element_to_sdk_item(properties: Dict) -> Optional[Dict]:
         file_size = properties.get("fileSize")
         file_md5 = properties.get("fileMd5")
     
-    video_list = properties.get("video_list", [])
     if video_list and isinstance(video_list, list) and len(video_list) > 0:
-        first_video = video_list[0]
-        if isinstance(first_video, dict):
-            file_path = first_video.get("path", file_path)
+        if 0 <= active_video_index < len(video_list):
+            active_video = video_list[active_video_index]
+            if isinstance(active_video, dict):
+                file_path = active_video.get("path", file_path)
+        elif len(video_list) > 0:
+            first_video = video_list[0]
+            if isinstance(first_video, dict):
+                file_path = first_video.get("path", file_path)
     
     item = {
         "type": "video",
@@ -422,10 +440,18 @@ def sdk_to_program(sdk_program: Dict) -> Dict:
     elements = []
     
     for area in areas:
+        metadata = area.get("_metadata", {})
         area_items = area.get("item", [])
         for item in area_items:
             element = _sdk_item_to_element(item, area)
             if element:
+                if metadata:
+                    element_id = metadata.get("id")
+                    if element_id:
+                        element["id"] = element_id
+                    element_name = metadata.get("name")
+                    if element_name:
+                        element["name"] = element_name
                 elements.append(element)
     
     play_control_sdk = sdk_program.get("playControl", {})
@@ -451,7 +477,11 @@ def _sdk_item_to_element(item: Dict, area: Dict) -> Optional[Dict]:
     item_type = item.get("type", "")
     
     if item_type == "text":
-        return _sdk_text_item_to_element(item, area)
+        multi_line = item.get("multiLine", True)
+        if multi_line:
+            return _sdk_text_item_to_element(item, area, "text")
+        else:
+            return _sdk_text_item_to_element(item, area, "singleline_text")
     elif item_type == "image":
         return _sdk_image_item_to_element(item, area)
     elif item_type == "video":
@@ -460,16 +490,10 @@ def _sdk_item_to_element(item: Dict, area: Dict) -> Optional[Dict]:
         return _sdk_clock_item_to_element(item, area, "digitalClock")
     elif item_type == "dialClock":
         return _sdk_clock_item_to_element(item, area, "dialClock")
-    elif item_type == "html":
-        return _sdk_html_item_to_element(item, area)
-    elif item_type == "hdmi":
-        return _sdk_hdmi_item_to_element(item, area)
-    elif item_type == "dynamic":
-        return _sdk_sensor_item_to_element(item, area)
     
     return None
 
-def _sdk_text_item_to_element(item: Dict, area: Dict) -> Dict:
+def _sdk_text_item_to_element(item: Dict, area: Dict, element_type: str = "text") -> Dict:
     text_string = item.get("string", "")
     multi_line = item.get("multiLine", False)
     font = item.get("font", {})
@@ -495,7 +519,34 @@ def _sdk_text_item_to_element(item: Dict, area: Dict) -> Dict:
     border = area.get("border", {})
     border_enabled = bool(border)
     
-    element_type = "singleline_text" if not multi_line else "text"
+    metadata = area.get("_metadata", {})
+    metadata_props = metadata.get("properties", {}) if metadata else {}
+    
+    if element_type == "singleline_text":
+        multi_line = False
+    
+    if metadata_props:
+        text_props_meta = metadata_props.get("text", {})
+        if isinstance(text_props_meta, dict):
+            text_string = text_props_meta.get("content", text_string)
+            if element_type == "singleline_text":
+                multi_line = False
+            else:
+                multi_line = text_props_meta.get("multiLine", multi_line)
+            format_meta = text_props_meta.get("format", {})
+            if format_meta:
+                font_name = format_meta.get("font_family", font_name)
+                font_size = format_meta.get("font_size", font_size)
+                font_color = format_meta.get("font_color", format_meta.get("color", font_color))
+                bold = format_meta.get("bold", bold)
+                italic = format_meta.get("italic", italic)
+                underline = format_meta.get("underline", underline)
+        
+        animation_meta = metadata_props.get("animation", {})
+        if isinstance(animation_meta, dict) and animation_meta:
+            animation_name = animation_meta.get("entrance", animation_name)
+            speed_str = animation_meta.get("entrance_speed", speed_str)
+            hold_time = animation_meta.get("hold_time", hold_time)
     
     element = {
         "id": _generate_uuid(),
@@ -504,37 +555,40 @@ def _sdk_text_item_to_element(item: Dict, area: Dict) -> Dict:
         "y": area.get("y", 0),
         "width": area.get("width", 200),
         "height": area.get("height", 100),
-        "properties": {
-            "text": {
-                "content": text_string,
-                "multiLine": multi_line,
-                "format": {
-                    "font_family": font_name,
-                    "font_size": font_size,
-                    "font_color": font_color,
-                    "bold": bold,
-                    "italic": italic,
-                    "underline": underline
-                }
-            },
+        "properties": {}
+    }
+    
+    if metadata_props:
+        element["properties"].update(metadata_props)
+    
+    element["properties"]["text"] = {
+        "content": text_string,
+        "multiLine": multi_line,
+        "format": {
             "font_family": font_name,
             "font_size": font_size,
-            "color": font_color,
+            "font_color": font_color,
             "bold": bold,
             "italic": italic,
-            "underline": underline,
-            "multiLine": multi_line,
-            "animation": {
-                "entrance": animation_name,
-                "exit": animation_name,
-                "entrance_speed": speed_str,
-                "exit_speed": speed_str,
-                "hold_time": hold_time
-            },
-            "animation_speed": effect_speed,
-            "duration": hold_time
+            "underline": underline
         }
     }
+    element["properties"]["font_family"] = font_name
+    element["properties"]["font_size"] = font_size
+    element["properties"]["color"] = font_color
+    element["properties"]["bold"] = bold
+    element["properties"]["italic"] = italic
+    element["properties"]["underline"] = underline
+    element["properties"]["multiLine"] = multi_line
+    element["properties"]["animation"] = {
+        "entrance": animation_name,
+        "exit": animation_name,
+        "entrance_speed": speed_str,
+        "exit_speed": speed_str,
+        "hold_time": hold_time
+    }
+    element["properties"]["animation_speed"] = effect_speed
+    element["properties"]["duration"] = hold_time
     
     if background_color:
         element["properties"]["text"]["format"]["text_bg_color"] = background_color
@@ -566,6 +620,28 @@ def _sdk_image_item_to_element(item: Dict, area: Dict) -> Dict:
     speed_str = f"{effect_speed} fast" if effect_speed <= 3 else f"{effect_speed} slow" if effect_speed >= 8 else f"{effect_speed} medium"
     hold_time = effect_hold / 1000.0 if effect_hold > 100 else effect_hold
     
+    metadata = area.get("_metadata", {})
+    metadata_props = metadata.get("properties", {}) if metadata else {}
+    
+    photo_list = metadata_props.get("photo_list", metadata_props.get("image_list", []))
+    active_photo_index = metadata_props.get("active_photo_index", 0)
+    
+    if not photo_list and file_path:
+        photo_list = [{"path": file_path}]
+    
+    animation_from_metadata = metadata_props.get("animation", {})
+    if isinstance(animation_from_metadata, dict) and animation_from_metadata:
+        animation_name = animation_from_metadata.get("entrance", animation_name)
+        speed_str = animation_from_metadata.get("entrance_speed", speed_str)
+        hold_time = animation_from_metadata.get("hold_time", hold_time)
+        exit_animation = animation_from_metadata.get("exit", animation_name)
+        exit_speed = animation_from_metadata.get("exit_speed", speed_str)
+    else:
+        exit_animation = animation_name
+        exit_speed = speed_str
+    
+    fit_mode_from_metadata = metadata_props.get("fit_mode", fit_mode)
+    
     element = {
         "id": _generate_uuid(),
         "type": "photo",
@@ -573,31 +649,44 @@ def _sdk_image_item_to_element(item: Dict, area: Dict) -> Dict:
         "y": area.get("y", 0),
         "width": area.get("width", 200),
         "height": area.get("height", 100),
-        "properties": {
-            "photo": {
-                "file_path": file_path,
-                "fit_mode": fit_mode
-            },
-            "file_path": file_path,
-            "fit_mode": fit_mode,
-            "animation": {
-                "entrance": animation_name,
-                "exit": animation_name,
-                "entrance_speed": speed_str,
-                "exit_speed": speed_str,
-                "hold_time": hold_time
-            },
-            "animation_speed": effect_speed,
-            "duration": hold_time
-        }
+        "properties": {}
     }
+    
+    element["properties"].update(metadata_props)
+    
+    element["properties"]["photo"] = metadata_props.get("photo", {})
+    if not element["properties"]["photo"]:
+        element["properties"]["photo"] = {}
+    element["properties"]["photo"]["file_path"] = file_path
+    element["properties"]["photo"]["fit_mode"] = fit_mode_from_metadata
+    
+    element["properties"]["file_path"] = file_path
+    element["properties"]["fit_mode"] = fit_mode_from_metadata
+    
+    element["properties"]["animation"] = {
+        "entrance": animation_name,
+        "exit": exit_animation,
+        "entrance_speed": speed_str,
+        "exit_speed": exit_speed,
+        "hold_time": hold_time
+    }
+    element["properties"]["animation_speed"] = effect_speed
+    element["properties"]["duration"] = hold_time
+    
+    if photo_list:
+        element["properties"]["photo_list"] = photo_list
+        element["properties"]["image_list"] = photo_list
+        if 0 <= active_photo_index < len(photo_list):
+            element["properties"]["active_photo_index"] = active_photo_index
     
     if file_size is not None:
         element["properties"]["fileSize"] = file_size
-        element["properties"]["photo"]["fileSize"] = file_size
+        if "fileSize" not in element["properties"]["photo"]:
+            element["properties"]["photo"]["fileSize"] = file_size
     if file_md5:
         element["properties"]["fileMd5"] = file_md5
-        element["properties"]["photo"]["fileMd5"] = file_md5
+        if "fileMd5" not in element["properties"]["photo"]:
+            element["properties"]["photo"]["fileMd5"] = file_md5
     
     return element
 
@@ -606,6 +695,15 @@ def _sdk_video_item_to_element(item: Dict, area: Dict) -> Dict:
     file_size = item.get("fileSize")
     file_md5 = item.get("fileMd5")
     
+    metadata = area.get("_metadata", {})
+    metadata_props = metadata.get("properties", {}) if metadata else {}
+    
+    video_list = metadata_props.get("video_list", [])
+    active_video_index = metadata_props.get("active_video_index", 0)
+    
+    if not video_list and file_path:
+        video_list = [{"path": file_path}]
+    
     element = {
         "id": _generate_uuid(),
         "type": "video",
@@ -613,14 +711,21 @@ def _sdk_video_item_to_element(item: Dict, area: Dict) -> Dict:
         "y": area.get("y", 0),
         "width": area.get("width", 200),
         "height": area.get("height", 100),
-        "properties": {
-            "video": {
-                "file_path": file_path
-            },
-            "file_path": file_path,
-            "video_list": [{"path": file_path}]
-        }
+        "properties": {}
     }
+    
+    element["properties"].update(metadata_props)
+    
+    element["properties"]["video"] = metadata_props.get("video", {})
+    if not element["properties"]["video"]:
+        element["properties"]["video"] = {}
+    element["properties"]["video"]["file_path"] = file_path
+    
+    element["properties"]["file_path"] = file_path
+    element["properties"]["video_list"] = video_list
+    
+    if video_list and 0 <= active_video_index < len(video_list):
+        element["properties"]["active_video_index"] = active_video_index
     
     if file_size is not None:
         element["properties"]["fileSize"] = file_size
@@ -980,29 +1085,29 @@ class ProgramConverter:
     
     @staticmethod
     def _soo_element_to_huidu_item(element_type: str, properties: Dict, x: int, y: int, width: int, height: int) -> Optional[Dict]:
-        if element_type in ["text", "singleline_text", "animation"]:
-            return ProgramConverter._soo_text_to_huidu_item(properties)
-        elif element_type == "photo":
+        if element_type == "text":
+            text_props = properties.get("text", {})
+            if isinstance(text_props, dict):
+                multi_line = text_props.get("multiLine", True)
+            else:
+                multi_line = properties.get("multiLine", True)
+            if multi_line:
+                return ProgramConverter._soo_text_to_huidu_item(properties, multi_line=True)
+            else:
+                return ProgramConverter._soo_text_to_huidu_item(properties, multi_line=False)
+        elif element_type == "singleline_text":
+            return ProgramConverter._soo_text_to_huidu_item(properties, multi_line=False)
+        elif element_type in ["photo", "image"]:
             return ProgramConverter._soo_image_to_huidu_item(properties)
         elif element_type == "video":
             return ProgramConverter._soo_video_to_huidu_item(properties)
         elif element_type == "clock":
             return ProgramConverter._soo_clock_to_huidu_item(properties)
-        elif element_type == "timing":
-            return ProgramConverter._soo_timing_to_huidu_item(properties)
-        elif element_type == "sensor":
-            return ProgramConverter._soo_sensor_to_huidu_item(properties)
-        elif element_type == "weather":
-            return ProgramConverter._soo_weather_to_huidu_item(properties)
-        elif element_type == "html":
-            return ProgramConverter._soo_html_to_huidu_item(properties)
-        elif element_type == "hdmi":
-            return ProgramConverter._soo_hdmi_to_huidu_item(properties)
         return None
     
     @staticmethod
-    def _soo_text_to_huidu_item(properties: Dict) -> Dict:
-        item = _text_element_to_sdk_item(properties)
+    def _soo_text_to_huidu_item(properties: Dict, multi_line: bool = True) -> Dict:
+        item = _text_element_to_sdk_item(properties, multi_line=multi_line)
         if not item:
             text_props = properties.get("text", "")
             if isinstance(text_props, dict):
@@ -1016,7 +1121,7 @@ class ProgramConverter:
             item = {
                 "type": "text",
                 "string": text,
-                "multiLine": False,
+                "multiLine": multi_line,
                 "font": {
                     "name": font_family,
                     "size": font_size,

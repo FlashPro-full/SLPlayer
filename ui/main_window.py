@@ -141,37 +141,12 @@ class MainWindow(QtWidgets.QMainWindow):
             self._on_controller_connected(self.controller_service.current_controller)
     
     def on_send_program(self):
-        if not self.controller_service or not self.controller_service.current_controller:
-            QMessageBox.warning(self, "No Controller", "No controller is currently connected.")
-            return
-        
-        if not self.screen_manager or not self.screen_manager.current_screen:
-            QMessageBox.warning(self, "No Screen", "No screen is currently selected.")
-            return
-        
-        if not self.screen_manager.current_screen.programs:
-            QMessageBox.warning(self, "No Program", "No program to send.")
-            return
-        
         controller_dict = self.controller_service.current_controller
         controller_type = controller_dict.get("controller_type", "").lower() if isinstance(controller_dict, dict) else ""
         
         if controller_type != "huidu":
             QMessageBox.warning(self, "Unsupported Controller", "This operation is only supported for Huidu controllers.")
             return
-        
-        reply = QMessageBox.question(
-            self,
-            "Send Program",
-            "Do you want to Add or Replace the program on the device?\n\nYes = Replace\nNo = Add",
-            QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel,
-            QMessageBox.Yes
-        )
-        
-        if reply == QMessageBox.Cancel:
-            return
-        
-        is_replace = (reply == QMessageBox.Yes)
         
         try:
             from controllers.huidu import HuiduController
@@ -187,13 +162,10 @@ class MainWindow(QtWidgets.QMainWindow):
             sdk_program = ProgramConverter.soo_to_sdk(program_dict, "huidu")
             sdk_program_list = [sdk_program]
             
-            if is_replace:
-                response = huidu_controller.replace_program(sdk_program_list, [controller_id])
-            else:
-                response = huidu_controller.add_program(sdk_program_list, [controller_id])
+            response = huidu_controller.add_program(sdk_program_list, [controller_id])
             
             if response.get("message") == "ok":
-                QMessageBox.information(self, "Success", f"Program {'replaced' if is_replace else 'added'} successfully.")
+                QMessageBox.information(self, "Success", f"Program sent successfully.")
             else:
                 error_msg = response.get("data", "Unknown error")
                 QMessageBox.warning(self, "Error", f"Failed to send program: {error_msg}")
@@ -205,15 +177,75 @@ class MainWindow(QtWidgets.QMainWindow):
         if action == "send":
             self.on_send_program()
         elif action == "insert":
-            self.on_insert()
+            self.on_insert_program()
         elif action == "clear":
-            self.on_clear()
+            self.on_clear_program()
     
-    def on_insert(self):
-        pass
+    def on_insert_program(self):
+        controller_dict = self.controller_service.current_controller
+        controller_type = controller_dict.get("controller_type", "").lower() if isinstance(controller_dict, dict) else ""
+        
+        if controller_type != "huidu":
+            QMessageBox.warning(self, "Unsupported Controller", "This operation is only supported for Huidu controllers.")
+            return
+        
+        try:
+            from controllers.huidu import HuiduController
+            from core.program_converter import ProgramConverter
+            
+            controller_id = controller_dict.get("controller_id")
+
+            huidu_controller = HuiduController()
+            
+            current_program = self.screen_manager.current_screen.programs[0]
+            program_dict = current_program.to_dict()
+            
+            sdk_program = ProgramConverter.soo_to_sdk(program_dict, "huidu")
+            sdk_program_list = [sdk_program]
+            
+            response = huidu_controller.add_program(sdk_program_list, [controller_id])
+            
+            if response.get("message") == "ok":
+                QMessageBox.information(self, "Success", f"Program added successfully.")
+            else:
+                error_msg = response.get("data", "Unknown error")
+                QMessageBox.warning(self, "Error", f"Failed to send program: {error_msg}")
+        except Exception as e:
+            logger.error(f"Error sending program: {e}", exc_info=True)
+            QMessageBox.critical(self, "Error", f"An error occurred while sending program:\n{str(e)}")
     
-    def on_clear(self):
-        pass
+    def on_clear_program(self):
+        controller_dict = self.controller_service.current_controller
+        controller_type = controller_dict.get("controller_type", "").lower() if isinstance(controller_dict, dict) else ""
+        
+        if controller_type != "huidu":
+            QMessageBox.warning(self, "Unsupported Controller", "This operation is only supported for Huidu controllers.")
+            return
+        
+        try:
+            from controllers.huidu import HuiduController
+            from core.program_converter import ProgramConverter
+            
+            controller_id = controller_dict.get("controller_id")
+
+            huidu_controller = HuiduController()
+            
+            current_program = self.screen_manager.current_screen.programs[0]
+            program_dict = current_program.to_dict()
+            
+            sdk_program = ProgramConverter.soo_to_sdk(program_dict, "huidu")
+            sdk_program_list = [sdk_program]
+            
+            response = huidu_controller.remove_program(sdk_program_list, [controller_id])
+            
+            if response.get("message") == "ok":
+                QMessageBox.information(self, "Success", f"Program added successfully.")
+            else:
+                error_msg = response.get("data", "Unknown error")
+                QMessageBox.warning(self, "Error", f"Failed to send program: {error_msg}")
+        except Exception as e:
+            logger.error(f"Error sending program: {e}", exc_info=True)
+            QMessageBox.critical(self, "Error", f"An error occurred while sending program:\n{str(e)}")
     
     def _on_screen_selected(self, screen_name: str):
         if not self.screen_manager:

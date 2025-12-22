@@ -8,6 +8,8 @@ from datetime import datetime, timezone
 from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 from utils.logger import get_logger
 import requests # type: ignore
+from requests_toolbelt.multipart.encoder import MultipartEncoder # type: ignore
+from pathlib import Path
 
 logger = get_logger(__name__)
 
@@ -94,6 +96,50 @@ class HuiduController:
             error_response = json.dumps({"message": "error", "data": str(e)})
             logger.error(f"SDK API Error Response: {error_response}")
             return error_response
+
+    def _file(self, file_path: str) -> str:
+        loc_file_path = Path(file_path)
+        if not loc_file_path.exists():
+            return json.dumps({
+                "message": "failed",
+                "data": f"Not found file [{file_path}]"
+            })
+
+        response_string = None
+        err_string = None
+
+        try:
+            file_name = loc_file_path.name
+            multipart_data = MultipartEncoder(
+                fields={'file': (file_name, open(file_path, 'rb'), 'application/octet-stream')}
+            )
+
+            headers = {
+                'Content-Type': multipart_data.content_type
+            }
+
+            url = f"{self.host}/api/file"
+            
+            result = self._sign_header(self.headers, multipart_data, url)
+            if isinstance(result, str):
+                url = result
+
+            response = requests.post(
+                url,
+                data=multipart_data,
+                headers=headers
+            )
+            response.raise_for_status()
+            response_string = response.text
+        except Exception as e:
+            err_string = str(e)
+
+        if not response_string:
+            return json.dumps({
+                "message": "failed",
+                "data": err_string or "Unknown error"
+            })
+        return response_string
     
     def get_online_devices(self) -> Dict:
         try:
@@ -285,12 +331,72 @@ class HuiduController:
             logger.error(f"Error turning off screen: {e}")
             return {"message": "error", "data": str(e)}
     
+    def _upload_files_and_update_program(self, program: List[Dict]) -> List[Dict]:
+        updated_program = []
+        for prog in program:
+            prog_copy = json.loads(json.dumps(prog))
+            areas = prog_copy.get("area", [])
+            
+            for area in areas:
+                items = area.get("item", [])
+                for item in items:
+                    item_type = item.get("type", "")
+                    
+                    if item_type == "image":
+                        file_path = item.get("file", "") or item.get("localPath", "")
+                        if file_path:
+                            local_path = Path(file_path)
+                            if local_path.exists() and not self._is_url(str(file_path)):
+                                file_response = self._file(str(file_path))
+                                try:
+                                    file_data = json.loads(file_response)
+                                    if file_data.get("message") == "ok" and file_data.get("data"):
+                                        file_info = file_data["data"][0]
+                                        if file_info.get("message") == "ok":
+                                            item["file"] = file_info.get("data", file_path)
+                                            item["fileSize"] = int(file_info.get("size", 0))
+                                            item["fileMd5"] = file_info.get("md5", "")
+                                            if "localPath" not in item:
+                                                item["localPath"] = str(file_path)
+                                except Exception as e:
+                                    logger.error(f"Error processing image file upload response: {e}")
+                    
+                    elif item_type == "video":
+                        file_path = item.get("file", "") or item.get("localPath", "")
+                        if file_path:
+                            local_path = Path(file_path)
+                            if local_path.exists() and not self._is_url(str(file_path)):
+                                file_response = self._file(str(file_path))
+                                try:
+                                    file_data = json.loads(file_response)
+                                    if file_data.get("message") == "ok" and file_data.get("data"):
+                                        file_info = file_data["data"][0]
+                                        if file_info.get("message") == "ok":
+                                            item["file"] = file_info.get("data", file_path)
+                                            item["fileSize"] = int(file_info.get("size", 0))
+                                            item["fileMd5"] = file_info.get("md5", "")
+                                            if "localPath" not in item:
+                                                item["localPath"] = str(file_path)
+                                except Exception as e:
+                                    logger.error(f"Error processing video file upload response: {e}")
+            
+            updated_program.append(prog_copy)
+        return updated_program
+    
+    def _is_url(self, path: str) -> bool:
+        return path.startswith(("http://", "https://"))
+    
     def replace_program(self, program: Optional[List[Dict[str, str | bool | int | List[Dict[str, str | bool | int]]]]] = None, device_ids: Optional[List[str]] = None) -> Dict:
         try:
+            if not program:
+                return {"message": "error", "data": "No program data provided"}
+            
+            updated_program = self._upload_files_and_update_program(program)
+            
             device_id_str = ",".join(device_ids) if device_ids else ""
             body = {
                 "method": "replace",
-                "data": program,
+                "data": updated_program,
                 "id": device_id_str
             }
             response = self._post(f"{self.host}/api/program", json.dumps(body))
@@ -301,10 +407,15 @@ class HuiduController:
     
     def update_program(self, program: Optional[List[Dict[str, str | bool | int | List[Dict[str, str | bool | int]]]]] = None, device_ids: Optional[List[str]] = None) -> Dict:
         try:
+            if not program:
+                return {"message": "error", "data": "No program data provided"}
+            
+            updated_program = self._upload_files_and_update_program(program)
+            
             device_id_str = ",".join(device_ids) if device_ids else ""
             body = {
                 "method": "update",
-                "data": program,
+                "data": updated_program,
                 "id": device_id_str
             }
             response = self._post(f"{self.host}/api/program", json.dumps(body))
@@ -315,10 +426,15 @@ class HuiduController:
 
     def add_program(self, program: Optional[List[Dict[str, str | bool | int | List[Dict[str, str | bool | int]]]]] = None, device_ids: Optional[List[str]] = None) -> Dict:
         try:
+            if not program:
+                return {"message": "error", "data": "No program data provided"}
+            
+            updated_program = self._upload_files_and_update_program(program)
+            
             device_id_str = ",".join(device_ids) if device_ids else ""
             body = {
                 "method": "append",
-                "data": program,
+                "data": updated_program,
                 "id": device_id_str
             }
             response = self._post(f"{self.host}/api/program", json.dumps(body))
@@ -340,3 +456,60 @@ class HuiduController:
         except Exception as e:
             logger.error(f"Error removing program: {e}")
             return {"message": "error", "data": str(e)}
+    
+    def get_program_list(self) -> List[Dict]:
+        try:
+            from publish.huidu_sdk.sdk.Program import Program
+            from publish.huidu_sdk.sdk.common.Config import Config
+            
+            Config.sdk_key = self.sdk_key
+            Config.sdk_secret = self.sdk_secret
+            Config.host = self.host
+            
+            program_client = Program(self.host)
+            response = program_client.get_program_ids("")
+            if response.get("message") == "ok" and response.get("data"):
+                program_list = []
+                for item in response.get("data", []):
+                    if item.get("message") == "ok" and item.get("data"):
+                        programs = item.get("data", [])
+                        for prog in programs:
+                            program_list.append({
+                                "id": prog.get("uuid", ""),
+                                "name": prog.get("name", "")
+                            })
+                return program_list
+            return []
+        except Exception as e:
+            logger.error(f"Error getting program list: {e}")
+            return []
+    
+    def download_program(self, program_id: Optional[str] = None) -> Optional[Dict]:
+        try:
+            from publish.huidu_sdk.sdk.Program import Program
+            from publish.huidu_sdk.sdk.data.ProgramNode import ProgramNode
+            from publish.huidu_sdk.sdk.common.Config import Config
+            
+            Config.sdk_key = self.sdk_key
+            Config.sdk_secret = self.sdk_secret
+            Config.host = self.host
+            
+            program_client = Program(self.host)
+            response = program_client.get_program_ids("")
+            if response.get("message") == "ok" and response.get("data"):
+                for item in response.get("data", []):
+                    if item.get("message") == "ok" and item.get("data"):
+                        programs = item.get("data", [])
+                        for prog_data in programs:
+                            prog_uuid = prog_data.get("uuid", "")
+                            if not program_id or prog_uuid == program_id:
+                                if isinstance(prog_data, dict) and "area" in prog_data:
+                                    return prog_data
+                                else:
+                                    program_node = ProgramNode(prog_data)
+                                    program_dict = program_node.to_dict()
+                                    return program_dict
+            return None
+        except Exception as e:
+            logger.error(f"Error downloading program: {e}")
+            return None
