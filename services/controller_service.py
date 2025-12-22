@@ -77,7 +77,7 @@ class ControllerService(QObject):
         try:
             controller = HuiduController()
             if len(self.online_controller_ids) > 0:
-                response = controller.get_device_property(self.online_controller_ids)
+                response = controller.get_all_device_property(self.online_controller_ids)
                 if response.get("message") == "ok" and response.get("data"):
                     for controller_data in response.get("data"):
                         logger.info(f"Controller data: {json.dumps(controller_data, indent=2, default=str)}")

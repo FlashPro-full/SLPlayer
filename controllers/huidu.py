@@ -149,7 +149,7 @@ class HuiduController:
             logger.error(f"Error getting online devices: {e}")
             return {"message": "error", "data": str(e)}
     
-    def get_device_property(self, device_ids: Optional[List[str]] = None) -> Dict:
+    def get_all_device_property(self, device_ids: Optional[List[str]] = None) -> Dict:
         try:
             device_id_str = ",".join(device_ids) if device_ids else ""
             body = {
@@ -201,6 +201,21 @@ class HuiduController:
             logger.info(f"Device property: {data}")
             
             return {"message": "ok", "data": data} if data else {"message": "error", "data": []}
+        except Exception as e:
+            logger.error(f"Error getting device property: {e}")
+            return {"message": "error", "data": str(e)}
+    
+    def get_device_property(self, device_ids: Optional[List[str]] = None, property_keys: Optional[List[str]] = None) -> Dict:
+        try:
+            device_id_str = ",".join(device_ids) if device_ids else ""
+            body = {
+                "method": "getDeviceProperty",
+                "data": property_keys,
+                "id": device_id_str
+            }
+            response = self._post(f"{self.host}/api/device", json.dumps(body))
+    
+            return json.loads(response)
         except Exception as e:
             logger.error(f"Error getting device property: {e}")
             return {"message": "error", "data": str(e)}

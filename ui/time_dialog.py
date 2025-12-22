@@ -93,7 +93,7 @@ class TimeDialog(QDialog):
             except:
                 pass
         
-        self.setWindowTitle(f"⏰ Time Settings" + (f" - {screen_name}" if screen_name else ""))
+        self.setWindowTitle(f"Time Settings" + (f" - {screen_name}" if screen_name else ""))
         self.setMinimumWidth(500)
         self.setMinimumHeight(400)
         self.setStyleSheet(DIALOG_STYLE)
@@ -123,13 +123,17 @@ class TimeDialog(QDialog):
         method_layout.addWidget(QLabel("Sync Method:"))
         
         self.sync_method_combo = QComboBox()
-        self.sync_method_combo.addItems(["PC Time", "NTP Server (it.pool.ntp.org)"])
+        self.sync_method_combo.addItems(["PC", "NTP"])
         method_layout.addWidget(self.sync_method_combo)
         sync_layout.addLayout(method_layout)
         
-        sync_btn = QPushButton("🔄 Sync Time Now")
-        sync_btn.clicked.connect(self.sync_time)
-        sync_layout.addWidget(sync_btn)
+        timezone_layout = QHBoxLayout()
+        timezone_layout.addWidget(QLabel("Time Zone:"))
+        
+        self.timezone_combo = QComboBox()
+        self.timezone_combo.addItems(["UTC", "Local", "GMT+0", "GMT+1", "GMT+2", "GMT+3", "GMT+4", "GMT+5", "GMT+6", "GMT+7", "GMT+8", "GMT+9", "GMT+10", "GMT+11", "GMT+12", "GMT-1", "GMT-2", "GMT-3", "GMT-4", "GMT-5", "GMT-6", "GMT-7", "GMT-8", "GMT-9", "GMT-10", "GMT-11", "GMT-12"])
+        timezone_layout.addWidget(self.timezone_combo, stretch=1)
+        sync_layout.addLayout(timezone_layout)
         
         layout.addWidget(sync_group)
         layout.addStretch()
@@ -137,7 +141,7 @@ class TimeDialog(QDialog):
         button_layout = QHBoxLayout()
         button_layout.addStretch()
         
-        save_btn = QPushButton("💾 Save & Send")
+        save_btn = QPushButton("OK")
         save_btn.clicked.connect(self.save_and_send)
         button_layout.addWidget(save_btn)
         
@@ -175,7 +179,7 @@ class TimeDialog(QDialog):
                 return
             
             property_keys = ["time", "time.timeZone", "time.sync"]
-            response = self.huidu_controller.get_device_property([self.controller_id])
+            response = self.huidu_controller.get_device_property([self.controller_id], property_keys)
             
             if response.get("message") == "ok" and response.get("data"):
                 device_data_list = response.get("data", [])
@@ -191,6 +195,13 @@ class TimeDialog(QDialog):
                     time_zone = device_data.get("time.timeZone", "")
                     if time_zone:
                         self.time_settings["time.timeZone"] = time_zone
+                        timezone_index = self.timezone_combo.findText(time_zone)
+                        if timezone_index >= 0:
+                            self.timezone_combo.setCurrentIndex(timezone_index)
+                        else:
+                            self.timezone_combo.setCurrentIndex(1)
+                    else:
+                        self.timezone_combo.setCurrentIndex(1)
                     
                     logger.info(f"Loaded time settings from device: {device_data}")
         except Exception as e:
@@ -211,8 +222,9 @@ class TimeDialog(QDialog):
             if use_ntp:
                 properties["time.ntp"] = "ntp.huidu.cn"
             
-            if "time.timeZone" in self.time_settings:
-                properties["time.timeZone"] = self.time_settings["time.timeZone"]
+            selected_timezone = self.timezone_combo.currentText()
+            if selected_timezone:
+                properties["time.timeZone"] = selected_timezone
             
             response = self.huidu_controller.set_device_property(properties, [self.controller_id])
             
