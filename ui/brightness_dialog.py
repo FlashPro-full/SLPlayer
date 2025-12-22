@@ -512,42 +512,18 @@ class BrightnessDialog(QDialog):
                     output = data.get("out", {})
                     
                     mode = output.get("mode", {}).get("value", "none")
-                    default_luminance_str = output.get("default", {}).get("value", "none")
-                    sensor_max_luminance_str = output.get("sensor", {}).get("max", "none")
-                    sensor_min_luminance_str = output.get("sensor", {}).get("min", "none")
-                    sensor_time_str = output.get("sensor", {}).get("time", "none")
+                    default_luminance = output.get("default", {}).get("value", "none")
+                    sensor_max_luminance = output.get("sensor", {}).get("max", "none")
+                    sensor_min_luminance = output.get("sensor", {}).get("min", "none")
+                    sensor_time = output.get("sensor", {}).get("time", "none")
                     schedule = output.get("poly", {}).get("item", [])
-                    
-                    try:
-                        default_luminance = int(default_luminance_str) if default_luminance_str != "none" else 100
-                    except (ValueError, TypeError):
-                        default_luminance = 100
-                    
-                    try:
-                        sensor_max_luminance = int(sensor_max_luminance_str) if sensor_max_luminance_str != "none" else 100
-                    except (ValueError, TypeError):
-                        sensor_max_luminance = 100
-                    
-                    try:
-                        sensor_min_luminance = int(sensor_min_luminance_str) if sensor_min_luminance_str != "none" else 1
-                    except (ValueError, TypeError):
-                        sensor_min_luminance = 1
-                    
-                    try:
-                        sensor_time = int(sensor_time_str) if sensor_time_str != "none" else 0
-                    except (ValueError, TypeError):
-                        sensor_time = 0
 
                     if schedule:
                         for data in schedule:
                             item = data.get("@attributes", {})
                             checked = True if item.get("enable", "false") == "true" else False
                             time_str = item.get("start", {}).get("value", "08:00:00")
-                            brightness_str = item.get("percent", {}).get("value", "100")
-                            try:
-                                brightness = int(brightness_str) if brightness_str != "none" else 100
-                            except (ValueError, TypeError):
-                                brightness = 100
+                            brightness = item.get("percent", {}).get("value", "100")
                             self.add_schedule_item(checked, time_str, brightness)
                     
                     self.default_widget.setVisible(mode == "default")
