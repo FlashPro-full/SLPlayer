@@ -271,15 +271,21 @@ class TimeDialog(QDialog):
                     if time_zone:
                         time_zone_value = time_zone.get("value", "")
                         time_zone_id = time_zone.get("id", "")
-                        timeZone = "(" + time_zone_value + ") " + time_zone_id.split("/")[1]
-                        for timezone in self.timezone_combo.items():
-                            if timezone.text() == timeZone:
-                                self.timezone_combo.setCurrentIndex(timezone.get("index"))
-                                break
+                        if time_zone_value and time_zone_id:
+                            try:
+                                timeZone = f"({time_zone_value}) {time_zone_id.split('/')[-1]}"
+                                for i in range(self.timezone_combo.count()):
+                                    if self.timezone_combo.itemText(i) == timeZone:
+                                        self.timezone_combo.setCurrentIndex(i)
+                                        break
+                            except Exception:
+                                self._set_default_timezone()
+                        else:
+                            self._set_default_timezone()
                     else:
                         self._set_default_timezone()
                     
-                    logger.info(f"Loaded time settings from device: {time_info}")
+                    logger.info(f"Loaded time settings from device: {output}")
         except Exception as e:
             logger.error(f"Error loading time settings from device: {e}", exc_info=True)
     
