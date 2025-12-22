@@ -107,7 +107,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def _connect_signals(self):
         self.control_toolbar.action_triggered.connect(self.on_toolbar_action)
         self.program_toolbar.new_program_requested.connect(self._on_new_program)
-        self.program_toolbar.new_screen_requested.connect(self._on_new_screen)
+        self.program_toolbar.export_requested.connect(self._on_save_requested)
         self.device_toolbar.time_requested.connect(self._on_time_requested)
         self.device_toolbar.brightness_requested.connect(self._on_brightness_requested)
         self.device_toolbar.power_requested.connect(self._on_power_requested)

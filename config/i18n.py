@@ -171,6 +171,7 @@ _STRINGS: Dict[str, Dict[str, str]] = {
     "program_list.add_hdmi": {"en": "🔌 Add HDMI", "it": "🔌 Aggiungi HDMI", "pl": "🔌 Dodaj HDMI"},
     # Toolbar
     "toolbar.program_tooltip": {"en": "Program", "it": "Programma", "pl": "Program"},
+    "toolbar.export_tooltip": {"en": "Export", "it": "Esporta", "pl": "Eksportuj"},
     "toolbar.play_tooltip": {"en": "Play", "it": "Riproduci", "pl": "Odtwórz"},
     "toolbar.pause_tooltip": {"en": "Pause", "it": "Pausa", "pl": "Wstrzymaj"},
     "toolbar.stop_tooltip": {"en": "Stop", "it": "Ferma", "pl": "Zatrzymaj"},

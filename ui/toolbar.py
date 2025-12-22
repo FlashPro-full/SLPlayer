@@ -148,7 +148,7 @@ class BaseToolbar(QToolBar):
 class ProgramToolbar(BaseToolbar):
     
     new_program_requested = pyqtSignal()
-    new_screen_requested = pyqtSignal()
+    export_requested = pyqtSignal()
     
     def __init__(self, parent=None):
         super().__init__("Program", parent)
@@ -161,10 +161,10 @@ class ProgramToolbar(BaseToolbar):
         program_action.triggered.connect(self.new_program_requested.emit)
         self.addAction(program_action)
         
-        screen_action = QAction("🖥 Screen", self)
-        screen_action.setToolTip(tr("toolbar.screen_tooltip"))
-        screen_action.triggered.connect(self.new_screen_requested.emit)
-        self.addAction(screen_action)
+        export_action = QAction("💾 Export", self)
+        export_action.setToolTip(tr("toolbar.export_tooltip"))
+        export_action.triggered.connect(self.export_requested.emit)
+        self.addAction(export_action)
 
 
 class ContentTypesToolbar(BaseToolbar):
