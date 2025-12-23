@@ -154,8 +154,6 @@ DIALOG_STYLE = """
 
 class ScheduleDialog(QDialog):
     
-    settings_changed = pyqtSignal()
-    
     def __init__(self, parent=None, screen_manager: Optional[ScreenManager] = None):
         super().__init__(parent)
         self.screen_manager = screen_manager
@@ -332,7 +330,6 @@ class ScheduleDialog(QDialog):
         if edit_dialog.exec():
             program.modified = datetime.now().isoformat()
             self.load_programs()
-            self.settings_changed.emit()
     
     def save_schedules(self):
         if not self.screen_manager:
@@ -344,7 +341,6 @@ class ScheduleDialog(QDialog):
                     program.modified = datetime.now().isoformat()
             
             QMessageBox.information(self, "Success", "Program schedules saved.")
-            self.settings_changed.emit()
             self.accept()
         except Exception as e:
             logger.error(f"Error saving schedules: {e}", exc_info=True)

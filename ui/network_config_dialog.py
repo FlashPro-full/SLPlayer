@@ -91,8 +91,6 @@ DIALOG_STYLE = """
 
 class NetworkConfigDialog(QDialog):
     
-    settings_changed = pyqtSignal(dict)
-    
     def __init__(self, parent=None, controller=None):
         super().__init__(parent)
         self.controller = controller
@@ -476,7 +474,6 @@ class NetworkConfigDialog(QDialog):
                 else:
                     QMessageBox.information(self, "Success", 
                                           "Network settings saved. Controller may need to be rebooted for changes to take effect.")
-                    self.settings_changed.emit(properties)
                     self.accept()
             else:
                 error_msg = response.get("data", "Unknown error")

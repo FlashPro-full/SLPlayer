@@ -263,8 +263,6 @@ DIALOG_STYLE = """
 
 class BrightnessDialog(QDialog):
     
-    settings_changed = pyqtSignal(dict)
-    
     def __init__(self, parent=None, controller=None, screen_name: Optional[str] = None):
         super().__init__(parent)
         self.controller = controller
@@ -565,7 +563,6 @@ class BrightnessDialog(QDialog):
             
             if response.get("message") == "ok":
                 QMessageBox.information(self, "Success", "Brightness settings saved and sent to controller.")
-                self.settings_changed.emit(properties)
                 self.accept()
             else:
                 error_msg = response.get("data", "Unknown error")

@@ -83,8 +83,6 @@ DIALOG_STYLE = """
 
 class TimeDialog(QDialog):
     
-    settings_changed = pyqtSignal(dict)
-    
     def __init__(self, parent=None, controller=None, screen_name: Optional[str] = None):
         super().__init__(parent)
         self.controller = controller
