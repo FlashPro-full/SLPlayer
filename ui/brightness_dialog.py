@@ -505,11 +505,11 @@ class BrightnessDialog(QDialog):
                     data = XMLToJSONConverter.convert(xml_string)
                     output = data.get("out", {})
                     
-                    mode = output.get("mode", {}).get("value", "none")
-                    default_luminance = output.get("default", {}).get("value", "none")
-                    sensor_max_luminance = output.get("sensor", {}).get("max", "none")
-                    sensor_min_luminance = output.get("sensor", {}).get("min", "none")
-                    sensor_time = output.get("sensor", {}).get("time", "none")
+                    mode = output.get("mode", {}).get("value", None)
+                    default_luminance = output.get("default", {}).get("value", None)
+                    sensor_max_luminance = output.get("sensor", {}).get("max", None)
+                    sensor_min_luminance = output.get("sensor", {}).get("min", None)
+                    sensor_time = output.get("sensor", {}).get("time", None)
                     schedule = output.get("ploy", {}).get("item", [])
 
                     if schedule:
@@ -568,7 +568,7 @@ class BrightnessDialog(QDialog):
                 properties["ploy.item"] = []
                 for item in self.schedule_items:
                     properties["ploy.item"].append({
-                        "enable": item["checkbox"].isChecked(),
+                        "enable": "true" if item["checkbox"].isChecked() else "false",
                         "start": item["time_edit"].time().toString("HH:mm:ss"),
                         "percent": item["slider"].value()
                     })

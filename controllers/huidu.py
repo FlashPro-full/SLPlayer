@@ -340,11 +340,11 @@ class HuiduController:
             if properties is None:
                 properties = {}
             
-            mode = properties.get('mode', 'none')
-            default = properties.get('default', 'none')
-            sensor_max = properties.get('sensor.max', 'none')
-            sensor_min = properties.get('sensor.min', 'none')
-            sensor_time = properties.get('sensor.time', 'none')
+            mode = properties.get('mode', None)
+            default = properties.get('default', None)
+            sensor_max = properties.get('sensor.max', None)
+            sensor_min = properties.get('sensor.min', None)
+            sensor_time = properties.get('sensor.time', None)
             ploy_items = properties.get('ploy.item', [])
             if not isinstance(ploy_items, list):
                 ploy_items = []
@@ -352,22 +352,22 @@ class HuiduController:
             for item in ploy_items:
                 if isinstance(item, dict):
                     ploy_item += f"""
-                <item enable="{item.get('enable', 'false')}" start="{item.get('start', '08:00:00')}" percent="{item.get('percent', '100')}" />
-                """
+                        <item enable="{item.get('enable', 'false')}" start="{item.get('start', '08:00:00')}" percent="{item.get('percent', '100')}" />
+                        """
 
             body = f"""
-            <?xml version='1.0' encoding='utf-8'?>
-                <sdk guid="##GUID">
-                    <in method="SetLuminancePloy">
-                        <mode value="{mode}"/>
-                        <default value="{default}"/>
-                        <sensor max="{sensor_max}" min="{sensor_min}" time="{sensor_time}" />
-                        <ploy>
-                            {ploy_item}    
-                        </ploy>
-                    </in>
-                </sdk>
-            """
+                <?xml version='1.0' encoding='utf-8'?>
+                    <sdk guid="##GUID">
+                        <in method="SetLuminancePloy">
+                            <mode value="{mode}"/>
+                            <default value="{default}"/>
+                            <sensor max="{sensor_max}" min="{sensor_min}" time="{sensor_time}" />
+                            <ploy>
+                                {ploy_item}    
+                            </ploy>
+                        </in>
+                    </sdk>
+                """
             result = self._sign_header(headers, body, url)
             if isinstance(result, str):
                 url = result
@@ -390,24 +390,10 @@ class HuiduController:
                 'Content-Type': 'application/xml',
                 'sdkKey': self.sdk_key,
             }
-        except Exception as e:
-            logger.error(f"Error getting network info: {e}")
-            return {"message": "error", "data": str(e)}
-    
-    def set_network_info(self, device_ids: Optional[List[str]] = None, properties: Optional[Dict[str, str | int | List[Dict[str, str]]]] = None) -> Dict:
-        try:
-            device_id_str = ",".join(device_ids) if device_ids else ""
-            url = f"{self.host}/raw/{device_id_str}"
-            headers = {
-                'Content-Type': 'application/xml',
-                'sdkKey': self.sdk_key,
-            }
             body = """
             <?xml version='1.0' encoding='utf-8'?>
                 <sdk guid="##GUID">
-                    <in method="SetNetworkInfo">
-                        <network value="{network}"/>
-                    </in>
+                    <in method="GetNetworkInfo"/>
                 </sdk>
             """
             result = self._sign_header(headers, body, url)
@@ -421,7 +407,7 @@ class HuiduController:
             logger.info(f"SDK API Response Body: {response_text}")
             return json.loads(response_text)
         except Exception as e:
-            logger.error(f"Error setting network info: {e}")
+            logger.error(f"Error getting network info: {e}")
             return {"message": "error", "data": str(e)}
     
     def get_device_status(self, device_ids: Optional[List[str]] = None) -> Dict:

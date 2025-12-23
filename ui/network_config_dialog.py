@@ -116,10 +116,8 @@ class NetworkConfigDialog(QDialog):
         layout.setSpacing(15)
         layout.setContentsMargins(20, 20, 20, 20)
         
-
         tabs = QTabWidget()
         
-
         ip_tab = self.create_ip_tab()
         tabs.addTab(ip_tab, "🌐 IP Configuration")
         
@@ -164,12 +162,14 @@ class NetworkConfigDialog(QDialog):
         self.subnet_mask_edit = QLineEdit()
         self.subnet_mask_edit.setPlaceholderText("255.255.255.0")
         self.subnet_mask_edit.setEnabled(False)
+        self.subnet_mask_edit.setReadOnly(True)
         ip_layout.addRow("Subnet Mask:", self.subnet_mask_edit)
         
 
         self.gateway_edit = QLineEdit()
         self.gateway_edit.setPlaceholderText("192.168.1.1")
         self.gateway_edit.setEnabled(False)
+        self.gateway_edit.setReadOnly(True)
         ip_layout.addRow("Gateway:", self.gateway_edit)
         
 

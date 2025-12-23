@@ -3,7 +3,8 @@ from PyQt5.QtWidgets import (
     QCheckBox, QTableWidget, QTableWidgetItem, QHeaderView, QTimeEdit,
     QMessageBox, QDateEdit, QLineEdit, QWidget
 )
-from PyQt5.QtCore import Qt, QTime, QDate, pyqtSignal
+from PyQt5.QtCore import Qt, QTime, QDate, pyqtSignal, QSize
+from PyQt5.QtGui import QPainter, QColor
 from typing import Optional, Dict, Any, List
 from controllers.huidu import HuiduController
 from utils.logger import get_logger
@@ -138,6 +139,45 @@ DIALOG_STYLE = """
 """ + TABLE_STYLE
 
 
+class ToggleSwitch(QCheckBox):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFixedSize(50, 26)
+        
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        
+        checked = self.isChecked()
+        width = 50
+        height = 26
+        radius = height / 2
+        handle_radius = 10
+        handle_margin = 3
+        
+        if checked:
+            track_color = QColor(255, 140, 0)
+            if self.underMouse():
+                track_color = QColor(255, 156, 32)
+            handle_x = width - handle_radius - handle_margin
+        else:
+            track_color = QColor(102, 102, 102)
+            if self.underMouse():
+                track_color = QColor(119, 119, 119)
+            handle_x = handle_radius + handle_margin
+        
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(track_color)
+        painter.drawRoundedRect(0, 0, width, height, radius, radius)
+        
+        painter.setBrush(QColor(255, 255, 255))
+        painter.drawEllipse(handle_x - handle_radius, height / 2 - handle_radius, 
+                          handle_radius * 2, handle_radius * 2)
+    
+    def sizeHint(self):
+        return QSize(50, 26)
+
+
 class PowerDialog(QDialog):
     
     def __init__(self, parent=None, controller=None, screen_name: Optional[str] = None):
@@ -169,11 +209,15 @@ class PowerDialog(QDialog):
         
         header_layout = QHBoxLayout()
         header_layout.addStretch()
-        self.power_toggle_btn = QPushButton("Turn On")
-        self.power_toggle_btn.setFixedWidth(100)
-        self.power_toggle_btn.setCheckable(True)
+        toggle_container = QWidget()
+        toggle_layout = QHBoxLayout(toggle_container)
+        toggle_layout.setContentsMargins(0, 0, 0, 0)
+        toggle_layout.setSpacing(10)
+        self.power_toggle_btn = ToggleSwitch()
         self.power_toggle_btn.toggled.connect(self.toggle_power)
-        header_layout.addWidget(self.power_toggle_btn)
+        toggle_layout.addWidget(QLabel("Power"))
+        toggle_layout.addWidget(self.power_toggle_btn)
+        header_layout.addWidget(toggle_container)
         layout.addLayout(header_layout)
         
         schedule_group = QGroupBox("On/Off Schedule")
@@ -340,7 +384,6 @@ class PowerDialog(QDialog):
                     is_on = power_status == "true"
                     self.power_toggle_btn.blockSignals(True)
                     self.power_toggle_btn.setChecked(is_on)
-                    self.power_toggle_btn.setText("Turn Off" if is_on else "Turn On")
                     self.power_toggle_btn.blockSignals(False)
             
             response = self.huidu_controller.get_schedule_task([self.controller_id], ["screen"])
@@ -375,25 +418,21 @@ class PowerDialog(QDialog):
             if checked:
                 response = self.huidu_controller.turn_on_screen([self.controller_id])
                 if response.get("message") == "ok":
-                    self.power_toggle_btn.setText("Turn Off")
                     QMessageBox.information(self, "Success", "Device turned on.")
                 else:
                     error_msg = response.get("data", "Unknown error")
                     self.power_toggle_btn.blockSignals(True)
                     self.power_toggle_btn.setChecked(False)
-                    self.power_toggle_btn.setText("Turn On")
                     self.power_toggle_btn.blockSignals(False)
                     QMessageBox.warning(self, "Failed", f"Failed to turn device on: {error_msg}.")
             else:
                 response = self.huidu_controller.turn_off_screen([self.controller_id])
                 if response.get("message") == "ok":
-                    self.power_toggle_btn.setText("Turn On")
                     QMessageBox.information(self, "Success", "Device turned off.")
                 else:
                     error_msg = response.get("data", "Unknown error")
                     self.power_toggle_btn.blockSignals(True)
                     self.power_toggle_btn.setChecked(True)
-                    self.power_toggle_btn.setText("Turn Off")
                     self.power_toggle_btn.blockSignals(False)
                     QMessageBox.warning(self, "Failed", f"Failed to turn device off: {error_msg}.")
             
