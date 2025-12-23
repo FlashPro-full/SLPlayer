@@ -251,17 +251,16 @@ class NetworkConfigDialog(QDialog):
         gateway = ""
         try:
             system = platform.system()
-            logger.info(f"System: {system}")
+
             if system == "Windows":
                 result = subprocess.run(['ipconfig'], capture_output=True, text=True, timeout=5)
                 output = result.stdout
-                logger.info(f"Output: {output}")
                 for line in output.split('\n'):
-                    if 'Subnet Mask' in line or 'Subnetmask' in line:
+                    if 'Subnet mask' in line:
                         match = re.search(r'(\d+\.\d+\.\d+\.\d+)', line)
                         if match:
                             subnet = match.group(1)
-                    if 'Default Gateway' in line or 'Standardgateway' in line:
+                    if 'Gateway' in line or 'Standardgateway' in line:
                         match = re.search(r'(\d+\.\d+\.\d+\.\d+)', line)
                         if match:
                             gateway = match.group(1)

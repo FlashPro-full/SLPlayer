@@ -83,6 +83,12 @@ DIALOG_STYLE = """
         background-color: #555555;
         color: #888888;
     }
+    QPushButton:checked {
+        background-color: #2A7A2A;
+    }
+    QPushButton:checked:hover {
+        background-color: #3A8A3A;
+    }
     QGroupBox {
         border: 1px solid #555555;
         border-radius: 4px;
@@ -167,7 +173,8 @@ class PowerDialog(QDialog):
         header_layout.addStretch()
         self.power_toggle_btn = QPushButton("Turn On")
         self.power_toggle_btn.setFixedWidth(100)
-        self.power_toggle_btn.clicked.connect(self.toggle_power)
+        self.power_toggle_btn.setCheckable(True)
+        self.power_toggle_btn.toggled.connect(self.toggle_power)
         header_layout.addWidget(self.power_toggle_btn)
         layout.addLayout(header_layout)
         
@@ -327,6 +334,17 @@ class PowerDialog(QDialog):
             if not self.controller_id:
                 return
             
+            response = self.huidu_controller.get_device_status([self.controller_id])
+            if response.get("message") == "ok" and response.get("data"):
+                data = response.get("data", [])[0]
+                if data.get("message") == "ok":
+                    power_status = data.get("data", {}).get("screen.openStatus", "false")
+                    is_on = power_status == "true"
+                    self.power_toggle_btn.blockSignals(True)
+                    self.power_toggle_btn.setChecked(is_on)
+                    self.power_toggle_btn.setText("Turn Off" if is_on else "Turn On")
+                    self.power_toggle_btn.blockSignals(False)
+            
             response = self.huidu_controller.get_schedule_task([self.controller_id], ["screen"])
             
             if response.get("message") == "ok" and response.get("data"):
@@ -347,20 +365,26 @@ class PowerDialog(QDialog):
         except Exception as e:
             logger.error(f"Error loading power schedule from device: {e}", exc_info=True)
     
-    def toggle_power(self):
+    def toggle_power(self, checked):
         try:
             if not self.controller_id:
+                self.power_toggle_btn.blockSignals(True)
+                self.power_toggle_btn.setChecked(not checked)
+                self.power_toggle_btn.blockSignals(False)
                 QMessageBox.warning(self, "No Controller", "No controller connected.")
                 return
             
-            current_text = self.power_toggle_btn.text()
-            if current_text == "Turn On":
+            if checked:
                 response = self.huidu_controller.turn_on_screen([self.controller_id])
                 if response.get("message") == "ok":
                     self.power_toggle_btn.setText("Turn Off")
                     QMessageBox.information(self, "Success", "Device turned on.")
                 else:
                     error_msg = response.get("data", "Unknown error")
+                    self.power_toggle_btn.blockSignals(True)
+                    self.power_toggle_btn.setChecked(False)
+                    self.power_toggle_btn.setText("Turn On")
+                    self.power_toggle_btn.blockSignals(False)
                     QMessageBox.warning(self, "Failed", f"Failed to turn device on: {error_msg}.")
             else:
                 response = self.huidu_controller.turn_off_screen([self.controller_id])
@@ -369,10 +393,17 @@ class PowerDialog(QDialog):
                     QMessageBox.information(self, "Success", "Device turned off.")
                 else:
                     error_msg = response.get("data", "Unknown error")
+                    self.power_toggle_btn.blockSignals(True)
+                    self.power_toggle_btn.setChecked(True)
+                    self.power_toggle_btn.setText("Turn Off")
+                    self.power_toggle_btn.blockSignals(False)
                     QMessageBox.warning(self, "Failed", f"Failed to turn device off: {error_msg}.")
             
         except Exception as e:
             logger.error(f"Error toggling power: {e}", exc_info=True)
+            self.power_toggle_btn.blockSignals(True)
+            self.power_toggle_btn.setChecked(not checked)
+            self.power_toggle_btn.blockSignals(False)
             QMessageBox.critical(self, "Error", f"Error toggling power: {str(e)}")
     
     def save_and_send(self):
