@@ -456,7 +456,6 @@ class ControllerDialog(QDialog):
             from utils.xml_converter import XMLToJSONConverter
             from core.soo_file_config import SOOFileConfig, ScreenPropertiesConfig
             from utils.app_data import get_app_data_dir
-            from pathlib import Path
             import json
             
             huidu_controller = HuiduController()
@@ -467,25 +466,20 @@ class ControllerDialog(QDialog):
                 QMessageBox.warning(self, "Download Failed", f"Failed to get programs from device: {error_msg}")
                 return
             
-            response_data = response.get("data")
-            if not response_data:
+            response_data_list = response.get("data")
+            if not response_data_list or not isinstance(response_data_list, list) or len(response_data_list) == 0:
                 QMessageBox.warning(self, "Download Failed", "No program data received from device.")
                 return
             
-            xml_string = None
-            if isinstance(response_data, list) and len(response_data) > 0:
-                first_item = response_data[0]
-                if isinstance(first_item, dict) and first_item.get("message") == "ok":
-                    xml_string = first_item.get("data")
-            elif isinstance(response_data, str):
-                xml_string = response_data
+            response_data = response_data_list[0]
+            if not isinstance(response_data, dict) or response_data.get("message") != "ok":
+                QMessageBox.warning(self, "Download Failed", "Invalid response format from device.")
+                return
             
+            xml_string = response_data.get("data")
             if not xml_string or not isinstance(xml_string, str):
                 QMessageBox.warning(self, "Download Failed", "No XML data found in response.")
                 return
-            
-            import html
-            xml_string = html.unescape(xml_string)
             
             json_data = XMLToJSONConverter.convert(xml_string)
             if not json_data:
