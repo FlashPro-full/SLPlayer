@@ -513,7 +513,7 @@ class BrightnessDialog(QDialog):
                     schedule = output.get("ploy", {}).get("item", [])
 
                     if schedule:
-                        if schedule.isinstance(list):
+                        if type(schedule) == list:
                             for item in schedule:
                                 checked = True if item.get("enable", "false") == "true" else False
                                 time_str = item.get("start", "08:00:00")
