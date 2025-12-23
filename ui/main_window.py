@@ -398,7 +398,12 @@ class MainWindow(QtWidgets.QMainWindow):
             controller_id = self.controller_service.current_controller.get("controller_id")
         logger.info(f"Controller ID: {controller_id}")
         if controller_id:
-            existing_screen = self.file_manager.load_device_screen(controller_id)
+            from utils.app_data import get_app_data_dir
+            work_dir = get_app_data_dir() / "work"
+            work_dir.mkdir(parents=True, exist_ok=True)
+            file_path = str(work_dir / f"{controller_id}.soo")
+            
+            existing_screen = self.file_manager.load_screen_from_file(file_path)
             if existing_screen:
                 if existing_screen.id not in self.screen_manager._screens_by_id:
                     self.screen_manager.screens.append(existing_screen)
@@ -410,12 +415,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 if hasattr(self, 'screen_list_panel'):
                     self.screen_list_panel.refresh_screens(debounce=False)
             else:
-                from utils.app_data import get_app_data_dir
                 from core.screen_config import get_screen_config
-                work_dir = get_app_data_dir() / "work"
-                work_dir.mkdir(parents=True, exist_ok=True)
-                file_path = str(work_dir / f"{controller_id}.soo")
-                
                 config = get_screen_config()
                 width = config.get("width", 1920) if config else 1920
                 height = config.get("height", 1080) if config else 1080

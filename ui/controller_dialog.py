@@ -379,8 +379,9 @@ class ControllerDialog(QDialog):
         
         controller_type_item = self.table.item(row, 0)
         controller_resolution_item = self.table.item(row, 3)
-        
+        controller_name_item = self.table.item(row, 1)
         controller_type = controller_type_item.text()
+        controller_name = controller_name_item.text()
         resolution_text = controller_resolution_item.text()
         resolution_parts = resolution_text.split("x")
         width_str = resolution_parts[0] if len(resolution_parts) > 0 else "1920"
@@ -409,7 +410,7 @@ class ControllerDialog(QDialog):
             should_download = DownloadDialog.ask_download(self)
             
             if should_download:
-                self._download_programs_from_device(controller_id, controller_type, width, height)
+                self._download_programs_from_device(controller_id, controller_name, controller_type, width, height)
 
             if self.main_window:
                 self.main_window.close()
@@ -450,7 +451,7 @@ class ControllerDialog(QDialog):
                 self.main_window.raise_()
                 self.main_window.activateWindow()
     
-    def _download_programs_from_device(self, controller_id: str, controller_type: str, width: int, height: int):
+    def _download_programs_from_device(self, controller_id: str, controller_name: str, controller_type: str, width: int, height: int):
         try:
             from controllers.huidu import HuiduController
             from utils.xml_converter import XMLToJSONConverter
@@ -488,26 +489,28 @@ class ControllerDialog(QDialog):
             
             programs = []
             if isinstance(json_data, dict):
-                sdk_element = json_data.get("sdk", {})
-                if isinstance(sdk_element, dict):
-                    out_element = sdk_element.get("out", {})
-                    if isinstance(out_element, dict):
-                        if "message" in out_element:
-                            error_msg = out_element.get("message", "Unknown error")
-                            if error_msg != "ok":
-                                QMessageBox.warning(self, "Download Failed", f"Device returned error: {error_msg}")
-                                return
-                        program_list = out_element.get("program", [])
-                        if not isinstance(program_list, list):
-                            program_list = [program_list] if program_list else []
-                        programs = program_list
+                out_element = json_data.get("out", {})
+                if isinstance(out_element, dict):
+                    result_attr = out_element.get("@attributes", {})
+                    if isinstance(result_attr, dict) and result_attr.get("result") != "kSuccess":
+                        error_msg = result_attr.get("result", "Unknown error")
+                        QMessageBox.warning(self, "Download Failed", f"Device returned error: {error_msg}")
+                        return
+                    
+                    screen_element = out_element.get("screen", {})
+                    if isinstance(screen_element, dict):
+                        program_data = screen_element.get("program")
+                        if program_data:
+                            if not isinstance(program_data, list):
+                                program_data = [program_data]
+                            programs = program_data
             
             if not programs:
                 QMessageBox.information(self, "No Programs", "No programs found on the device.")
                 return
             
             screen_props = ScreenPropertiesConfig(
-                screen_name=f"Device_{controller_id}",
+                screen_name=controller_name,
                 width=width,
                 height=height,
                 controller_type=controller_type
