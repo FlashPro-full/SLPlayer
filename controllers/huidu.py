@@ -381,6 +381,48 @@ class HuiduController:
         except Exception as e:
             logger.error(f"Error setting time info: {e}")
             return {"message": "error", "data": str(e)}
+
+    def get_network_info(self, device_ids: Optional[List[str]] = None) -> Dict:
+        try:
+            device_id_str = ",".join(device_ids) if device_ids else ""
+            url = f"{self.host}/raw/{device_id_str}"
+            headers = {
+                'Content-Type': 'application/xml',
+                'sdkKey': self.sdk_key,
+            }
+        except Exception as e:
+            logger.error(f"Error getting network info: {e}")
+            return {"message": "error", "data": str(e)}
+    
+    def set_network_info(self, device_ids: Optional[List[str]] = None, properties: Optional[Dict[str, str | int | List[Dict[str, str]]]] = None) -> Dict:
+        try:
+            device_id_str = ",".join(device_ids) if device_ids else ""
+            url = f"{self.host}/raw/{device_id_str}"
+            headers = {
+                'Content-Type': 'application/xml',
+                'sdkKey': self.sdk_key,
+            }
+            body = """
+            <?xml version='1.0' encoding='utf-8'?>
+                <sdk guid="##GUID">
+                    <in method="SetNetworkInfo">
+                        <network value="{network}"/>
+                    </in>
+                </sdk>
+            """
+            result = self._sign_header(headers, body, url)
+            if isinstance(result, str):
+                url = result
+            logger.info(f"SDK API Request: POST {url}")
+            logger.info(f"SDK API Request Body: {body}")
+            response = requests.post(url, data=body, headers=headers)
+            response.raise_for_status()
+            response_text = response.text
+            logger.info(f"SDK API Response Body: {response_text}")
+            return json.loads(response_text)
+        except Exception as e:
+            logger.error(f"Error setting network info: {e}")
+            return {"message": "error", "data": str(e)}
     
     def get_device_status(self, device_ids: Optional[List[str]] = None) -> Dict:
         try:

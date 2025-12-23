@@ -510,20 +510,34 @@ class BrightnessDialog(QDialog):
                     sensor_max_luminance = output.get("sensor", {}).get("max", "none")
                     sensor_min_luminance = output.get("sensor", {}).get("min", "none")
                     sensor_time = output.get("sensor", {}).get("time", "none")
-                    schedule = output.get("poly", {}).get("item", [])
+                    schedule = output.get("ploy", {}).get("item", [])
 
                     if schedule:
-                        for data in schedule:
-                            item = data.get("@attributes", {})
+                        for item in schedule:
                             checked = True if item.get("enable", "false") == "true" else False
                             time_str = item.get("start", {}).get("value", "08:00:00")
                             brightness = item.get("percent", {}).get("value", "100")
                             self.add_schedule_item(checked, time_str, brightness)
                     
-                    self.default_widget.setVisible(mode == "default")
-                    self.custom_widget.setVisible(mode == "poly")
-                    self.automatic_widget.setVisible(mode == "sensor")
-
+                    if mode == "default":
+                        self.mode_combo.setCurrentText("Default mode")
+                        self.default_widget.setVisible(True)
+                        self.automatic_widget.setVisible(False)
+                        self.custom_widget.setVisible(False)
+                        self.onset_time_group.setVisible(False)
+                    elif mode == "sensor":
+                        self.mode_combo.setCurrentText("Automatic mode")
+                        self.automatic_widget.setVisible(True)
+                        self.custom_widget.setVisible(False)
+                        self.default_widget.setVisible(False)
+                        self.onset_time_group.setVisible(False)
+                    elif mode == "ploys":
+                        self.mode_combo.setCurrentText("Custom mode")
+                        self.custom_widget.setVisible(True)
+                        self.onset_time_group.setVisible(True)
+                        self.automatic_widget.setVisible(False)
+                        self.default_widget.setVisible(False)
+                    
                     self.default_brightness_slider.setValue(int(default_luminance))
                     self.brightness_range_slider.setValues(int(sensor_min_luminance), int(sensor_max_luminance))
                     self.time_spin.setValue(int(sensor_time))
