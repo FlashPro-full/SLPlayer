@@ -23,10 +23,7 @@ class EventBus(QObject):
     file_saved = pyqtSignal(str)
     file_error = pyqtSignal(str, str)
     
-    controller_connected = pyqtSignal(object)
-    controller_disconnected = pyqtSignal()
     controller_discovered = pyqtSignal(list)
-    controller_error = pyqtSignal(str)
     controller_data_imported = pyqtSignal(dict)
     
     ui_refresh_needed = pyqtSignal()

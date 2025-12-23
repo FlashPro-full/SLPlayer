@@ -406,6 +406,8 @@ class ControllerDialog(QDialog):
             #     )
             #     return
             
+            self.controller_service.set_current_controller(controller_id)
+            
             from ui.download_dialog import DownloadDialog
             should_download = DownloadDialog.ask_download(self)
             
@@ -434,8 +436,6 @@ class ControllerDialog(QDialog):
             from core.screen_config import set_screen_config
             
             set_screen_config(controller_type, width, height, 0, None)
-            
-            self.controller_service.set_current_controller(controller_id)
             
             if self.main_window:
                 self.main_window.update_controller(self.controller_service.get_current_controller())
@@ -527,30 +527,6 @@ class ControllerDialog(QDialog):
             
             with open(file_path, 'w', encoding='utf-8') as f:
                 json.dump(file_config.to_dict(), f, indent=2, ensure_ascii=False)
-            
-            if self.main_window and self.main_window.file_manager:
-                screen = self.main_window.file_manager.load_screen_from_file(str(file_path))
-                if screen:
-                    if screen.id not in self.main_window.screen_manager._screens_by_id:
-                        self.main_window.screen_manager.screens.append(screen)
-                        self.main_window.screen_manager._screens_by_name[screen.name] = screen
-                        self.main_window.screen_manager._screens_by_id[screen.id] = screen
-                        self.main_window.screen_manager.current_screen = screen
-                        
-                        for program in screen.programs:
-                            self.main_window.screen_manager._programs_by_id[program.id] = program
-                        
-                        if hasattr(self.main_window, 'screen_list_panel'):
-                            self.main_window.screen_list_panel.refresh_screens(debounce=False)
-                        if hasattr(self.main_window, 'properties_panel'):
-                            self.main_window.properties_panel.set_screen(
-                                screen.name,
-                                screen.programs,
-                                self.main_window.program_manager,
-                                self.main_window.screen_manager
-                            )
-                        if hasattr(self.main_window, 'content_widget'):
-                            self.main_window.content_widget.update()
             
             QMessageBox.information(self, "Download Complete", f"Downloaded {len(programs)} program(s) and saved to {file_path}")
             

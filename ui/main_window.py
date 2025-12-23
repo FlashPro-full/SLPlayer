@@ -38,6 +38,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.screen_manager = ScreenManager()
         self.file_manager = FileManager(self.screen_manager)
         self.controller_service = get_controller_service()
+        self.current_controller = self.controller_service.get_current_controller()
         self._latest_file_loaded = False
         self._pending_new_screen = False
         
@@ -131,17 +132,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.screen_list_panel.program_copy_requested.connect(self._on_program_copy)
         self.screen_list_panel.content_copy_requested.connect(self._on_content_copy)
         self.content_types_toolbar.content_type_selected.connect(self._on_content_type_selected)
-        
-        from core.event_bus import event_bus
-        event_bus.controller_connected.connect(self._on_controller_connected)
-        event_bus.controller_disconnected.connect(self._on_controller_disconnected)
-        event_bus.controller_error.connect(self._on_controller_error)
-        
-        if self.controller_service.current_controller:
-            self._on_controller_connected(self.controller_service.current_controller)
     
     def on_send_program(self):
-        controller_dict = self.controller_service.current_controller
+        controller_dict = self.current_controller
         controller_type = controller_dict.get("controller_type", "").lower() if isinstance(controller_dict, dict) else ""
         
         if controller_type != "huidu":
@@ -182,7 +175,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.on_clear_program()
     
     def on_insert_program(self):
-        controller_dict = self.controller_service.current_controller
+        controller_dict = self.current_controller
         controller_type = controller_dict.get("controller_type", "").lower() if isinstance(controller_dict, dict) else ""
         
         if controller_type != "huidu":
@@ -215,7 +208,7 @@ class MainWindow(QtWidgets.QMainWindow):
             QMessageBox.critical(self, "Error", f"An error occurred while sending program:\n{str(e)}")
     
     def on_clear_program(self):
-        controller_dict = self.controller_service.current_controller
+        controller_dict = self.current_controller
         controller_type = controller_dict.get("controller_type", "").lower() if isinstance(controller_dict, dict) else ""
         
         if controller_type != "huidu":
@@ -394,8 +387,8 @@ class MainWindow(QtWidgets.QMainWindow):
             return
         logger.info(f"{self.controller_service}")
         controller_id = None
-        if self.controller_service and self.controller_service.current_controller:
-            controller_id = self.controller_service.current_controller.get("controller_id")
+        if self.controller_service and self.current_controller:
+            controller_id = self.current_controller.get("controller_id")
         logger.info(f"Controller ID: {controller_id}")
         if controller_id:
             from utils.app_data import get_app_data_dir
@@ -424,21 +417,6 @@ class MainWindow(QtWidgets.QMainWindow):
                 screen = self.screen_manager.create_screen_for_device(controller_id, controller_type, width, height, file_path)
                 self.file_manager.save_screen_to_file(screen, file_path)
                 self.load_soo_file(file_path, clear_existing=False)
-        else:
-            autosaved_screens = self.file_manager.load_autosaved_screens()
-            for screen in autosaved_screens:
-                if screen.id not in self.screen_manager._screens_by_id:
-                    self.screen_manager.screens.append(screen)
-                    self.screen_manager._screens_by_name[screen.name] = screen
-                    self.screen_manager._screens_by_id[screen.id] = screen
-                    for program in screen.programs:
-                        self.screen_manager._programs_by_id[program.id] = program
-            
-            if autosaved_screens and hasattr(self, 'screen_list_panel'):
-                self.screen_list_panel.refresh_screens(debounce=False)
-            elif not autosaved_screens:
-                if not self.screen_manager.screens:
-                    self.open_screen_settings_on_startup()
         
         if hasattr(self, 'content_widget') and self.screen_manager and self.screen_manager.current_screen:
             if self.screen_manager.current_screen.programs:
@@ -645,8 +623,8 @@ class MainWindow(QtWidgets.QMainWindow):
             startup_service = StartupService()
             controller_id, _ = startup_service.verify_license_at_startup()
             
-            if self.controller_service.is_online() and self.controller_service.current_controller:
-                controller_id = self.controller_service.current_controller.get('controller_id') or controller_id
+            if self.controller_service.is_online() and self.current_controller:
+                controller_id = self.current_controller.get('controller_id') or controller_id
             
             login_dialog = LoginDialog(controller_id=controller_id, parent=self)
             dialog_result = login_dialog.exec()
@@ -667,16 +645,13 @@ class MainWindow(QtWidgets.QMainWindow):
             logger.exception(f"Error showing login dialog: {e}")
             QMessageBox.critical(self, "Error", f"An error occurred while opening login dialog:\n{str(e)}")
     
-    def _on_controller_selected_from_discovery(self, ip: str, port: int, controller_type: str):
-        pass
-    
     def _on_network_config_requested(self):
         try:
             from ui.network_config_dialog import NetworkConfigDialog
             
             controller = None
             if self.controller_service and self.controller_service.is_online():
-                controller = self.controller_service.current_controller
+                controller = self.current_controller
             
             if not controller:
                 QMessageBox.warning(self, "No Controller", "Please connect to a controller first.")
@@ -694,7 +669,7 @@ class MainWindow(QtWidgets.QMainWindow):
             
             controller = None
             if self.controller_service and self.controller_service.is_online():
-                controller = self.controller_service.current_controller
+                controller = self.current_controller
             
             if not controller:
                 QMessageBox.warning(self, "No Controller", "Please connect to a controller first.")
@@ -716,7 +691,7 @@ class MainWindow(QtWidgets.QMainWindow):
             
             controller = None
             if self.controller_service and self.controller_service.is_online():
-                controller = self.controller_service.current_controller
+                controller = self.current_controller
             
             if not controller:
                 QMessageBox.warning(self, "No Controller", "Please connect to a controller first.")
@@ -738,7 +713,7 @@ class MainWindow(QtWidgets.QMainWindow):
             
             controller = None
             if self.controller_service and self.controller_service.is_online():
-                controller = self.controller_service.current_controller
+                controller = self.current_controller
             
             if not controller:
                 QMessageBox.warning(self, "No Controller", "Please connect to a controller first.")
@@ -772,22 +747,13 @@ class MainWindow(QtWidgets.QMainWindow):
             logger.exception(f"Error opening schedule dialog: {e}")
             QMessageBox.critical(self, "Error", f"An error occurred while opening the dialog:\n{str(e)}")
     
-    def _on_controller_connected(self, controller):
-        self.update_controller(controller)
-    
-    def _on_controller_disconnected(self):
-        self.update_controller(None)
-    
-    def _on_controller_error(self, error_message: str):
-        pass
-    
     def _update_license_dependent_actions(self):
         try:
             has_license = False
             is_online = self.controller_service.is_online()
             
             if is_online:
-                controller = self.controller_service.current_controller
+                controller = self.current_controller
                 if controller:
                     controller_id = controller.get("controller_id") if isinstance(controller, dict) else None
                     if controller_id:
@@ -820,10 +786,10 @@ class MainWindow(QtWidgets.QMainWindow):
     
     def _read_brightness_on_connection(self):
         try:
-            if not self.controller_service or not self.controller_service.current_controller:
+            if not self.controller_service or not self.current_controller:
                 return
             
-            controller = self.controller_service.current_controller
+            controller = self.current_controller
             if hasattr(controller, 'get_brightness'):
                 brightness = controller.get_brightness()
                 if brightness is not None:
@@ -835,7 +801,7 @@ class MainWindow(QtWidgets.QMainWindow):
     
     def _on_disconnect_controller_requested(self):
         try:
-            if self.controller_service and self.controller_service.current_controller:
+            if self.controller_service and self.current_controller:
                 reply = QMessageBox.question(
                     self,
                     "Disconnect Controller",
@@ -864,9 +830,6 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.status_bar.set_connection_status(is_online, controller_name)
             else:
                 self.status_bar.set_connection_status(False, "")
-    
-    def _clear_current_controller(self):
-        pass
     
     def _on_export_logs_requested(self):
         try:
@@ -935,7 +898,7 @@ class MainWindow(QtWidgets.QMainWindow):
             QMessageBox.warning(self, "Error", "Controller service is not available.")
             return
         
-        controller = self.controller_service.current_controller
+        controller = self.current_controller
         if not controller or not self.controller_service.is_online():
             reply = QMessageBox.question(
                 self,
@@ -1019,8 +982,8 @@ class MainWindow(QtWidgets.QMainWindow):
         try:
             if self.screen_manager and self.screen_manager.screens:
                 controller_id = None
-                if self.controller_service and self.controller_service.current_controller:
-                    controller_id = self.controller_service.current_controller.get('controller_id')
+                if self.controller_service and self.current_controller:
+                    controller_id = self.current_controller.get('controller_id')
                 saved_count = self.file_manager.save_all_screens(controller_id)
                 logger.info(f"Auto-saved {saved_count} screen(s) to work directory on close")
         except Exception as e:
