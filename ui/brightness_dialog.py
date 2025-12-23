@@ -515,8 +515,8 @@ class BrightnessDialog(QDialog):
                     if schedule:
                         for item in schedule:
                             checked = True if item.get("enable", "false") == "true" else False
-                            time_str = item.get("start", {}).get("value", "08:00:00")
-                            brightness = item.get("percent", {}).get("value", "100")
+                            time_str = item.get("start", "08:00:00")
+                            brightness = int(item.get("percent", "100"))
                             self.add_schedule_item(checked, time_str, brightness)
                     
                     if mode == "default":
