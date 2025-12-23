@@ -524,9 +524,9 @@ class BrightnessDialog(QDialog):
                     self.custom_widget.setVisible(mode == "poly")
                     self.automatic_widget.setVisible(mode == "sensor")
 
-                    self.default_brightness_slider.setValue(default_luminance)
-                    self.brightness_range_slider.setValues(sensor_min_luminance, sensor_max_luminance)
-                    self.time_spin.setValue(sensor_time)
+                    self.default_brightness_slider.setValue(int(default_luminance))
+                    self.brightness_range_slider.setValues(int(sensor_min_luminance), int(sensor_max_luminance))
+                    self.time_spin.setValue(int(sensor_time))
                     
         except Exception as e:
             logger.error(f"Error loading brightness settings from device: {e}", exc_info=True)
