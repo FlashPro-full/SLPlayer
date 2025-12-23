@@ -435,7 +435,6 @@ class NetworkConfigDialog(QDialog):
                 properties["eth.dhcp"] = "false"
                 new_ip = self.ip_address_edit.text().strip()
                 properties["eth.ip"] = new_ip
-                self._update_devicehost_config(new_ip)
                 subnet = self.subnet_mask_edit.text().strip()
                 if subnet:
                     properties["eth.subnet"] = subnet
@@ -471,6 +470,7 @@ class NetworkConfigDialog(QDialog):
                 
                 if reply == QMessageBox.Yes:
                     self.reboot_controller_silent()
+                    self._update_devicehost_config(new_ip)
                 else:
                     QMessageBox.information(self, "Success", 
                                           "Network settings saved. Controller may need to be rebooted for changes to take effect.")

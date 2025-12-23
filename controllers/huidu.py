@@ -523,6 +523,37 @@ class HuiduController:
         except Exception as e:
             logger.error(f"Error turning off screen: {e}")
             return {"message": "error", "data": str(e)}
+
+    def get_programs(self, device_ids: Optional[List[str]] = None) -> Dict:
+        try:
+            device_id_str = ",".join(device_ids) if device_ids else ""
+            url = f"{self.host}/raw/{device_id_str}"
+            headers = {
+                'Content-Type': 'application/xml',
+                'sdkKey': self.sdk_key,
+            }
+            body = """
+            <?xml version='1.0' encoding='utf-8'?>
+                <sdk guid="##GUID">
+                    <in method="GetProgram"/>
+                </sdk>
+            """
+            result = self._sign_header(headers, body, url)
+            if isinstance(result, str):
+                url = result
+            logger.info(f"SDK API Request: POST {url}")
+            logger.info(f"SDK API Request Body: {body}")
+            response = requests.post(url, data=body, headers=headers)
+            response.raise_for_status()
+            response_text = response.text
+            logger.info(f"SDK API Response Body: {response_text}")
+            try:
+                return json.loads(response_text)
+            except json.JSONDecodeError:
+                return {"message": "ok", "data": response_text}
+        except Exception as e:
+            logger.error(f"Error getting programs: {e}")
+            return {"message": "error", "data": str(e)}
     
     def _upload_files_and_update_program(self, program: List[Dict]) -> List[Dict]:
         updated_program = []

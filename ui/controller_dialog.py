@@ -405,6 +405,12 @@ class ControllerDialog(QDialog):
             #     )
             #     return
             
+            from ui.download_dialog import DownloadDialog
+            should_download = DownloadDialog.ask_download(self)
+            
+            if should_download:
+                self._download_programs_from_device(controller_id, controller_type, width, height)
+
             if self.main_window:
                 self.main_window.close()
                 self.main_window = None
@@ -443,6 +449,102 @@ class ControllerDialog(QDialog):
                 self.main_window.show()
                 self.main_window.raise_()
                 self.main_window.activateWindow()
+    
+    def _download_programs_from_device(self, controller_id: str, controller_type: str, width: int, height: int):
+        try:
+            from controllers.huidu import HuiduController
+            from utils.xml_converter import XMLToJSONConverter
+            from core.soo_file_config import SOOFileConfig, ScreenPropertiesConfig
+            from utils.app_data import get_app_data_dir
+            from pathlib import Path
+            import json
+            
+            huidu_controller = HuiduController()
+            response = huidu_controller.get_programs([controller_id])
+            
+            if response.get("message") != "ok":
+                error_msg = response.get("data", "Unknown error")
+                QMessageBox.warning(self, "Download Failed", f"Failed to get programs from device: {error_msg}")
+                return
+            
+            xml_response = response.get("data")
+            if not xml_response:
+                QMessageBox.warning(self, "Download Failed", "No program data received from device.")
+                return
+            
+            json_data = XMLToJSONConverter.convert(xml_response)
+            if not json_data:
+                QMessageBox.warning(self, "Download Failed", "Failed to convert XML response.")
+                return
+            
+            programs = []
+            if isinstance(json_data, dict):
+                sdk_element = json_data.get("sdk", {})
+                if isinstance(sdk_element, dict):
+                    out_element = sdk_element.get("out", {})
+                    if isinstance(out_element, dict):
+                        if "message" in out_element:
+                            error_msg = out_element.get("message", "Unknown error")
+                            if error_msg != "ok":
+                                QMessageBox.warning(self, "Download Failed", f"Device returned error: {error_msg}")
+                                return
+                        program_list = out_element.get("program", [])
+                        if not isinstance(program_list, list):
+                            program_list = [program_list] if program_list else []
+                        programs = program_list
+            
+            if not programs:
+                QMessageBox.information(self, "No Programs", "No programs found on the device.")
+                return
+            
+            screen_props = ScreenPropertiesConfig(
+                screen_name=f"Device_{controller_id}",
+                width=width,
+                height=height,
+                controller_type=controller_type
+            )
+            
+            file_config = SOOFileConfig(
+                screen_properties=screen_props,
+                programs=programs
+            )
+            
+            work_dir = get_app_data_dir() / "work"
+            work_dir.mkdir(parents=True, exist_ok=True)
+            file_path = work_dir / f"{controller_id}.soo"
+            
+            with open(file_path, 'w', encoding='utf-8') as f:
+                json.dump(file_config.to_dict(), f, indent=2, ensure_ascii=False)
+            
+            if self.main_window and self.main_window.file_manager:
+                screen = self.main_window.file_manager.load_screen_from_file(str(file_path))
+                if screen:
+                    if screen.id not in self.main_window.screen_manager._screens_by_id:
+                        self.main_window.screen_manager.screens.append(screen)
+                        self.main_window.screen_manager._screens_by_name[screen.name] = screen
+                        self.main_window.screen_manager._screens_by_id[screen.id] = screen
+                        self.main_window.screen_manager.current_screen = screen
+                        
+                        for program in screen.programs:
+                            self.main_window.screen_manager._programs_by_id[program.id] = program
+                        
+                        if hasattr(self.main_window, 'screen_list_panel'):
+                            self.main_window.screen_list_panel.refresh_screens(debounce=False)
+                        if hasattr(self.main_window, 'properties_panel'):
+                            self.main_window.properties_panel.set_screen(
+                                screen.name,
+                                screen.programs,
+                                self.main_window.program_manager,
+                                self.main_window.screen_manager
+                            )
+                        if hasattr(self.main_window, 'content_widget'):
+                            self.main_window.content_widget.update()
+            
+            QMessageBox.information(self, "Download Complete", f"Downloaded {len(programs)} program(s) and saved to {file_path}")
+            
+        except Exception as e:
+            logger.error(f"Error downloading programs: {e}", exc_info=True)
+            QMessageBox.critical(self, "Download Error", f"An error occurred while downloading programs:\n{str(e)}")
     
     def on_license(self):
         selected_rows = self.table.selectionModel().selectedRows()
