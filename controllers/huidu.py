@@ -120,7 +120,7 @@ class HuiduController:
 
             url = f"{self.host}/api/file"
             
-            result = self._sign_header(self.headers, multipart_data, url)
+            result = self._sign_header(headers, multipart_data, url)
             if isinstance(result, str):
                 url = result
 
@@ -311,7 +311,7 @@ class HuiduController:
             body = """
             <?xml version='1.0' encoding='utf-8'?>
                 <sdk guid="##GUID">
-                    <in method="GetLuminancePoly"/>
+                    <in method="GetLuminancePloy"/>
                 </sdk>
             """
             result = self._sign_header(headers, body, url)
