@@ -467,12 +467,18 @@ class ControllerDialog(QDialog):
                 QMessageBox.warning(self, "Download Failed", f"Failed to get programs from device: {error_msg}")
                 return
             
-            xml_response = response.get("data")
-            if not xml_response:
+            response_data = response.get("data")
+            if not response_data:
                 QMessageBox.warning(self, "Download Failed", "No program data received from device.")
                 return
             
-            json_data = XMLToJSONConverter.convert(xml_response)
+            if isinstance(response_data, str):
+                json_data = XMLToJSONConverter.convert(response_data)
+            elif isinstance(response_data, (dict, list)):
+                json_data = response_data
+            else:
+                QMessageBox.warning(self, "Download Failed", f"Unexpected response format: {type(response_data).__name__}")
+                return
             if not json_data:
                 QMessageBox.warning(self, "Download Failed", "Failed to convert XML response.")
                 return
