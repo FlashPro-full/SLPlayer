@@ -488,11 +488,7 @@ class BrightnessDialog(QDialog):
             
             next_item = sorted_items[(i + 1) % len(sorted_items)]
             next_time_str = next_item["time_edit"].time().toString("HH:mm:ss")
-            
-            self.luminance_schedule.append({
-                "timeRange": f"{time_str}~{next_time_str}",
-                "data": f"{brightness}"
-            })
+
             lines.append(f"{i+1}. {time_str} ~ {next_time_str} : {brightness}%")
         
         self.onset_time_label.setText("\n".join(lines))
@@ -544,22 +540,28 @@ class BrightnessDialog(QDialog):
                 return
             
             mode = self.mode_combo.currentText()
+
+            properties = {}
             
             if mode == "Default mode":
-                properties = {}
-                properties["luminance"] = str(self.default_brightness_slider.value())
-                properties["luminance.mode"] = "default"
-                response = self.huidu_controller.set_device_property([self.controller_id], properties)
+                properties["default"] = str(self.default_brightness_slider.value())
+                properties["mode"] = "default"
             elif mode == "Automatic mode":
-                time = str(self.time_spin.value())
-                max = self.brightness_range_slider.getValues()[1]
-                min = self.brightness_range_slider.getValues()[0]
-                response = self.huidu_controller.set_luminance_info([self.controller_id], max, min, time)
+                properties["mode"] = "sensor"
+                properties["sensor.max"] = str(self.brightness_range_slider.getValues()[1])
+                properties["sensor.min"] = str(self.brightness_range_slider.getValues()[0])
+                properties["sensor.time"] = str(self.time_spin.value())
             elif mode == "Custom mode":
-                data = {
-                    "luminance": self.luminance_schedule
-                }
-                response = self.huidu_controller.set_schedule_task([self.controller_id], data)
+                properties["mode"] = "ploys"
+                properties["ploy.item"] = []
+                for item in self.schedule_items:
+                    properties["ploy.item"].append({
+                        "enable": item["checkbox"].isChecked(),
+                        "start": item["time_edit"].time().toString("HH:mm:ss"),
+                        "percent": item["slider"].value()
+                    })
+
+            response = self.huidu_controller.set_luminance_info([self.controller_id], properties)
             
             if response.get("message") == "ok":
                 QMessageBox.information(self, "Success", "Brightness settings saved and sent to controller.")

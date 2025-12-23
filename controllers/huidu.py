@@ -328,7 +328,7 @@ class HuiduController:
             logger.error(f"Error getting time info: {e}")
             return {"message": "error", "data": str(e)}
 
-    def set_luminance_info(self, device_ids: Optional[List[str]] = None, max: Optional[int] = None, min: Optional[int] = None, time: Optional[int] = None) -> Dict:
+    def set_luminance_info(self, device_ids: Optional[List[str]] = None, properties: Optional[Dict[str, str | int | List[Dict[str, str]]]] = None) -> Dict:
         try:
             device_id_str = ",".join(device_ids) if device_ids else ""
             url = f"{self.host}/raw/{device_id_str}"
@@ -337,13 +337,34 @@ class HuiduController:
                 'sdkKey': self.sdk_key,
             }
 
+            if properties is None:
+                properties = {}
+            
+            mode = properties.get('mode', 'none')
+            default = properties.get('default', 'none')
+            sensor_max = properties.get('sensor.max', 'none')
+            sensor_min = properties.get('sensor.min', 'none')
+            sensor_time = properties.get('sensor.time', 'none')
+            ploy_items = properties.get('ploy.item', [])
+            if not isinstance(ploy_items, list):
+                ploy_items = []
+            ploy_item = ""
+            for item in ploy_items:
+                if isinstance(item, dict):
+                    ploy_item += f"""
+                <item enable="{item.get('enable', 'false')}" start="{item.get('start', '08:00:00')}" percent="{item.get('percent', '100')}" />
+                """
+
             body = f"""
             <?xml version='1.0' encoding='utf-8'?>
                 <sdk guid="##GUID">
-                    <in method="SetLuminancePoly">
-                        <mode value="sensor"/>
-                        <default value=""/>
-                        <sensor max="{max}" min="{min}" time="{time}" />
+                    <in method="SetLuminancePloy">
+                        <mode value="{mode}"/>
+                        <default value="{default}"/>
+                        <sensor max="{sensor_max}" min="{sensor_min}" time="{sensor_time}" />
+                        <ploy>
+                            {ploy_item}    
+                        </ploy>
                     </in>
                 </sdk>
             """
