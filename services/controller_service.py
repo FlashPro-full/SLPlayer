@@ -52,7 +52,6 @@ class ControllerService(QObject):
                 break
         if self.current_controller:
             self.current_controller['is_online'] = controller_id in self.online_controller_ids
-            event_bus.controller_connected.emit(self.current_controller)
     
     def load_controllers_from_db(self):
         huidu_controllers = self.controller_db.get_all_huidu_controllers()
@@ -101,7 +100,6 @@ class ControllerService(QObject):
 
     def disconnect_controller(self) -> None:
         self.current_controller = None
-        event_bus.controller_disconnected.emit()
     
     def is_online(self) -> bool:
         if not self.current_controller:
