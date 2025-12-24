@@ -382,14 +382,11 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.screen_list_panel._clipboard_program_id = program_id
     
     def _load_autosaved_files(self):
-        logger.info(f"Loading autosaved files")
         if not self.file_manager or not self.screen_manager:
             return
-        logger.info(f"{self.controller_service}")
         controller_id = None
         if self.controller_service and self.current_controller:
             controller_id = self.current_controller.get("controller_id")
-        logger.info(f"Controller ID: {controller_id}")
         if controller_id:
             from utils.app_data import get_app_data_dir
             work_dir = get_app_data_dir() / "work"
@@ -403,7 +400,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     self.screen_manager._screens_by_name[existing_screen.name] = existing_screen
                     self.screen_manager._screens_by_id[existing_screen.id] = existing_screen
                     for program in existing_screen.programs:
-                        self.screen_manager._programs_by_id[program.id] = program
+                        self.screen_manager._programs_by_id[program.uuid] = program
                 self.screen_manager.current_screen = existing_screen
                 if hasattr(self, 'screen_list_panel'):
                     self.screen_list_panel.refresh_screens(debounce=False)
@@ -601,19 +598,7 @@ class MainWindow(QtWidgets.QMainWindow):
     
     def _on_new_screen(self):
         if hasattr(self, 'screen_list_panel'):
-            self.screen_list_panel.add_new_screen()
-
-    def open_screen_settings_on_startup(self):
-        pass
-    
-    def _on_screen_settings_requested(self):
-        pass
-    
-    def _startup_controller_discovery(self):
-        pass
-    
-    def _on_discover_controllers_requested(self):
-        pass
+            self.screen_list_panel.add_new_screen()    
     
     def _on_login_requested(self):
         try:
@@ -779,8 +764,6 @@ class MainWindow(QtWidgets.QMainWindow):
                             pass
                         elif "📲" in action_text or "Insert" in action_text:
                             pass
-                        elif "💾" in action_text or "U-Disk" in action_text:
-                            pass
         except Exception as e:
             logger.error(f"Error updating license-dependent actions: {e}", exc_info=True)
     
@@ -798,27 +781,6 @@ class MainWindow(QtWidgets.QMainWindow):
                     logger.warning("Could not read brightness from controller")
         except Exception as e:
             logger.warning(f"Error reading brightness on connection: {e}", exc_info=True)
-    
-    def _on_disconnect_controller_requested(self):
-        try:
-            if self.controller_service and self.current_controller:
-                reply = QMessageBox.question(
-                    self,
-                    "Disconnect Controller",
-                    "Are you sure you want to disconnect and clear the current controller?",
-                    QMessageBox.Yes | QMessageBox.No,
-                    QMessageBox.No
-                )
-                if reply == QMessageBox.Yes:
-                    self.controller_service.disconnect_controller()
-                    logger.info("Current controller cleared/disconnected")
-                    QMessageBox.information(self, "Disconnected", "Controller has been disconnected and cleared.")
-                    # Status bar will be updated via event bus
-            else:
-                QMessageBox.information(self, "No Controller", "No controller is currently connected.")
-        except Exception as e:
-            logger.exception(f"Error disconnecting controller: {e}")
-            QMessageBox.critical(self, "Error", f"An error occurred while disconnecting:\n{str(e)}")
     
     def update_controller(self, controller_dict):
         if hasattr(self, 'status_bar') and self.status_bar:
@@ -890,87 +852,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 f"An error occurred while exporting logs:\n{str(e)}"
             )
     
-    def _on_sync_settings_requested(self):
-        from PyQt5.QtWidgets import QMessageBox, QDialogButtonBox
-        from core.sync_manager import SyncManager
-        
-        if not self.controller_service:
-            QMessageBox.warning(self, "Error", "Controller service is not available.")
-            return
-        
-        controller = self.current_controller
-        if not controller or not self.controller_service.is_online():
-            reply = QMessageBox.question(
-                self,
-                "No Controller Connected",
-                "No controller is currently connected. Do you want to connect to a controller first?",
-                QMessageBox.Yes | QMessageBox.No,
-                QMessageBox.Yes
-            )
-            if reply == QMessageBox.Yes:
-                self._on_discover_controllers_requested()
-                return
-            else:
-                QMessageBox.information(self, "Information", "Please connect to a controller to use sync settings.")
-                return
-        
-        sync_manager = SyncManager()
-        
-        reply = QMessageBox.question(
-            self,
-            "Sync Settings",
-            "Choose sync direction:\n\nYes: Import from controller to local\nNo: Export from local to controller\nCancel: Compare and show differences",
-            QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel,
-            QMessageBox.Yes
-        )
-        
-        try:
-            if reply == QMessageBox.Yes:
-                imported_data = sync_manager.import_from_controller(
-                    controller,
-                    self.screen_manager,
-                    self.program_manager
-                )
-                program_count = len(imported_data.get('programs', {}))
-                media_count = len(imported_data.get('media', {}))
-                msg = f"Successfully imported data from controller.\n\nPrograms: {program_count}\nMedia files: {media_count}"
-                if imported_data.get('brightness'):
-                    msg += f"\nBrightness: {imported_data['brightness']}"
-                if imported_data.get('screen_resolution'):
-                    res = imported_data['screen_resolution']
-                    msg += f"\nResolution: {res.get('width')}x{res.get('height')}"
-                QMessageBox.information(self, "Import Complete", msg)
-                if hasattr(self, 'screen_list_panel'):
-                    self.screen_list_panel.refresh_screens(debounce=False)
-                if hasattr(self, 'content_widget'):
-                    self.content_widget.update()
-            elif reply == QMessageBox.No:
-                success = sync_manager.export_to_controller(
-                    controller,
-                    self.program_manager,
-                    self.screen_manager
-                )
-                if success:
-                    QMessageBox.information(self, "Export Complete", "Successfully exported data to controller.")
-                else:
-                    QMessageBox.warning(self, "Export Failed", "Failed to export some data to controller.")
-            else:
-                changes = sync_manager.compare_and_sync(
-                    controller,
-                    self.program_manager,
-                    self.screen_manager
-                )
-                programs_to_upload = len(changes.get('programs_to_upload', []))
-                programs_to_delete = len(changes.get('programs_to_delete', []))
-                params_to_update = len(changes.get('parameters_to_update', {}))
-                msg = f"Sync Comparison:\n\nPrograms to upload: {programs_to_upload}\nPrograms to delete: {programs_to_delete}\nParameters to update: {params_to_update}"
-                if programs_to_upload == 0 and programs_to_delete == 0 and params_to_update == 0:
-                    msg += "\n\nNo differences found."
-                QMessageBox.information(self, "Sync Comparison", msg)
-        except Exception as e:
-            logger.exception(f"Error during sync: {e}")
-            QMessageBox.critical(self, "Sync Error", f"An error occurred during sync:\n{str(e)}")
-
+    
     def showEvent(self, event):
         super().showEvent(event)
         if hasattr(self, '_device_dialog') and self._device_dialog:

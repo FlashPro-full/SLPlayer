@@ -457,6 +457,7 @@ class ControllerDialog(QDialog):
             from utils.xml_converter import XMLToJSONConverter
             from core.soo_file_config import SOOFileConfig, ScreenPropertiesConfig
             from utils.app_data import get_app_data_dir
+            from datetime import datetime
             import json
             
             huidu_controller = HuiduController()
@@ -509,24 +510,158 @@ class ControllerDialog(QDialog):
                 QMessageBox.information(self, "No Programs", "No programs found on the device.")
                 return
             
-            screen_props = ScreenPropertiesConfig(
-                screen_name=controller_name,
-                width=width,
-                height=height,
-                controller_type=controller_type
-            )
+            from core.screen_manager import Screen
+            from core.program_manager import Program
+            from core.program_converter import sdk_to_program
+            from typing import Optional
             
-            file_config = SOOFileConfig(
-                screen_properties=screen_props,
-                programs=programs
-            )
+            def _normalize_image_item(image: Dict, area_attrs: Dict) -> Optional[Dict]:
+                img_attrs = image.get("@attributes", {})
+                file_elem = image.get("file", {})
+                effect_elem = image.get("effect", {})
+                
+                file_name = ""
+                if isinstance(file_elem, dict):
+                    file_name = file_elem.get("name", file_elem.get("@attributes", {}).get("name", ""))
+                elif isinstance(file_elem, str):
+                    file_name = file_elem
+                
+                effect_attrs = {}
+                if isinstance(effect_elem, dict):
+                    effect_attrs = effect_elem.get("@attributes", {})
+                
+                return {
+                    "type": "image",
+                    "file": file_name,
+                    "fit": "stretch",
+                    "effect": {
+                        "type": int(effect_attrs.get("in", 0)),
+                        "speed": int(effect_attrs.get("inSpeed", 5)),
+                        "hold": int(effect_attrs.get("duration", 5000))
+                    }
+                }
+            
+            def _normalize_video_item(video: Dict, area_attrs: Dict) -> Optional[Dict]:
+                vid_attrs = video.get("@attributes", {})
+                file_elem = video.get("file", {})
+                
+                file_name = ""
+                if isinstance(file_elem, dict):
+                    file_name = file_elem.get("name", file_elem.get("@attributes", {}).get("name", ""))
+                elif isinstance(file_elem, str):
+                    file_name = file_elem
+                
+                return {
+                    "type": "video",
+                    "file": file_name
+                }
+            
+            def _normalize_sdk_program_from_xml(xml_program: Dict, program_index: int) -> Dict:
+                attrs = xml_program.get("@attributes", {})
+                normalized = {
+                    "name": attrs.get("guid", f"Program{program_index}"),
+                    "uuid": attrs.get("guid", ""),
+                    "type": "normal",
+                    "area": []
+                }
+                
+                play_control = xml_program.get("playControl", {})
+                if play_control:
+                    normalized["playControl"] = play_control
+                
+                area_data = xml_program.get("area", {})
+                if isinstance(area_data, dict):
+                    area_list = [area_data]
+                elif isinstance(area_data, list):
+                    area_list = area_data
+                else:
+                    area_list = []
+                
+                for area in area_list:
+                    if not isinstance(area, dict):
+                        continue
+                    
+                    normalized_area: Dict = {
+                        "x": 0,
+                        "y": 0,
+                        "width": 0,
+                        "height": 0,
+                        "item": []
+                    }
+                    
+                    rect = area.get("rectangle", {})
+                    if isinstance(rect, dict):
+                        normalized_area["x"] = int(rect.get("x", 0))
+                        normalized_area["y"] = int(rect.get("y", 0))
+                        normalized_area["width"] = int(rect.get("width", 0))
+                        normalized_area["height"] = int(rect.get("height", 0))
+                    
+                    attrs = area.get("@attributes", {})
+                    if attrs:
+                        normalized_area["x"] = int(attrs.get("x", normalized_area["x"]))
+                        normalized_area["y"] = int(attrs.get("y", normalized_area["y"]))
+                        normalized_area["width"] = int(attrs.get("width", normalized_area["width"]))
+                        normalized_area["height"] = int(attrs.get("height", normalized_area["height"]))
+                    
+                    resource = area.get("resource", {})
+                    if resource:
+                        image = resource.get("image", {})
+                        video = resource.get("video", {})
+                        
+                        if image:
+                            item = _normalize_image_item(image, attrs)
+                            if item:
+                                items = normalized_area.get("item", [])
+                                if isinstance(items, list):
+                                    items.append(item)
+                                    normalized_area["item"] = items
+                        elif video:
+                            item = _normalize_video_item(video, attrs)
+                            if item:
+                                items = normalized_area.get("item", [])
+                                if isinstance(items, list):
+                                    items.append(item)
+                                    normalized_area["item"] = items
+                    
+                    normalized["area"].append(normalized_area)
+                
+                return normalized
             
             work_dir = get_app_data_dir() / "work"
             work_dir.mkdir(parents=True, exist_ok=True)
-            file_path = work_dir / f"{controller_id}.soo"
+            file_path = str(work_dir / f"{controller_id}.soo")
             
-            with open(file_path, 'w', encoding='utf-8') as f:
-                json.dump(file_config.to_dict(), f, indent=2, ensure_ascii=False)
+            existing_screen = None
+            if Path(file_path).exists():
+                existing_screen = self.main_window.file_manager.load_screen_from_file(file_path) if self.main_window and self.main_window.file_manager else None
+            
+            if existing_screen:
+                screen = existing_screen
+                screen.name = controller_name
+                screen.width = width
+                screen.height = height
+                screen.properties["controller_type"] = controller_type
+                screen.programs.clear()
+                screen._programs_by_id.clear()
+            else:
+                screen = Screen(controller_name, width, height)
+                screen.properties["controller_type"] = controller_type
+                screen.file_path = file_path
+            
+            for i, sdk_program_data in enumerate(programs, 1):
+                normalized_program = _normalize_sdk_program_from_xml(sdk_program_data, i)
+                program_data = sdk_to_program(normalized_program)
+                program_data["name"] = f"Program{i}"
+                program = Program()
+                program.from_dict(program_data)
+                screen.add_program(program)
+            
+            if self.main_window and self.main_window.file_manager:
+                self.main_window.file_manager.save_screen_to_file(screen, file_path)
+            else:
+                from core.file_manager import FileManager
+                file_manager = FileManager()
+                file_manager.save_screen_to_file(screen, file_path)
             
             QMessageBox.information(self, "Download Complete", f"Downloaded {len(programs)} program(s) and saved to {file_path}")
             
