@@ -400,7 +400,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     self.screen_manager._screens_by_name[existing_screen.name] = existing_screen
                     self.screen_manager._screens_by_id[existing_screen.id] = existing_screen
                     for program in existing_screen.programs:
-                        self.screen_manager._programs_by_id[program.uuid] = program
+                        self.screen_manager._programs_by_id[program.id] = program
                 self.screen_manager.current_screen = existing_screen
                 if hasattr(self, 'screen_list_panel'):
                     self.screen_list_panel.refresh_screens(debounce=False)
