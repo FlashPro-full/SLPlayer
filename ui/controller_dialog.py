@@ -83,9 +83,9 @@ class ControllerDialog(QDialog):
         layout.addWidget(status_group)
         
         self.table = QTableWidget()
-        self.table.setColumnCount(6)
+        self.table.setColumnCount(5)
         self.table.setHorizontalHeaderLabels([
-            "Controller Type", "Controller Name", "IP Address", "Resolution", "Connection Status", "License"
+            "Controller Name", "IP Address", "Resolution", "Connection Status", "License"
         ])
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.table.setSelectionBehavior(QTableWidget.SelectRows)
@@ -296,7 +296,6 @@ class ControllerDialog(QDialog):
         self.table.setRowCount(len(controllers))
         
         for row, controller in enumerate(controllers):
-            controller_type = controller.get('controller_type', 'Unknown')
             controller_id = controller.get('controller_id', 'Unknown')
             controller_name = controller.get('name', 'Unknown')
             ip = controller.get('eth_ip', 'Unknown')
@@ -307,10 +306,9 @@ class ControllerDialog(QDialog):
             else:
                 resolution = 'Unknown'
             
-            self.table.setItem(row, 0, QTableWidgetItem(controller_type))
-            self.table.setItem(row, 1, QTableWidgetItem(controller_name))
-            self.table.setItem(row, 2, QTableWidgetItem(ip))
-            self.table.setItem(row, 3, QTableWidgetItem(resolution))
+            self.table.setItem(row, 0, QTableWidgetItem(controller_name))
+            self.table.setItem(row, 1, QTableWidgetItem(ip))
+            self.table.setItem(row, 2, QTableWidgetItem(resolution))
             
             is_online = controller_id in online_controller_ids
             if is_online:
@@ -321,7 +319,7 @@ class ControllerDialog(QDialog):
                 status_color = QColor(255, 0, 0)
             status_item = QTableWidgetItem(status_text)
             status_item.setForeground(status_color)
-            self.table.setItem(row, 4, status_item)
+            self.table.setItem(row, 3, status_item)
             
             license_status = int(controller.get('has_license', '')) or 0
             license_item = None
@@ -331,7 +329,7 @@ class ControllerDialog(QDialog):
             else:
                 license_item = QTableWidgetItem("Unverified")
                 license_item.setForeground(QColor(255, 0, 0))
-            self.table.setItem(row, 5, license_item)
+            self.table.setItem(row, 4, license_item)
             
             self.table.setRowHeight(row, 30)
         
@@ -372,15 +370,14 @@ class ControllerDialog(QDialog):
         row = selected_rows[0].row()
         controller_id = self.all_controllers[row].get('controller_id', None)
         license_file_name = self.all_controllers[row].get('license_file_name', None)
+        controller_type = self.all_controllers[row].get('controller_type', 'huidu')
 
         if not controller_id:
             QMessageBox.warning(self, "No Selection", "Please select a controller.")
             return
         
-        controller_type_item = self.table.item(row, 0)
-        controller_resolution_item = self.table.item(row, 3)
-        controller_name_item = self.table.item(row, 1)
-        controller_type = controller_type_item.text()
+        controller_resolution_item = self.table.item(row, 2)
+        controller_name_item = self.table.item(row, 0)
         controller_name = controller_name_item.text()
         resolution_text = controller_resolution_item.text()
         resolution_parts = resolution_text.split("x")
@@ -627,9 +624,11 @@ class ControllerDialog(QDialog):
                 
                 return normalized
             
+            from core.screen_manager import ScreenManager
             work_dir = get_app_data_dir() / "work"
             work_dir.mkdir(parents=True, exist_ok=True)
-            file_path = str(work_dir / f"{controller_id}.soo")
+            safe_name = ScreenManager.sanitize_screen_name(controller_name)
+            file_path = str(work_dir / f"{safe_name}.soo")
             
             existing_screen = None
             if Path(file_path).exists():

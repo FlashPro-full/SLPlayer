@@ -219,7 +219,7 @@ class FileManager:
             return self.load_screen_from_file(str(file_path))
         return None
     
-    def save_all_screens(self, controller_id: Optional[str] = None) -> int:
+    def save_all_screens(self, controller_name: Optional[str] = None) -> int:
         if not self.screen_manager:
             return 0
         
@@ -230,12 +230,12 @@ class FileManager:
             work_dir = get_app_data_dir() / "work"
             work_dir.mkdir(parents=True, exist_ok=True)
             
-            if not controller_id:
+            if not controller_name:
                 try:
                     from services.controller_service import get_controller_service
                     controller_service = get_controller_service()
                     if controller_service.current_controller:
-                        controller_id = controller_service.current_controller.get('controller_id')
+                        controller_name = controller_service.current_controller.get('name')
                 except Exception:
                     pass
             
@@ -245,8 +245,9 @@ class FileManager:
                 if screen.file_path:
                     file_path = screen.file_path
                 else:
-                    if controller_id:
-                        file_path = str(work_dir / f"{controller_id}.soo")
+                    if controller_name:
+                        safe_name = ScreenManager.sanitize_screen_name(controller_name)
+                        file_path = str(work_dir / f"{safe_name}.soo")
                     else:
                         safe_name = ScreenManager.sanitize_screen_name(screen.name)
                         file_path = str(work_dir / f"{safe_name}.soo")

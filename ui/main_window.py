@@ -384,14 +384,16 @@ class MainWindow(QtWidgets.QMainWindow):
     def _load_autosaved_files(self):
         if not self.file_manager or not self.screen_manager:
             return
-        controller_id = None
+        controller_name = None
         if self.controller_service and self.current_controller:
-            controller_id = self.current_controller.get("controller_id")
-        if controller_id:
+            controller_name = self.current_controller.get("name")
+        if controller_name:
             from utils.app_data import get_app_data_dir
+            from core.screen_manager import ScreenManager
             work_dir = get_app_data_dir() / "work"
             work_dir.mkdir(parents=True, exist_ok=True)
-            file_path = str(work_dir / f"{controller_id}.soo")
+            safe_name = ScreenManager.sanitize_screen_name(controller_name)
+            file_path = str(work_dir / f"{safe_name}.soo")
             
             existing_screen = self.file_manager.load_screen_from_file(file_path)
             if existing_screen:
@@ -863,10 +865,10 @@ class MainWindow(QtWidgets.QMainWindow):
     def closeEvent(self, event):
         try:
             if self.screen_manager and self.screen_manager.screens:
-                controller_id = None
+                controller_name = None
                 if self.controller_service and self.current_controller:
-                    controller_id = self.current_controller.get('controller_id')
-                saved_count = self.file_manager.save_all_screens(controller_id)
+                    controller_name = self.current_controller.get('name')
+                saved_count = self.file_manager.save_all_screens(controller_name)
                 logger.info(f"Auto-saved {saved_count} screen(s) to work directory on close")
         except Exception as e:
             logger.error(f"Error auto-saving on close: {e}", exc_info=True)
