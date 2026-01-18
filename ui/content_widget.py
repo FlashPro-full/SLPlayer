@@ -387,6 +387,30 @@ class ContentWidget(QtWidgets.QWidget):
                             if Path(video_path).exists():
                                 self._setup_video_player(element_id, video_path)
     
+    def _start_videos_for_program(self):
+        if not CV2_AVAILABLE:
+            return
+        elements = self._get_current_program_elements()
+        for element in elements:
+            element_type = element.get("type", "")
+            if element_type == "video":
+                element_id = element.get("id", "")
+                if element_id in self._video_captures:
+                    cap = self._video_captures[element_id]
+                    if cap.isOpened():
+                        cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                elif element_id not in self._video_paths:
+                    element_props = element.get("properties", {})
+                    video_list = element_props.get("video_list", [])
+                    if video_list and len(video_list) > 0:
+                        active_index = self._get_video_active_index(element_id, video_list)
+                        if 0 <= active_index < len(video_list):
+                            video_path = video_list[active_index].get("path", "")
+                            if video_path:
+                                from pathlib import Path
+                                if Path(video_path).exists():
+                                    self._setup_video_player(element_id, video_path)
+    
     
     def _cleanup_video_player(self, element_id: str):
         try:
@@ -508,6 +532,7 @@ class ContentWidget(QtWidgets.QWidget):
             }
             if not self._animation_timer.isActive():
                 self._animation_timer.start()
+            self._start_videos_for_program()
         
         anim_state = self._photo_animations[element_id]
         
@@ -588,6 +613,7 @@ class ContentWidget(QtWidgets.QWidget):
                     # Reset random selections for new cycle
                     anim_state["selected_entrance_anim"] = None
                     anim_state["selected_exit_anim"] = None
+                    self._start_videos_for_program()
                 else:
                     anim_state["progress"] = elapsed / duration if duration > 0 else 1.0
         
@@ -956,6 +982,7 @@ class ContentWidget(QtWidgets.QWidget):
             }
             if not self._animation_timer.isActive():
                 self._animation_timer.start()
+            self._start_videos_for_program()
         
         anim_state = self._text_animations[element_id]
         
@@ -1037,6 +1064,7 @@ class ContentWidget(QtWidgets.QWidget):
                 if elapsed >= duration:
                     anim_state["phase"] = "entrance"
                     anim_state["start_time"] = QtCore.QDateTime.currentDateTime()
+                    self._start_videos_for_program()
                     elapsed = 0
                     anim_state["progress"] = 0.0
                     # Reset random selections for new cycle

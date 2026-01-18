@@ -169,6 +169,7 @@ _STRINGS: Dict[str, Dict[str, str]] = {
     "program_list.add_sensor": {"en": "📎 Add Sensor", "it": "📎 Aggiungi sensore", "pl": "📎 Dodaj czujnik"},
     "program_list.add_html": {"en": "🌐 Add HTML", "it": "🌐 Aggiungi HTML", "pl": "🌐 Dodaj HTML"},
     "program_list.add_hdmi": {"en": "🔌 Add HDMI", "it": "🔌 Aggiungi HDMI", "pl": "🔌 Dodaj HDMI"},
+    "program_list.enable_content_upload": {"en": "Enable/disable uploading program content (text, images, videos) to device", "it": "Abilita/disabilita caricamento contenuti programma (testo, immagini, video) sul dispositivo", "pl": "Włącz/wyłącz przesyłanie zawartości programu (tekst, obrazy, wideo) na urządzenie"},
     # Toolbar
     "toolbar.program_tooltip": {"en": "Program", "it": "Programma", "pl": "Program"},
     "toolbar.export_tooltip": {"en": "Export", "it": "Esporta", "pl": "Eksportuj"},

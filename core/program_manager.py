@@ -24,7 +24,8 @@ class Program:
         self.properties = {
             "frame": {"enabled": False, "style": "---"},
             "background_music": {"enabled": False, "file": "", "volume": 0},
-            "checked": True
+            "checked": True,
+            "content_upload_enabled": True
         }
         self.play_mode = {
             "mode": "play_times",
@@ -67,6 +68,8 @@ class Program:
         self.properties = data.get("properties", self.properties)
         if "checked" not in self.properties:
             self.properties["checked"] = True
+        if "content_upload_enabled" not in self.properties:
+            self.properties["content_upload_enabled"] = True
         self.play_mode = data.get("play_mode", self.play_mode)
         self.play_control = data.get("play_control", self.play_control)
         self.duration = data.get("duration", 0.0)

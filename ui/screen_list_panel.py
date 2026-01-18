@@ -1,8 +1,8 @@
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QTreeWidget, QTreeWidgetItem, 
-                             QToolButton, QHBoxLayout, QCheckBox, QMenu, QInputDialog, QShortcut)
+                             QToolButton, QHBoxLayout, QCheckBox, QMenu, QInputDialog, QShortcut, QLabel, QLineEdit)
 from PyQt5.QtCore import pyqtSignal, Qt, QPoint, QTimer, QEvent
-from PyQt5.QtGui import QMouseEvent, QContextMenuEvent, QKeyEvent, QKeySequence
-from typing import TYPE_CHECKING, Optional, Dict, List
+from PyQt5.QtGui import QKeyEvent, QKeySequence
+from typing import TYPE_CHECKING, Optional
 from datetime import datetime
 
 if TYPE_CHECKING:
@@ -234,12 +234,44 @@ class ScreenListPanel(QWidget):
             
             for program in screen.programs:
                 program_item = QTreeWidgetItem(screen_item)
-                program_item.setText(0, f"💽 {program.name}")
                 program_item.setData(0, Qt.UserRole, "program")
                 program_item.setData(0, Qt.UserRole + 1, program.id)
                 program_item.setFlags(program_item.flags() | Qt.ItemIsEditable)
                 program_item.setChildIndicatorPolicy(QTreeWidgetItem.ChildIndicatorPolicy.ShowIndicator)
                 item_map[program.id] = program_item
+                
+                # Create widget with checkbox and program text
+                widget = QWidget()
+                layout = QHBoxLayout(widget)
+                layout.setContentsMargins(2, 0, 2, 0)
+                layout.setSpacing(4)
+                
+                upload_checkbox = QCheckBox()
+                upload_checkbox.setToolTip(tr("program_list.enable_content_upload"))
+                content_upload_enabled = program.properties.get("content_upload_enabled", True)
+                upload_checkbox.setChecked(content_upload_enabled)
+                upload_checkbox.stateChanged.connect(lambda state, pid=program.id: self._on_content_upload_changed(pid, state == Qt.Checked))
+                
+                program_edit = QLineEdit(f"💽 {program.name}")
+                program_edit.setStyleSheet("""
+                    QLineEdit {
+                        color: #FFFFFF;
+                        background-color: transparent;
+                        border: none;
+                        padding: 0px;
+                    }
+                    QLineEdit:focus {
+                        background-color: #3B3B3B;
+                        border: 1px solid #4A90E2;
+                    }
+                """)
+                program_edit.editingFinished.connect(lambda pid=program.id: self._on_program_name_edited(pid, program_edit))
+                
+                layout.addWidget(upload_checkbox)
+                layout.addWidget(program_edit)
+                layout.addStretch()
+                
+                self.tree.setItemWidget(program_item, 0, widget)
                 
                 for element in program.elements:
                     element_item = QTreeWidgetItem(program_item)
@@ -395,6 +427,14 @@ class ScreenListPanel(QWidget):
         except Exception as e:
             pass
     
+    def get_selected_program_id(self) -> Optional[str]:
+        """Get the program ID from the currently selected item (program or content's parent)"""
+        if self._last_selected_program:
+            return self._last_selected_program
+        elif self._last_selected_content:
+            return self._last_selected_content[0]
+        return None
+    
     def _on_item_double_clicked(self, item: QTreeWidgetItem, column: int):
         if item is None:
             return
@@ -432,11 +472,11 @@ class ScreenListPanel(QWidget):
             
             rename_action = menu.addAction(tr("program_list.rename"))
             if rename_action:
-                rename_action.triggered.connect(lambda: self._on_screen_rename(screen_name))
+                rename_action.triggered.connect(lambda checked, name=screen_name: self._on_screen_rename(name))
             
             delete_action = menu.addAction(tr("program_list.delete"))
             if delete_action:
-                delete_action.triggered.connect(lambda: self._on_screen_delete(screen_name))
+                delete_action.triggered.connect(lambda checked, name=screen_name: self._on_screen_delete(name))
             
             menu.addSeparator()
             
@@ -446,15 +486,15 @@ class ScreenListPanel(QWidget):
             
             add_program_action = menu.addAction(tr("program_list.add_program"))
             if add_program_action:
-                add_program_action.triggered.connect(lambda: self._on_add_program(screen_name))
+                add_program_action.triggered.connect(lambda checked, name=screen_name: self._on_add_program(name))
             
             insert_action = menu.addAction(tr("program_list.insert"))
             if insert_action:
-                insert_action.triggered.connect(lambda: self._on_screen_insert(screen_name))
+                insert_action.triggered.connect(lambda checked, name=screen_name: self._on_screen_insert(name))
             
             close_action = menu.addAction(tr("program_list.close"))
             if close_action:
-                close_action.triggered.connect(lambda: self._on_screen_close(screen_name))
+                close_action.triggered.connect(lambda checked, name=screen_name: self._on_screen_close(name))
         else:
             rename_action = menu.addAction(tr("program_list.rename"))
             delete_action = menu.addAction(tr("program_list.delete"))
@@ -462,9 +502,9 @@ class ScreenListPanel(QWidget):
             if item_type == "program":
                 program_id = item.data(0, Qt.UserRole + 1)  # type: ignore
                 if rename_action:
-                    rename_action.triggered.connect(lambda: self._on_program_rename(program_id))
+                    rename_action.triggered.connect(lambda checked, pid=program_id: self._on_program_rename(pid))
                 if delete_action:
-                    delete_action.triggered.connect(lambda: self._on_program_delete(program_id))
+                    delete_action.triggered.connect(lambda checked, pid=program_id: self._on_program_delete(pid))
                 
                 menu.addSeparator()
                 
@@ -492,14 +532,14 @@ class ScreenListPanel(QWidget):
                 
                 copy_action = menu.addAction(tr("program_list.copy"))
                 if copy_action:
-                    copy_action.triggered.connect(lambda: self.program_copy_requested.emit(program_id))
+                    copy_action.triggered.connect(lambda checked, pid=program_id: self.program_copy_requested.emit(pid))
             else:  # content
                 program_id = item.data(0, Qt.UserRole + 1)  # type: ignore
                 element_id = item.data(0, Qt.UserRole + 2)  # type: ignore
                 if rename_action:
-                    rename_action.triggered.connect(lambda: self._on_content_rename(program_id, element_id))
+                    rename_action.triggered.connect(lambda checked, pid=program_id, eid=element_id: self._on_content_rename(pid, eid))
                 if delete_action:
-                    delete_action.triggered.connect(lambda: self._on_content_delete(program_id, element_id))
+                    delete_action.triggered.connect(lambda checked, pid=program_id, eid=element_id: self._on_content_delete(pid, eid))
                 
                 menu.addSeparator()
                 
@@ -527,7 +567,7 @@ class ScreenListPanel(QWidget):
                 
                 copy_action = menu.addAction(tr("program_list.copy"))
                 if copy_action:
-                    copy_action.triggered.connect(lambda: self.content_copy_requested.emit(program_id, element_id))
+                    copy_action.triggered.connect(lambda checked, pid=program_id, eid=element_id: self.content_copy_requested.emit(pid, eid))
         
         menu.exec_(self.tree.mapToGlobal(position))
     
@@ -659,7 +699,7 @@ class ScreenListPanel(QWidget):
                         self.content_renamed.emit(program_id, element_id, new_name)
     
     def _on_content_delete(self, program_id: str, element_id: str):
-        self.content_deleted.emit(program_id, element_id)
+        self.delete_content_requested.emit(program_id, element_id)
     
     def on_copy_clicked(self):
         current_item = self.tree.currentItem()
@@ -869,11 +909,7 @@ class ScreenListPanel(QWidget):
         item_type = item.data(0, Qt.UserRole) # type: ignore
         
         if item_type == "program":
-            text = item.text(0)
-            new_name = text.replace("💽 ", "").strip()
-            if new_name:
-                program_id = item.data(0, Qt.UserRole + 1) # type: ignore
-                self.program_renamed.emit(program_id, new_name)
+            pass
         elif item_type == "content":
             text = item.text(0)
             parts = text.split(" ", 1)
@@ -900,4 +936,33 @@ class ScreenListPanel(QWidget):
             return self.tree.topLevelItem(0)
         return None
     
+    def _on_content_upload_changed(self, program_id: str, enabled: bool):
+        """Handle checkbox state change for content upload enable/disable"""
+        if not self.screen_manager:
+            return
+        
+        program = self.screen_manager.get_program_by_id(program_id)
+        if program:
+            if "content_upload_enabled" not in program.properties:
+                program.properties["content_upload_enabled"] = True
+            program.properties["content_upload_enabled"] = enabled
+            program.modified = datetime.now().isoformat()
+    
+    def _on_program_name_edited(self, program_id: str, line_edit: QLineEdit):
+        """Handle program name edit"""
+        if not self.screen_manager:
+            return
+        
+        new_text = line_edit.text()
+        new_name = new_text.replace("💽 ", "").strip()
+        if new_name:
+            program = self.screen_manager.get_program_by_id(program_id)
+            if program and program.name != new_name:
+                self.program_renamed.emit(program_id, new_name)
+            elif not program:
+                line_edit.setText(f"💽 {new_name}")
+        else:
+            program = self.screen_manager.get_program_by_id(program_id)
+            if program:
+                line_edit.setText(f"💽 {program.name}")
 

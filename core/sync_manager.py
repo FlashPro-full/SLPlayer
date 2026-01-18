@@ -328,7 +328,18 @@ class SyncManager:
                 program_hash = program_info["hash"]
                 
                 if not local_program or local_program.get("hash") != program_hash:
-                    changes["programs_to_upload"].append(program_info["data"])
+                    program_data = program_info["data"].copy()
+                    
+                    # Check if content upload is disabled for this program
+                    properties = program_data.get("properties", {})
+                    content_upload_enabled = properties.get("content_upload_enabled", True)
+                    
+                    # If content upload is disabled, skip uploading this program entirely
+                    if not content_upload_enabled:
+                        logger.info(f"Content upload disabled for program '{program_data.get('name', program_id)}' - skipping upload")
+                        continue
+                    
+                    changes["programs_to_upload"].append(program_data)
                     
                     media_files = self._extract_media_from_program(program_info["data"])
                     for media_path in media_files:

@@ -152,6 +152,16 @@ class MainWindow(QtWidgets.QMainWindow):
             current_program = self.screen_manager.current_screen.programs[0]
             program_dict = current_program.to_dict()
             
+            # Check if content upload is disabled for this program
+            properties = program_dict.get("properties", {})
+            content_upload_enabled = properties.get("content_upload_enabled", True)
+            
+            # If content upload is disabled, skip sending this program entirely
+            if not content_upload_enabled:
+                logger.info(f"Content upload disabled for program '{program_dict.get('name')}' - skipping send")
+                QMessageBox.information(self, "Info", f"Program '{program_dict.get('name')}' upload is disabled. Skipping send.")
+                return
+            
             sdk_program = ProgramConverter.soo_to_sdk(program_dict, "huidu")
             sdk_program_list = [sdk_program]
             
@@ -193,6 +203,16 @@ class MainWindow(QtWidgets.QMainWindow):
             current_program = self.screen_manager.current_screen.programs[0]
             program_dict = current_program.to_dict()
             
+            # Check if content upload is disabled for this program
+            properties = program_dict.get("properties", {})
+            content_upload_enabled = properties.get("content_upload_enabled", True)
+            
+            # If content upload is disabled, skip inserting this program entirely
+            if not content_upload_enabled:
+                logger.info(f"Content upload disabled for program '{program_dict.get('name')}' - skipping insert")
+                QMessageBox.information(self, "Info", f"Program '{program_dict.get('name')}' upload is disabled. Skipping insert.")
+                return
+            
             sdk_program = ProgramConverter.soo_to_sdk(program_dict, "huidu")
             sdk_program_list = [sdk_program]
             
@@ -225,6 +245,16 @@ class MainWindow(QtWidgets.QMainWindow):
             
             current_program = self.screen_manager.current_screen.programs[0]
             program_dict = current_program.to_dict()
+            
+            # Check if content upload is disabled for this program
+            properties = program_dict.get("properties", {})
+            content_upload_enabled = properties.get("content_upload_enabled", True)
+            
+            # If content upload is disabled, remove all elements (content) from the program
+            if not content_upload_enabled:
+                program_dict = program_dict.copy()
+                program_dict["elements"] = []
+                logger.info(f"Content upload disabled for program '{program_dict.get('name')}' - inserting without elements")
             
             sdk_program = ProgramConverter.soo_to_sdk(program_dict, "huidu")
             sdk_program_list = [sdk_program]
@@ -343,8 +373,12 @@ class MainWindow(QtWidgets.QMainWindow):
             self.content_widget.add_content(program_id, content_type)
     
     def _on_content_type_selected(self, content_type: str):
-        if hasattr(self, 'content_widget'):
-            self.content_widget.add_content_to_current_program(content_type)
+        if hasattr(self, 'screen_list_panel') and hasattr(self, 'content_widget'):
+            program_id = self.screen_list_panel.get_selected_program_id()
+            if program_id:
+                self.content_widget.add_content(program_id, content_type)
+            else:
+                self.content_widget.add_content_to_current_program(content_type)
     
     def _on_screen_insert(self, screen_name: str):
         pass
@@ -413,7 +447,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 height = config.get("height", 1080) if config else 1080
                 controller_type = config.get("controller_type", "").split()[0] if config else ""
                 
-                screen = self.screen_manager.create_screen_for_device(controller_id, controller_type, width, height, file_path)
+                screen = self.screen_manager.create_screen_for_device(controller_name, controller_type, width, height, file_path)
                 self.file_manager.save_screen_to_file(screen, file_path)
                 self.load_soo_file(file_path, clear_existing=False)
         
