@@ -125,7 +125,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.screen_list_panel.screen_insert_requested.connect(self._on_screen_insert)
         self.screen_list_panel.screen_close_requested.connect(self._on_screen_close)
         self.screen_list_panel.program_selected.connect(self._on_program_selected)
+        self.screen_list_panel.program_renamed.connect(self._on_program_renamed)
         self.screen_list_panel.content_selected.connect(self._on_content_selected)
+        self.screen_list_panel.content_renamed.connect(self._on_content_renamed)
         self.screen_list_panel.content_add_requested.connect(self._on_content_add_requested)
         self.screen_list_panel.delete_program_requested.connect(self._on_program_delete)
         self.screen_list_panel.delete_content_requested.connect(self._on_content_delete)
@@ -367,6 +369,34 @@ class MainWindow(QtWidgets.QMainWindow):
             if hasattr(self, 'content_widget'):
                 self.content_widget.update()
             self.properties_panel.show_empty()
+
+    def _on_program_renamed(self, program_id: str, new_name: str):
+        if not self.screen_manager:
+            return
+        
+        program = self.screen_manager.get_program_by_id(program_id)
+        if program:
+            program.name = new_name
+            program.modified = datetime.now().isoformat()
+            if hasattr(self, 'screen_list_panel'):
+                self.screen_list_panel.refresh_screens(debounce=False)
+            if hasattr(self, 'properties_panel'):
+                self.properties_panel.set_program(program)
+    
+    def _on_content_renamed(self, program_id: str, element_id: str, new_name: str):
+        if not self.screen_manager:
+            return
+        
+        program = self.screen_manager.get_program_by_id(program_id)
+        if program:
+            element = next((e for e in program.elements if e.get("id") == element_id), None)
+            if element:
+                element["name"] = new_name
+                program.modified = datetime.now().isoformat()
+                if hasattr(self, 'screen_list_panel'):
+                    self.screen_list_panel.refresh_screens(debounce=False)
+                if hasattr(self, 'properties_panel'):
+                    self.properties_panel.set_element(element, program)
 
     def _on_content_add_requested(self, program_id: str, content_type: str):
         if hasattr(self, 'content_widget'):

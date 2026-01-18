@@ -3426,6 +3426,44 @@ class ContentWidget(QtWidgets.QWidget):
                         new_y = start_y + start_height - 10
                     new_height = 10
                 
+                screen_width, screen_height = self._get_screen_bounds()
+                
+                if new_x < 0:
+                    if "w" in handle:
+                        new_width = new_width + new_x
+                    new_x = 0
+                if new_y < 0:
+                    if "n" in handle:
+                        new_height = new_height + new_y
+                    new_y = 0
+                
+                if new_x + new_width > screen_width:
+                    if "e" in handle:
+                        new_width = screen_width - new_x
+                    elif "w" in handle:
+                        new_x = screen_width - new_width
+                        if new_x < 0:
+                            new_x = 0
+                            new_width = screen_width
+                
+                if new_y + new_height > screen_height:
+                    if "s" in handle:
+                        new_height = screen_height - new_y
+                    elif "n" in handle:
+                        new_y = screen_height - new_height
+                        if new_y < 0:
+                            new_y = 0
+                            new_height = screen_height
+                
+                if new_width < 10:
+                    if "w" in handle:
+                        new_x = max(0, new_x + new_width - 10)
+                    new_width = 10
+                if new_height < 10:
+                    if "n" in handle:
+                        new_y = max(0, new_y + new_height - 10)
+                    new_height = 10
+                
                 element = self._drag_state["element"]
                 element_props = element.get("properties", {})
                 element_props["x"] = new_x

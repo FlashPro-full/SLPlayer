@@ -51,7 +51,6 @@ class FileManager:
             sdk_programs = []
             for i, program in enumerate(screen.programs, 1):
                 program_dict = program.to_dict()
-                program_dict["name"] = f"Program{i}"
                 sdk_program = program_to_sdk(program_dict)
                 sdk_programs.append(sdk_program)
             
@@ -104,7 +103,8 @@ class FileManager:
             
             for i, sdk_program_data in enumerate(file_config.programs, 1):
                 program_data = sdk_to_program(sdk_program_data)
-                program_data["name"] = f"Program{i}"
+                if "name" not in program_data or not program_data["name"]:
+                    program_data["name"] = f"Program{i}"
                 from core.program_manager import Program
                 program = Program()
                 program.from_dict(program_data)

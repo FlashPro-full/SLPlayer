@@ -33,6 +33,10 @@ def program_to_sdk(program: Dict) -> Dict:
     if play_control:
         result["playControl"] = play_control
     
+    properties = program.get("properties", {})
+    if properties:
+        result["_properties"] = properties
+    
     return result
 
 def _element_to_sdk_area(element: Dict) -> Optional[Dict]:
@@ -457,17 +461,30 @@ def sdk_to_program(sdk_program: Dict) -> Dict:
     play_control_sdk = sdk_program.get("playControl", {})
     play_control, play_mode, duration = _convert_play_control_from_sdk(play_control_sdk)
     
+    properties = sdk_program.get("_properties", {})
+    if not properties:
+        properties = {
+            "checked": True,
+            "frame": {"enabled": False, "style": "---"},
+            "background_music": {"enabled": False, "file": "", "volume": 0}
+        }
+    else:
+        if "checked" not in properties:
+            properties["checked"] = True
+        if "frame" not in properties:
+            properties["frame"] = {"enabled": False, "style": "---"}
+        if "background_music" not in properties:
+            properties["background_music"] = {"enabled": False, "file": "", "volume": 0}
+        if "content_upload_enabled" not in properties:
+            properties["content_upload_enabled"] = True
+    
     return {
         "id": program_id,
         "name": program_name,
         "width": 1920,
         "height": 1080,
         "elements": elements,
-        "properties": {
-            "checked": True,
-            "frame": {"enabled": False, "style": "---"},
-            "background_music": {"enabled": False, "file": "", "volume": 0}
-        },
+        "properties": properties,
         "play_mode": play_mode,
         "play_control": play_control,
         "duration": duration

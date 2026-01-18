@@ -387,9 +387,9 @@ class AnimationPropertiesComponent(BasePropertiesComponent):
         
         # Animation speed combo (5)
         self.animation_speed_combo = QComboBox()
-        self.animation_speed_combo.addItem("1 fast")
+        self.animation_speed_combo.addItem("1 slow")
         self.animation_speed_combo.addItems([f"{i}" for i in range(2, 9)])
-        self.animation_speed_combo.addItem("9 slow")
+        self.animation_speed_combo.addItem("9 fast")
         self.animation_speed_combo.setCurrentText("5")
         self.animation_speed_combo.setMinimumWidth(80)
         self.animation_speed_combo.currentTextChanged.connect(self._on_animation_speed_changed)
@@ -463,9 +463,9 @@ class AnimationPropertiesComponent(BasePropertiesComponent):
         
         # Parse speed value from combo text
         speed = 5  # default
-        if speed_text == "1 fast":
+        if speed_text == "1 slow":
             speed = 1
-        elif speed_text == "9 slow":
+        elif speed_text == "9 fast":
             speed = 9
         else:
             try:
@@ -684,9 +684,9 @@ class AnimationPropertiesComponent(BasePropertiesComponent):
             self.animation_speed_combo.blockSignals(True)
             # Convert speed value to combo text
             if speed == 1:
-                self.animation_speed_combo.setCurrentText("1 fast")
+                self.animation_speed_combo.setCurrentText("1 slow")
             elif speed == 9:
-                self.animation_speed_combo.setCurrentText("9 slow")
+                self.animation_speed_combo.setCurrentText("9 fast")
             else:
                 self.animation_speed_combo.setCurrentText(str(speed))
             self.animation_speed_combo.blockSignals(False)
@@ -767,9 +767,9 @@ class AnimationPropertiesComponent(BasePropertiesComponent):
         if hasattr(self, 'animation_speed_combo'):
             speed_text = self.animation_speed_combo.currentText()
             speed = 5
-            if speed_text == "1 fast":
+            if speed_text == "1 slow":
                 speed = 1
-            elif speed_text == "9 slow":
+            elif speed_text == "9 fast":
                 speed = 9
             else:
                 try:

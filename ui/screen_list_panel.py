@@ -1,5 +1,5 @@
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QTreeWidget, QTreeWidgetItem, 
-                             QToolButton, QHBoxLayout, QCheckBox, QMenu, QInputDialog, QShortcut, QLabel, QLineEdit)
+                             QToolButton, QHBoxLayout, QCheckBox, QMenu, QInputDialog, QShortcut, QLabel, QMessageBox)
 from PyQt5.QtCore import pyqtSignal, Qt, QPoint, QTimer, QEvent
 from PyQt5.QtGui import QKeyEvent, QKeySequence
 from typing import TYPE_CHECKING, Optional
@@ -252,23 +252,11 @@ class ScreenListPanel(QWidget):
                 upload_checkbox.setChecked(content_upload_enabled)
                 upload_checkbox.stateChanged.connect(lambda state, pid=program.id: self._on_content_upload_changed(pid, state == Qt.Checked))
                 
-                program_edit = QLineEdit(f"💽 {program.name}")
-                program_edit.setStyleSheet("""
-                    QLineEdit {
-                        color: #FFFFFF;
-                        background-color: transparent;
-                        border: none;
-                        padding: 0px;
-                    }
-                    QLineEdit:focus {
-                        background-color: #3B3B3B;
-                        border: 1px solid #4A90E2;
-                    }
-                """)
-                program_edit.editingFinished.connect(lambda pid=program.id: self._on_program_name_edited(pid, program_edit))
+                program_label = QLabel(f"💽 {program.name}")
+                program_label.setStyleSheet("color: #FFFFFF;")
                 
                 layout.addWidget(upload_checkbox)
-                layout.addWidget(program_edit)
+                layout.addWidget(program_label)
                 layout.addStretch()
                 
                 self.tree.setItemWidget(program_item, 0, widget)
@@ -577,7 +565,11 @@ class ScreenListPanel(QWidget):
             self.screen_renamed.emit(screen_name, new_name)
     
     def _on_screen_delete(self, screen_name: str):
-        self.screen_deleted.emit(screen_name)
+        reply = QMessageBox.question(self, "Confirm Delete", 
+                                    f"Are you sure you want to delete screen '{screen_name}'?",
+                                    QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+        if reply == QMessageBox.Yes:
+            self.screen_deleted.emit(screen_name)
     
     def _on_new_screen(self):
         self.new_screen_requested.emit()
@@ -685,7 +677,14 @@ class ScreenListPanel(QWidget):
                     self.program_renamed.emit(program_id, new_name)
     
     def _on_program_delete(self, program_id: str):
-        self.delete_program_requested.emit(program_id)
+        if self.screen_manager:
+            program = self.screen_manager.get_program_by_id(program_id)
+            program_name = program.name if program else "Program"
+            reply = QMessageBox.question(self, "Confirm Delete", 
+                                        f"Are you sure you want to delete program '{program_name}'?",
+                                        QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+            if reply == QMessageBox.Yes:
+                self.delete_program_requested.emit(program_id)
     
     def _on_content_rename(self, program_id: str, element_id: str):
         if self.screen_manager:
@@ -699,7 +698,18 @@ class ScreenListPanel(QWidget):
                         self.content_renamed.emit(program_id, element_id, new_name)
     
     def _on_content_delete(self, program_id: str, element_id: str):
-        self.delete_content_requested.emit(program_id, element_id)
+        if self.screen_manager:
+            program = self.screen_manager.get_program_by_id(program_id)
+            element_name = "Content"
+            if program:
+                element = next((e for e in program.elements if e.get("id") == element_id), None)
+                if element:
+                    element_name = element.get("name", element.get("type", "Content"))
+            reply = QMessageBox.question(self, "Confirm Delete", 
+                                        f"Are you sure you want to delete content '{element_name}'?",
+                                        QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+            if reply == QMessageBox.Yes:
+                self.delete_content_requested.emit(program_id, element_id)
     
     def on_copy_clicked(self):
         current_item = self.tree.currentItem()
@@ -828,14 +838,34 @@ class ScreenListPanel(QWidget):
         
         if item_type == "screen":
             screen_name = current_item.data(0, Qt.UserRole + 1)
-            self.screen_deleted.emit(screen_name)
+            reply = QMessageBox.question(self, "Confirm Delete", 
+                                        f"Are you sure you want to delete screen '{screen_name}'?",
+                                        QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+            if reply == QMessageBox.Yes:
+                self.screen_deleted.emit(screen_name)
         elif item_type == "program":
             program_id = current_item.data(0, Qt.UserRole + 1)
-            self.delete_program_requested.emit(program_id)
+            program = self.screen_manager.get_program_by_id(program_id)
+            program_name = program.name if program else "Program"
+            reply = QMessageBox.question(self, "Confirm Delete", 
+                                        f"Are you sure you want to delete program '{program_name}'?",
+                                        QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+            if reply == QMessageBox.Yes:
+                self.delete_program_requested.emit(program_id)
         elif item_type == "content":
             program_id = current_item.data(0, Qt.UserRole + 1)
             element_id = current_item.data(0, Qt.UserRole + 2)
-            self.delete_content_requested.emit(program_id, element_id)
+            program = self.screen_manager.get_program_by_id(program_id)
+            element_name = "Content"
+            if program:
+                element = next((e for e in program.elements if e.get("id") == element_id), None)
+                if element:
+                    element_name = element.get("name", element.get("type", "Content"))
+            reply = QMessageBox.question(self, "Confirm Delete", 
+                                        f"Are you sure you want to delete content '{element_name}'?",
+                                        QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+            if reply == QMessageBox.Yes:
+                self.delete_content_requested.emit(program_id, element_id)
     
     def on_move_up(self):
         current_item = self.tree.currentItem()
@@ -948,21 +978,3 @@ class ScreenListPanel(QWidget):
             program.properties["content_upload_enabled"] = enabled
             program.modified = datetime.now().isoformat()
     
-    def _on_program_name_edited(self, program_id: str, line_edit: QLineEdit):
-        """Handle program name edit"""
-        if not self.screen_manager:
-            return
-        
-        new_text = line_edit.text()
-        new_name = new_text.replace("💽 ", "").strip()
-        if new_name:
-            program = self.screen_manager.get_program_by_id(program_id)
-            if program and program.name != new_name:
-                self.program_renamed.emit(program_id, new_name)
-            elif not program:
-                line_edit.setText(f"💽 {new_name}")
-        else:
-            program = self.screen_manager.get_program_by_id(program_id)
-            if program:
-                line_edit.setText(f"💽 {program.name}")
-
