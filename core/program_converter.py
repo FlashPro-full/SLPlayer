@@ -1,6 +1,5 @@
 from typing import Dict, List, Optional, Any, Tuple
 import uuid
-from pathlib import Path
 from utils.logger import get_logger
 from config.animation_effects import get_animation_index, get_animation_name
 
@@ -196,6 +195,8 @@ def _image_element_to_sdk_item(properties: Dict) -> Optional[Dict]:
             first_photo = photo_list[0]
             if isinstance(first_photo, dict):
                 file_path = first_photo.get("path", file_path)
+    else:
+        file_path = ""
     
     animation = properties.get("animation", {})
     if isinstance(animation, dict):
@@ -274,6 +275,8 @@ def _video_element_to_sdk_item(properties: Dict) -> Optional[Dict]:
             first_video = video_list[0]
             if isinstance(first_video, dict):
                 file_path = first_video.get("path", file_path)
+    else:
+        file_path = ""
     
     item = {
         "type": "video",
@@ -644,16 +647,8 @@ def _sdk_image_item_to_element(item: Dict, area: Dict) -> Dict:
     photo_list = metadata_props.get("photo_list", metadata_props.get("image_list", []))
     active_photo_index = metadata_props.get("active_photo_index", 0)
     
-    if photo_list:
-        photo_list = [p for p in photo_list if isinstance(p, dict) and Path(p.get("path", "")).exists()]
-        if active_photo_index >= len(photo_list):
-            active_photo_index = max(0, len(photo_list) - 1) if photo_list else 0
-    
     if not photo_list and file_path:
-        if Path(file_path).exists():
-            photo_list = [{"path": file_path}]
-        else:
-            photo_list = []
+        photo_list = [{"path": file_path}]
     
     animation_from_metadata = metadata_props.get("animation", {})
     if isinstance(animation_from_metadata, dict) and animation_from_metadata:
@@ -727,16 +722,8 @@ def _sdk_video_item_to_element(item: Dict, area: Dict) -> Dict:
     video_list = metadata_props.get("video_list", [])
     active_video_index = metadata_props.get("active_video_index", 0)
     
-    if video_list:
-        video_list = [v for v in video_list if isinstance(v, dict) and Path(v.get("path", "")).exists()]
-        if active_video_index >= len(video_list):
-            active_video_index = max(0, len(video_list) - 1) if video_list else 0
-    
     if not video_list and file_path:
-        if Path(file_path).exists():
-            video_list = [{"path": file_path}]
-        else:
-            video_list = []
+        video_list = [{"path": file_path}]
     
     element = {
         "id": _generate_uuid(),
@@ -1489,9 +1476,13 @@ class ProgramConverter:
             soo_element["properties"]["font_family"] = element.get("properties", {}).get("font_name", "Arial")
             soo_element["properties"]["font_size"] = element.get("properties", {}).get("font_size", 24)
         elif element_type in ["photo", "image"]:
-            soo_element["properties"]["file_path"] = element.get("properties", {}).get("file_path", "") or element.get("properties", {}).get("image_path", "")
+            photo_list = element.get("properties", {}).get("photo_list", element.get("properties", {}).get("image_list", []))
+            if photo_list and isinstance(photo_list, list) and len(photo_list) > 0:
+                soo_element["properties"]["file_path"] = element.get("properties", {}).get("file_path", "") or element.get("properties", {}).get("image_path", "")
         elif element_type == "video":
-            soo_element["properties"]["file_path"] = element.get("properties", {}).get("file_path", "") or element.get("properties", {}).get("video_path", "")
+            video_list = element.get("properties", {}).get("video_list", [])
+            if video_list and isinstance(video_list, list) and len(video_list) > 0:
+                soo_element["properties"]["file_path"] = element.get("properties", {}).get("file_path", "") or element.get("properties", {}).get("video_path", "")
         elif element_type == "clock":
             soo_element["properties"]["show_date"] = element.get("properties", {}).get("show_date", True)
             soo_element["properties"]["show_time"] = element.get("properties", {}).get("show_time", True)

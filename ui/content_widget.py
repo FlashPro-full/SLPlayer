@@ -301,6 +301,32 @@ class ContentWidget(QtWidgets.QWidget):
         self.update()
     
     
+    def _resolve_media_path(self, file_path: str) -> Optional[str]:
+        from pathlib import Path
+        import sys
+        
+        if not file_path or not file_path.strip():
+            return None
+        
+        path_obj = Path(file_path)
+        if path_obj.exists() and path_obj.is_file():
+            return str(path_obj.absolute())
+        
+        file_name = path_obj.name
+        if not file_name:
+            return None
+        
+        if getattr(sys, 'frozen', False):
+            base_path = Path(sys.executable).parent
+        else:
+            base_path = Path(__file__).parent.parent
+        
+        demos_path = base_path / "resources" / "demos" / file_name
+        if demos_path.exists() and demos_path.is_file():
+            return str(demos_path.absolute())
+        
+        return None
+    
     def _setup_video_player(self, element_id: str, video_path: str):
         from pathlib import Path
         video_file = Path(video_path)
@@ -317,10 +343,11 @@ class ContentWidget(QtWidgets.QWidget):
         if not CV2_AVAILABLE:
             return
         
-        from pathlib import Path
-        video_file = Path(video_path)
-        if not video_file.exists() or not video_file.is_file():
+        resolved_path = self._resolve_media_path(video_path)
+        if not resolved_path:
             return
+        
+        video_file = Path(resolved_path)
         
         try:
             cap = cv2.VideoCapture(str(video_file.absolute()))
@@ -384,9 +411,9 @@ class ContentWidget(QtWidgets.QWidget):
                     if 0 <= active_index < len(video_list):
                         video_path = video_list[active_index].get("path", "")
                         if video_path:
-                            from pathlib import Path
-                            if Path(video_path).exists():
-                                self._setup_video_player(element_id, video_path)
+                            resolved_path = self._resolve_media_path(video_path)
+                            if resolved_path:
+                                self._setup_video_player(element_id, resolved_path)
     
     def _start_videos_for_program(self):
         if not CV2_AVAILABLE:
@@ -1629,9 +1656,9 @@ class ContentWidget(QtWidgets.QWidget):
                     photo_path = photo_list[active_index].get("path", "")
                     if photo_path:
                         try:
-                            from pathlib import Path
-                            if Path(photo_path).exists():
-                                pixmap = QtGui.QPixmap(photo_path)
+                            resolved_path = self._resolve_media_path(photo_path)
+                            if resolved_path:
+                                pixmap = QtGui.QPixmap(resolved_path)
                                 if not pixmap.isNull():
                                     animation_props = element_props.get("animation", {})
                                     self._draw_photo_with_animation(
