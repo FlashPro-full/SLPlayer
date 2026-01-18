@@ -53,7 +53,6 @@ class ControllerDialog(QDialog):
         self.main_window = None
         
         self.init_ui()
-        self.load_controllers_from_database()
         self.start_discovery()
     
     def init_ui(self):
@@ -237,16 +236,7 @@ class ControllerDialog(QDialog):
         """)
     
     def load_controllers_from_database(self) -> None:
-        try:
-            online_controller_ids = self.controller_service.online_controller_ids.copy()
-            
-            controllers: List[Dict] = []
-            huidu_controllers = self.controller_db.get_all_huidu_controllers()
-            controllers.extend(huidu_controllers)
-            
-            self.update_table_with_controllers(controllers, online_controller_ids)
-        except Exception as e:
-            logger.error(f"Error loading controllers from database: {e}")
+        pass
     
     def start_discovery(self):
         try:
@@ -687,7 +677,7 @@ class ControllerDialog(QDialog):
         result = login_dialog.exec()
         
         if result:
-            self.load_controllers_from_database()
+            self.start_discovery()
     
     def closeEvent(self, event):
         from PyQt5.QtWidgets import QApplication

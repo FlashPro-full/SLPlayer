@@ -1,5 +1,6 @@
 from typing import Dict, List, Optional, Any, Tuple
 import uuid
+from pathlib import Path
 from utils.logger import get_logger
 from config.animation_effects import get_animation_index, get_animation_name
 
@@ -643,8 +644,16 @@ def _sdk_image_item_to_element(item: Dict, area: Dict) -> Dict:
     photo_list = metadata_props.get("photo_list", metadata_props.get("image_list", []))
     active_photo_index = metadata_props.get("active_photo_index", 0)
     
+    if photo_list:
+        photo_list = [p for p in photo_list if isinstance(p, dict) and Path(p.get("path", "")).exists()]
+        if active_photo_index >= len(photo_list):
+            active_photo_index = max(0, len(photo_list) - 1) if photo_list else 0
+    
     if not photo_list and file_path:
-        photo_list = [{"path": file_path}]
+        if Path(file_path).exists():
+            photo_list = [{"path": file_path}]
+        else:
+            photo_list = []
     
     animation_from_metadata = metadata_props.get("animation", {})
     if isinstance(animation_from_metadata, dict) and animation_from_metadata:
@@ -718,8 +727,16 @@ def _sdk_video_item_to_element(item: Dict, area: Dict) -> Dict:
     video_list = metadata_props.get("video_list", [])
     active_video_index = metadata_props.get("active_video_index", 0)
     
+    if video_list:
+        video_list = [v for v in video_list if isinstance(v, dict) and Path(v.get("path", "")).exists()]
+        if active_video_index >= len(video_list):
+            active_video_index = max(0, len(video_list) - 1) if video_list else 0
+    
     if not video_list and file_path:
-        video_list = [{"path": file_path}]
+        if Path(file_path).exists():
+            video_list = [{"path": file_path}]
+        else:
+            video_list = []
     
     element = {
         "id": _generate_uuid(),

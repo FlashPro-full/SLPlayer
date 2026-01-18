@@ -65,6 +65,24 @@ class Program:
         from controllers.element_defaults import ensure_element_defaults
         for element in self.elements:
             ensure_element_defaults(element)
+            element_props = element.get("properties", {})
+            if element.get("type") == "video":
+                video_list = element_props.get("video_list", [])
+                if video_list:
+                    video_list = [v for v in video_list if isinstance(v, dict) and Path(v.get("path", "")).exists()]
+                    element_props["video_list"] = video_list
+                    active_video_index = element_props.get("active_video_index", 0)
+                    if active_video_index >= len(video_list):
+                        element_props["active_video_index"] = max(0, len(video_list) - 1) if video_list else 0
+            elif element.get("type") == "photo":
+                photo_list = element_props.get("photo_list", element_props.get("image_list", []))
+                if photo_list:
+                    photo_list = [p for p in photo_list if isinstance(p, dict) and Path(p.get("path", "")).exists()]
+                    element_props["photo_list"] = photo_list
+                    element_props["image_list"] = photo_list
+                    active_photo_index = element_props.get("active_photo_index", 0)
+                    if active_photo_index >= len(photo_list):
+                        element_props["active_photo_index"] = max(0, len(photo_list) - 1) if photo_list else 0
         self.properties = data.get("properties", self.properties)
         if "checked" not in self.properties:
             self.properties["checked"] = True

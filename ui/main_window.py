@@ -41,7 +41,6 @@ class MainWindow(QtWidgets.QMainWindow):
         self.current_controller = self.controller_service.get_current_controller()
         self._latest_file_loaded = False
         self._pending_new_screen = False
-        
         self._setup_toolbar()
         self._setup_main_content()
         self._connect_signals()
@@ -70,6 +69,7 @@ class MainWindow(QtWidgets.QMainWindow):
         left_splitter.addWidget(self.screen_list_panel)
         
         self.content_widget = ContentWidget(self, self.screen_manager)
+        self.content_widget.set_playing(True)
         left_splitter.addWidget(self.content_widget)
         
         left_splitter.setSizes([250, 750])
@@ -448,6 +448,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def _load_autosaved_files(self):
         if not self.file_manager or not self.screen_manager:
             return
+
         controller_name = None
         if self.controller_service and self.current_controller:
             controller_name = self.current_controller.get("name")
@@ -480,38 +481,6 @@ class MainWindow(QtWidgets.QMainWindow):
                 screen = self.screen_manager.create_screen_for_device(controller_name, controller_type, width, height, file_path)
                 self.file_manager.save_screen_to_file(screen, file_path)
                 self.load_soo_file(file_path, clear_existing=False)
-        
-        if hasattr(self, 'content_widget') and self.screen_manager and self.screen_manager.current_screen:
-            if self.screen_manager.current_screen.programs:
-                self.content_widget.set_playing(True)
-    
-    def _on_open_file_requested(self, file_path: str):
-        if not file_path:
-            return
-        
-        result = self.load_soo_file(file_path, clear_existing=False)
-        if result:
-            if hasattr(self, 'content_widget'):
-                self.content_widget.set_playing(True)
-                self.content_widget.update()
-            if self.screen_manager and self.screen_manager.current_screen:
-                if self.screen_manager.current_screen.programs:
-                    current_program = self.screen_manager.current_screen.programs[0]
-                    self.properties_panel.set_program(current_program)
-                else:
-                    self.properties_panel.set_screen(
-                        self.screen_manager.current_screen.name,
-                        self.screen_manager.current_screen.programs,
-                        self.program_manager,
-                        self.screen_manager
-                    )
-        else:
-            from PyQt5.QtWidgets import QMessageBox
-            QMessageBox.warning(
-                self,
-                "Error",
-                f"Failed to load file: {file_path}"
-            )
     
     def load_soo_file(self, file_path: str, clear_existing: bool = False):
         result = self.file_manager.load_soo_file(file_path, clear_existing)
@@ -520,7 +489,6 @@ class MainWindow(QtWidgets.QMainWindow):
             if hasattr(self, 'screen_list_panel'):
                 self.screen_list_panel.refresh_screens(debounce=False)
             if hasattr(self, 'content_widget'):
-                self.content_widget.set_playing(True)
                 self.content_widget.update()
         return result
     

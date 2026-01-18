@@ -64,6 +64,7 @@ class ContentWidget(QtWidgets.QWidget):
         self._drag_state = None
         self._resize_handle_size = 8
         self._hover_handle = None
+        QTimer.singleShot(100, self._initialize_videos_for_program)
     
     def set_screen_manager(self, screen_manager: Optional['ScreenManager']):
         self.screen_manager = screen_manager
@@ -634,12 +635,14 @@ class ContentWidget(QtWidgets.QWidget):
             draw_x = x + (width - scaled_width) // 2
             draw_y = y + (height - scaled_height) // 2
         
+        painter.setClipRect(element_rect)
         if anim_state["phase"] == "entrance":
             self._apply_entrance_animation(painter, scaled_pixmap, draw_x, draw_y, width, height, entrance_anim, anim_state["progress"])
         elif anim_state["phase"] == "hold":
             painter.drawPixmap(draw_x, draw_y, scaled_pixmap)
         elif anim_state["phase"] == "exit":
             self._apply_exit_animation(painter, scaled_pixmap, draw_x, draw_y, width, height, exit_anim, anim_state["progress"])
+        painter.setClipping(False)
         
         if is_selected:
             painter.setPen(QtGui.QPen(QtGui.QColor(255, 0, 0), 2))

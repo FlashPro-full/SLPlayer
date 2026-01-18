@@ -28,6 +28,7 @@ class ControllerService(QObject):
             self.get_online_controller_ids()
             self.get_huidu_device_property()
             self.load_controllers_from_db()
+            self.all_controllers = [c for c in self.all_controllers if c.get('controller_id') in self.online_controller_ids]
             event_bus.controller_discovered.emit(self.all_controllers)
             return {
                 "online_controller_ids": self.online_controller_ids,
