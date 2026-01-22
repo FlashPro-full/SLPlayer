@@ -8,6 +8,7 @@ from typing import Optional, Dict, List
 from datetime import datetime, timezone
 from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 from utils.logger import get_logger
+from utils.xml_converter import XMLToJSONConverter
 import requests # type: ignore
 from requests_toolbelt.multipart.encoder import MultipartEncoder # type: ignore
 from pathlib import Path
@@ -98,49 +99,49 @@ class HuiduController:
             logger.error(f"SDK API Error Response: {error_response}")
             return error_response
 
-    def _file(self, file_path: str) -> str:
-        loc_file_path = Path(file_path)
-        if not loc_file_path.exists():
-            return json.dumps({
-                "message": "failed",
-                "data": f"Not found file [{file_path}]"
-            })
+    # def _file(self, file_path: str) -> str:
+    #     loc_file_path = Path(file_path)
+    #     if not loc_file_path.exists():
+    #         return json.dumps({
+    #             "message": "failed",
+    #             "data": f"Not found file [{file_path}]"
+    #         })
 
-        response_string = None
-        err_string = None
+    #     response_string = None
+    #     err_string = None
 
-        try:
-            file_name = loc_file_path.name
-            multipart_data = MultipartEncoder(
-                fields={'file': (file_name, open(file_path, 'rb'), 'application/octet-stream')}
-            )
+    #     try:
+    #         file_name = loc_file_path.name
+    #         multipart_data = MultipartEncoder(
+    #             fields={'file': (file_name, open(file_path, 'rb'), 'application/octet-stream')}
+    #         )
 
-            headers = {
-                'Content-Type': multipart_data.content_type
-            }
+    #         headers = {
+    #             'Content-Type': multipart_data.content_type
+    #         }
 
-            url = f"{self.host}/api/file"
+    #         url = f"{self.host}/api/file"
             
-            result = self._sign_header(headers, multipart_data, url)
-            if isinstance(result, str):
-                url = result
+    #         result = self._sign_header(headers, multipart_data, url)
+    #         if isinstance(result, str):
+    #             url = result
 
-            response = requests.post(
-                url,
-                data=multipart_data,
-                headers=headers
-            )
-            response.raise_for_status()
-            response_string = response.text
-        except Exception as e:
-            err_string = str(e)
+    #         response = requests.post(
+    #             url,
+    #             data=multipart_data,
+    #             headers=headers
+    #         )
+    #         response.raise_for_status()
+    #         response_string = response.text
+    #     except Exception as e:
+    #         err_string = str(e)
 
-        if not response_string:
-            return json.dumps({
-                "message": "failed",
-                "data": err_string or "Unknown error"
-            })
-        return response_string
+    #     if not response_string:
+    #         return json.dumps({
+    #             "message": "failed",
+    #             "data": err_string or "Unknown error"
+    #         })
+    #     return response_string
     
     def get_online_devices(self) -> Dict:
         try:
@@ -556,7 +557,116 @@ class HuiduController:
             logger.error(f"Error getting programs: {e}")
             return {"message": "error", "data": str(e)}
     
-    def _upload_files_and_update_program(self, program: List[Dict]) -> List[Dict]:
+    def _calculate_file_info(self, file_path: str) -> Dict:
+        """Calculate file size and MD5 hash.
+        
+        Args:
+            file_path: Path to the file
+            
+        Returns:
+            Dictionary with 'size' and 'md5' keys, or empty dict on error
+        """
+        try:
+            file_path_obj = Path(file_path)
+            if not file_path_obj.exists():
+                logger.error(f"File does not exist: {file_path}")
+                return {}
+            
+            # Calculate file size
+            file_size = file_path_obj.stat().st_size
+            
+            # Calculate MD5 hash
+            md5_hash = hashlib.md5()
+            with open(file_path, 'rb') as f:
+                for chunk in iter(lambda: f.read(4096), b""):
+                    md5_hash.update(chunk)
+            md5_value = md5_hash.hexdigest()
+            
+            return {
+                "size": file_size,
+                "md5": md5_value
+            }
+        except Exception as e:
+            logger.error(f"Error calculating file info for {file_path}: {e}")
+            return {}
+    
+    def _send_add_files_xml_request(self, file_path: str, file_type: str, device_ids: Optional[List[str]] = None) -> Dict:
+        """Send AddFiles XML request with file information.
+        
+        Args:
+            file_path: Path to the file to add
+            file_type: Type of file ('image' or 'video')
+            device_ids: Optional list of device IDs to send the request to
+            
+        Returns:
+            Response dictionary from the API
+        """
+        try:
+            # Calculate file info
+            file_info = self._calculate_file_info(file_path)
+            if not file_info:
+                return {"message": "error", "data": "Failed to calculate file info"}
+            
+            file_size = file_info["size"]
+            file_md5 = file_info["md5"]
+            file_name = Path(file_path).name
+            
+            # Build XML request
+            # Note: remote URL needs to be provided or constructed based on your repository setup
+            remote_url = f"http://repository.lnxall.com/repository/ip_screen/share/{file_name}"
+            
+            body = f"""<?xml version='1.0' encoding='utf-8'?>
+<sdk guid="##GUID">
+    <in method="AddFiles">
+        <files>
+            <file remote="{remote_url}" size="{file_size}" md5="{file_md5}" type="{file_type}" name="{file_name}"/>
+        </files>
+    </in>
+</sdk>"""
+            
+            # Send request
+            device_id_str = ",".join(device_ids) if device_ids else ""
+            url = f"{self.host}/raw/{device_id_str}"
+            headers = {
+                'Content-Type': 'application/xml',
+                'sdkKey': self.sdk_key,
+            }
+            
+            result = self._sign_header(headers, body, url)
+            if isinstance(result, str):
+                url = result
+            logger.info(f"SDK API Request: POST {url}")
+            logger.info(f"SDK API Request Body: {body}")
+            response = requests.post(url, data=body, headers=headers)
+            response.raise_for_status()
+            response_text = response.text
+            logger.info(f"SDK API Response Body: {response_text}")
+            
+            # Parse XML response
+            json_data = XMLToJSONConverter.convert(response_text)
+            if not json_data:
+                return {"message": "error", "data": "Failed to parse XML response"}
+            
+            # Check for result in out element
+            if isinstance(json_data, dict):
+                out_element = json_data.get("out", {})
+                if isinstance(out_element, dict):
+                    result_attr = out_element.get("@attributes", {})
+                    if isinstance(result_attr, dict):
+                        result_value = result_attr.get("result", "")
+                        if result_value == "kSuccess":
+                            return {"message": "ok", "data": "File added successfully"}
+                        else:
+                            error_msg = result_value or "Unknown error"
+                            return {"message": "error", "data": f"AddFiles failed: {error_msg}"}
+            
+            # Fallback if structure is unexpected
+            return {"message": "ok", "data": response_text}
+        except Exception as e:
+            logger.error(f"Error sending AddFiles XML request: {e}")
+            return {"message": "error", "data": str(e)}
+    
+    def _upload_files_and_update_program(self, program: List[Dict], device_ids: Optional[List[str]] = None) -> List[Dict]:
         updated_program = []
         for prog in program:
             prog_copy = json.loads(json.dumps(prog))
@@ -575,20 +685,20 @@ class HuiduController:
                                 # Copy file to resources/custom/images with encoded name
                                 copied_file_path = self._copy_file_to_resources(str(file_path), "image")
                                 if copied_file_path:
-                                    # Upload the copied file instead of the original
-                                    file_response = self._file(copied_file_path)
+                                    # Send XML request with copied file
+                                    xml_response = self._send_add_files_xml_request(copied_file_path, "image", device_ids)
                                     try:
-                                        file_data = json.loads(file_response)
-                                        if file_data.get("message") == "ok" and file_data.get("data"):
-                                            file_info = file_data["data"][0]
-                                            if file_info.get("message") == "ok":
-                                                item["file"] = file_info.get("data", copied_file_path)
-                                                item["fileSize"] = int(file_info.get("size", 0))
+                                        if xml_response.get("message") == "ok":
+                                            # Update item with file information from response if available
+                                            file_info = self._calculate_file_info(copied_file_path)
+                                            if file_info:
+                                                item["fileSize"] = file_info.get("size", 0)
                                                 item["fileMd5"] = file_info.get("md5", "")
-                                                if "localPath" not in item:
-                                                    item["localPath"] = copied_file_path
+                                            logger.info(f"Successfully sent AddFiles XML request for image: {copied_file_path}")
+                                        else:
+                                            logger.error(f"AddFiles XML request failed: {xml_response.get('data', 'Unknown error')}")
                                     except Exception as e:
-                                        logger.error(f"Error processing image file upload response: {e}")
+                                        logger.error(f"Error processing AddFiles XML response: {e}")
                                 else:
                                     logger.error(f"Failed to copy image file to resources/custom: {file_path}")
                     
@@ -610,8 +720,6 @@ class HuiduController:
                                                 item["file"] = file_info.get("data", copied_file_path)
                                                 item["fileSize"] = int(file_info.get("size", 0))
                                                 item["fileMd5"] = file_info.get("md5", "")
-                                                if "localPath" not in item:
-                                                    item["localPath"] = copied_file_path
                                     except Exception as e:
                                         logger.error(f"Error processing video file upload response: {e}")
                                 else:
@@ -696,7 +804,7 @@ class HuiduController:
             if not program:
                 return {"message": "error", "data": "No program data provided"}
             
-            updated_program = self._upload_files_and_update_program(program)
+            updated_program = self._upload_files_and_update_program(program, device_ids)
             
             device_id_str = ",".join(device_ids) if device_ids else ""
             body = {
@@ -715,7 +823,7 @@ class HuiduController:
             if not program:
                 return {"message": "error", "data": "No program data provided"}
             
-            updated_program = self._upload_files_and_update_program(program)
+            updated_program = self._upload_files_and_update_program(program, device_ids)
             
             device_id_str = ",".join(device_ids) if device_ids else ""
             body = {
@@ -734,7 +842,7 @@ class HuiduController:
             if not program:
                 return {"message": "error", "data": "No program data provided"}
             
-            updated_program = self._upload_files_and_update_program(program)
+            updated_program = self._upload_files_and_update_program(program, device_ids)
             
             device_id_str = ",".join(device_ids) if device_ids else ""
             body = {
