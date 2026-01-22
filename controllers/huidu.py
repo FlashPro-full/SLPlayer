@@ -611,15 +611,15 @@ class HuiduController:
             file_md5 = file_info["md5"]
             file_name = Path(file_path).name
             
-            # Build XML request
-            # Note: remote URL needs to be provided or constructed based on your repository setup
-            remote_url = f"http://repository.lnxall.com/repository/ip_screen/share/{file_name}"
+            # Build XML request with local file path
+            # Convert Windows path to forward slashes if needed
+            local_file_path = str(file_path).replace('\\', '/')
             
             body = f"""<?xml version='1.0' encoding='utf-8'?>
 <sdk guid="##GUID">
     <in method="AddFiles">
         <files>
-            <file remote="{remote_url}" size="{file_size}" md5="{file_md5}" type="{file_type}" name="{file_name}"/>
+            <file remote="{local_file_path}" size="{file_size}" md5="{file_md5}" type="{file_type}" name="{file_name}"/>
         </files>
     </in>
 </sdk>"""
