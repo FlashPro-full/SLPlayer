@@ -3,6 +3,7 @@ import time
 import uuid
 import hmac
 import hashlib
+import shutil
 from typing import Optional, Dict, List
 from datetime import datetime, timezone
 from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
@@ -571,44 +572,124 @@ class HuiduController:
                         if file_path:
                             local_path = Path(file_path)
                             if local_path.exists() and not self._is_url(str(file_path)):
-                                file_response = self._file(str(file_path))
-                                try:
-                                    file_data = json.loads(file_response)
-                                    if file_data.get("message") == "ok" and file_data.get("data"):
-                                        file_info = file_data["data"][0]
-                                        if file_info.get("message") == "ok":
-                                            item["file"] = file_info.get("data", file_path)
-                                            item["fileSize"] = int(file_info.get("size", 0))
-                                            item["fileMd5"] = file_info.get("md5", "")
-                                            if "localPath" not in item:
-                                                item["localPath"] = str(file_path)
-                                except Exception as e:
-                                    logger.error(f"Error processing image file upload response: {e}")
+                                # Copy file to resources/custom/images with encoded name
+                                copied_file_path = self._copy_file_to_resources(str(file_path), "image")
+                                if copied_file_path:
+                                    # Upload the copied file instead of the original
+                                    file_response = self._file(copied_file_path)
+                                    try:
+                                        file_data = json.loads(file_response)
+                                        if file_data.get("message") == "ok" and file_data.get("data"):
+                                            file_info = file_data["data"][0]
+                                            if file_info.get("message") == "ok":
+                                                item["file"] = file_info.get("data", copied_file_path)
+                                                item["fileSize"] = int(file_info.get("size", 0))
+                                                item["fileMd5"] = file_info.get("md5", "")
+                                                if "localPath" not in item:
+                                                    item["localPath"] = copied_file_path
+                                    except Exception as e:
+                                        logger.error(f"Error processing image file upload response: {e}")
+                                else:
+                                    logger.error(f"Failed to copy image file to resources/custom: {file_path}")
                     
                     elif item_type == "video":
                         file_path = item.get("file", "") or item.get("localPath", "")
                         if file_path:
                             local_path = Path(file_path)
                             if local_path.exists() and not self._is_url(str(file_path)):
-                                file_response = self._file(str(file_path))
-                                try:
-                                    file_data = json.loads(file_response)
-                                    if file_data.get("message") == "ok" and file_data.get("data"):
-                                        file_info = file_data["data"][0]
-                                        if file_info.get("message") == "ok":
-                                            item["file"] = file_info.get("data", file_path)
-                                            item["fileSize"] = int(file_info.get("size", 0))
-                                            item["fileMd5"] = file_info.get("md5", "")
-                                            if "localPath" not in item:
-                                                item["localPath"] = str(file_path)
-                                except Exception as e:
-                                    logger.error(f"Error processing video file upload response: {e}")
+                                # Copy file to resources/custom/videos with encoded name
+                                copied_file_path = self._copy_file_to_resources(str(file_path), "video")
+                                if copied_file_path:
+                                    # Upload the copied file instead of the original
+                                    file_response = self._file(copied_file_path)
+                                    try:
+                                        file_data = json.loads(file_response)
+                                        if file_data.get("message") == "ok" and file_data.get("data"):
+                                            file_info = file_data["data"][0]
+                                            if file_info.get("message") == "ok":
+                                                item["file"] = file_info.get("data", copied_file_path)
+                                                item["fileSize"] = int(file_info.get("size", 0))
+                                                item["fileMd5"] = file_info.get("md5", "")
+                                                if "localPath" not in item:
+                                                    item["localPath"] = copied_file_path
+                                    except Exception as e:
+                                        logger.error(f"Error processing video file upload response: {e}")
+                                else:
+                                    logger.error(f"Failed to copy video file to resources/custom: {file_path}")
             
             updated_program.append(prog_copy)
         return updated_program
     
     def _is_url(self, path: str) -> bool:
         return path.startswith(("http://", "https://"))
+    
+    def _get_resources_custom_dir(self) -> Path:
+        """Get the resources/custom directory path at project root, creating it if necessary."""
+        # Always use project root (where huidu.py is located: controllers/ -> project root)
+        base_path = Path(__file__).parent.parent
+        resources_dir = base_path / "resources" / "custom"
+        resources_dir.mkdir(parents=True, exist_ok=True)
+        return resources_dir
+    
+    def _generate_encoded_filename(self, original_path: str, file_type: str) -> str:
+        """Generate a distinct encoded filename for the copied file.
+        
+        Args:
+            original_path: The original file path
+            file_type: Either 'image' or 'video'
+            
+        Returns:
+            A distinct encoded filename
+        """
+        original_path_obj = Path(original_path)
+        original_name = original_path_obj.name
+        original_stem = original_path_obj.stem
+        original_suffix = original_path_obj.suffix
+        
+        # Create a hash from the original path and current timestamp
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        hash_input = f"{original_path}_{timestamp}"
+        hash_value = hashlib.md5(hash_input.encode('utf-8')).hexdigest()[:12]
+        
+        # Generate distinct filename: hash_timestamp_originalname.ext
+        encoded_name = f"{hash_value}_{timestamp}_{original_stem}{original_suffix}"
+        
+        return encoded_name
+    
+    def _copy_file_to_resources(self, file_path: str, file_type: str) -> Optional[str]:
+        """Copy a file to resources/custom with distinct encoded name.
+        
+        Args:
+            file_path: Path to the original file
+            file_type: Either 'image' or 'video'
+            
+        Returns:
+            Path to the copied file, or None if copy failed
+        """
+        try:
+            source_path = Path(file_path)
+            if not source_path.exists():
+                logger.error(f"Source file does not exist: {file_path}")
+                return None
+            
+            # Determine subfolder based on file type
+            subfolder = "images" if file_type == "image" else "videos"
+            resources_dir = self._get_resources_custom_dir()
+            target_dir = resources_dir / subfolder
+            target_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Generate distinct encoded filename
+            encoded_filename = self._generate_encoded_filename(file_path, file_type)
+            target_path = target_dir / encoded_filename
+            
+            # Copy the file
+            shutil.copy2(source_path, target_path)
+            logger.info(f"Copied file from {file_path} to {target_path}")
+            
+            return str(target_path)
+        except Exception as e:
+            logger.error(f"Error copying file to resources/custom: {e}", exc_info=True)
+            return None
     
     def replace_program(self, program: Optional[List[Dict[str, str | bool | int | List[Dict[str, str | bool | int]]]]] = None, device_ids: Optional[List[str]] = None) -> Dict:
         try:
