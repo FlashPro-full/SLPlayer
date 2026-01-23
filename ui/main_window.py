@@ -1,5 +1,4 @@
 import sys
-import asyncio
 from datetime import datetime
 from PyQt5 import QtWidgets
 from PyQt5.QtCore import Qt, QTimer
@@ -168,59 +167,7 @@ class MainWindow(QtWidgets.QMainWindow):
             sdk_program = ProgramConverter.soo_to_sdk(program_dict, "huidu")
             sdk_program_list = [sdk_program]
             
-            # Run async update_program
-            # #region agent log
-            import json as json_lib
-            import time
-            log_path = r"e:\Work\Projects\SLPlayer(Python)\.cursor\debug.log"
-            def _debug_log_ui(location: str, message: str, data: dict, hypothesis_id: str = ""):
-                try:
-                    entry = {
-                        "sessionId": "debug-session",
-                        "runId": "run1",
-                        "hypothesisId": hypothesis_id,
-                        "location": location,
-                        "message": message,
-                        "data": data,
-                        "timestamp": int(time.time() * 1000)
-                    }
-                    with open(log_path, "a", encoding="utf-8") as f:
-                        f.write(json_lib.dumps(entry) + "\n")
-                except: pass
-            _debug_log_ui("main_window.py:on_send_program:before_loop", "Before event loop setup", {
-                "has_event_loop": asyncio.get_event_loop() is not None
-            }, "A")
-            # #endregion
-            try:
-                loop = asyncio.get_event_loop()
-                # #region agent log
-                _debug_log_ui("main_window.py:on_send_program:got_loop", "Got existing event loop", {
-                    "loop_running": loop.is_running(),
-                    "loop_closed": loop.is_closed()
-                }, "A")
-                # #endregion
-            except RuntimeError:
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                # #region agent log
-                _debug_log_ui("main_window.py:on_send_program:new_loop", "Created new event loop", {
-                    "loop_running": loop.is_running(),
-                    "loop_closed": loop.is_closed()
-                }, "A")
-                # #endregion
-            
-            # #region agent log
-            _debug_log_ui("main_window.py:on_send_program:before_run_until_complete", "Before run_until_complete", {
-                "loop_running": loop.is_running()
-            }, "A")
-            # #endregion
-            response = loop.run_until_complete(huidu_controller.update_program(sdk_program_list, [controller_id]))
-            # #region agent log
-            _debug_log_ui("main_window.py:on_send_program:after_run_until_complete", "After run_until_complete", {
-                "response_message": response.get("message"),
-                "response_data": str(response.get("data", ""))[:100]
-            }, "A")
-            # #endregion
+            response = huidu_controller.update_program(sdk_program_list, [controller_id])
             
             if response.get("message") == "ok":
                 QMessageBox.information(self, "Success", f"Program sent successfully.")
@@ -271,14 +218,7 @@ class MainWindow(QtWidgets.QMainWindow):
             sdk_program = ProgramConverter.soo_to_sdk(program_dict, "huidu")
             sdk_program_list = [sdk_program]
             
-            # Run async add_program
-            try:
-                loop = asyncio.get_event_loop()
-            except RuntimeError:
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-            
-            response = loop.run_until_complete(huidu_controller.add_program(sdk_program_list, [controller_id]))
+            response = huidu_controller.add_program(sdk_program_list, [controller_id])
             
             if response.get("message") == "ok":
                 QMessageBox.information(self, "Success", f"Program added successfully.")
