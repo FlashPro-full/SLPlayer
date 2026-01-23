@@ -643,7 +643,7 @@ class HuiduController:
             response_text = response.text
             logger.info(f"SDK API Response Body: {response_text}")
             
-            # Parse XML response
+            # Parse XML response (converter handles both direct XML and JSON-wrapped XML)
             json_data = XMLToJSONConverter.convert(response_text)
             if not json_data:
                 return {"message": "error", "data": "Failed to parse XML response"}
@@ -691,6 +691,7 @@ class HuiduController:
                                     status_response_text = status_response.text
                                     logger.debug(f"Status check response: {status_response_text}")
                                     
+                                    # Parse XML response (converter handles both direct XML and JSON-wrapped XML)
                                     status_json_data = XMLToJSONConverter.convert(status_response_text)
                                     if isinstance(status_json_data, dict):
                                         status_out_element = status_json_data.get("out", {})

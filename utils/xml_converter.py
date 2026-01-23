@@ -10,14 +10,44 @@ class XMLToJSONConverter:
     
     @staticmethod
     def convert(xml_string: str) -> Union[Dict, List, None]:
+        """Convert XML string to JSON. Handles both direct XML and JSON-wrapped XML.
+        
+        Args:
+            xml_string: XML string or JSON string containing XML in data[0].data
+            
+        Returns:
+            Converted JSON structure or None on error
+        """
         try:
-            root = ET.fromstring(xml_string)
+            # Try to parse as JSON first (response might be wrapped in JSON)
+            # Example: {"message":"ok", "data":[{"id":"...", "message":"ok", "data":"<xml>...</xml>"}]}
+            extracted_xml = None
+            try:
+                json_response = json.loads(xml_string)
+                if isinstance(json_response, dict) and json_response.get("message") == "ok":
+                    data_list = json_response.get("data", [])
+                    if isinstance(data_list, list) and len(data_list) > 0:
+                        first_item = data_list[0]
+                        if isinstance(first_item, dict) and "data" in first_item:
+                            extracted_xml = first_item.get("data", "")
+                            if isinstance(extracted_xml, str):
+                                # JSON parser already decodes Unicode escapes (e.g., \u003c -> <)
+                                logger.debug(f"Extracted XML from JSON-wrapped response")
+            except (json.JSONDecodeError, AttributeError, KeyError, TypeError):
+                # Not JSON or doesn't have expected structure, treat as direct XML
+                pass
+            
+            # Use extracted XML if available, otherwise use original string
+            xml_to_parse = extracted_xml if extracted_xml else xml_string
+            
+            # Parse XML
+            root = ET.fromstring(xml_to_parse)
             result = XMLToJSONConverter._element_to_dict(root)
             if isinstance(result, str):
                 return {"#text": result}
             return result
         except ET.ParseError as e:
-            logger.error(f"Error parsing XML: {str}")
+            logger.error(f"Error parsing XML: {e}")
             return None
         except Exception as e:
             logger.error(f"Error converting XML to JSON: {e}")
