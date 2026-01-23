@@ -4,6 +4,7 @@ import uuid
 import hmac
 import hashlib
 import shutil
+import asyncio
 from typing import Optional, Dict, List
 from datetime import datetime, timezone
 from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
@@ -591,8 +592,8 @@ class HuiduController:
             logger.error(f"Error calculating file info for {file_path}: {e}")
             return {}
     
-    def _send_add_files_xml_request(self, file_path: str, file_type: str, device_ids: Optional[List[str]] = None) -> Dict:
-        """Send AddFiles XML request with file information.
+    async def _send_add_files_xml_request(self, file_path: str, file_type: str, device_ids: Optional[List[str]] = None) -> Dict:
+        """Send AddFiles XML request with file information and poll for completion.
         
         Args:
             file_path: Path to the file to add
@@ -638,7 +639,13 @@ class HuiduController:
                 url = result
             logger.info(f"SDK API Request: POST {url}")
             logger.info(f"SDK API Request Body: {body}")
-            response = requests.post(url, data=body, headers=headers)
+            
+            # Use asyncio.to_thread for the blocking requests call
+            loop = asyncio.get_event_loop()
+            response = await loop.run_in_executor(
+                None, 
+                lambda: requests.post(url, data=body, headers=headers)
+            )
             response.raise_for_status()
             response_text = response.text
             logger.info(f"SDK API Response Body: {response_text}")
@@ -655,7 +662,57 @@ class HuiduController:
                     result_attr = out_element.get("@attributes", {})
                     if isinstance(result_attr, dict):
                         result_value = result_attr.get("result", "")
-                        if result_value == "kSuccess":
+                        
+                        # If status is kDownloadingFile, poll until completion
+                        if result_value == "kDownloadingFile":
+                            logger.info(f"File upload in progress for {file_name}, polling for completion...")
+                            max_poll_attempts = 300  # Maximum 5 minutes (300 * 1 second)
+                            poll_interval = 1.0  # Poll every 1 second
+                            
+                            for attempt in range(max_poll_attempts):
+                                await asyncio.sleep(poll_interval)
+                                
+                                # Poll status by sending another request or checking status
+                                # For now, we'll check the same endpoint - you may need to adjust this
+                                # based on your API's actual status checking endpoint
+                                try:
+                                    poll_response = await loop.run_in_executor(
+                                        None,
+                                        lambda: requests.post(url, data=body, headers=headers)
+                                    )
+                                    poll_response.raise_for_status()
+                                    poll_response_text = poll_response.text
+                                    poll_json_data = XMLToJSONConverter.convert(poll_response_text)
+                                    
+                                    if isinstance(poll_json_data, dict):
+                                        poll_out = poll_json_data.get("out", {})
+                                        if isinstance(poll_out, dict):
+                                            poll_result_attr = poll_out.get("@attributes", {})
+                                            if isinstance(poll_result_attr, dict):
+                                                poll_result = poll_result_attr.get("result", "")
+                                                
+                                                if poll_result == "kSuccess":
+                                                    logger.info(f"File upload completed successfully for {file_name}")
+                                                    return {"message": "ok", "data": "File added successfully"}
+                                                elif poll_result == "kDownloadingFile":
+                                                    # Still downloading, continue polling
+                                                    if attempt % 10 == 0:  # Log every 10 seconds
+                                                        logger.info(f"File upload still in progress for {file_name}...")
+                                                    continue
+                                                else:
+                                                    # Error or other status
+                                                    error_msg = poll_result or "Unknown error"
+                                                    logger.error(f"File upload failed for {file_name}: {error_msg}")
+                                                    return {"message": "error", "data": f"AddFiles failed: {error_msg}"}
+                                except Exception as poll_error:
+                                    logger.warning(f"Error polling upload status: {poll_error}")
+                                    # Continue polling despite error
+                                
+                            # Timeout after max attempts
+                            logger.error(f"File upload timeout for {file_name} after {max_poll_attempts} attempts")
+                            return {"message": "error", "data": "File upload timeout"}
+                        
+                        elif result_value == "kSuccess":
                             return {"message": "ok", "data": "File added successfully"}
                         else:
                             error_msg = result_value or "Unknown error"
@@ -667,7 +724,16 @@ class HuiduController:
             logger.error(f"Error sending AddFiles XML request: {e}")
             return {"message": "error", "data": str(e)}
     
-    def _upload_files(self, program: List[Dict], device_ids: Optional[List[str]] = None) -> List[Dict]:
+    async def _upload_files(self, program: List[Dict], device_ids: Optional[List[str]] = None) -> List[Dict]:
+        """Upload files for programs asynchronously.
+        
+        Args:
+            program: List of program dictionaries
+            device_ids: Optional list of device IDs
+            
+        Returns:
+            Updated program list
+        """
         for prog in program:
             prog_copy = json.loads(json.dumps(prog))
             areas = prog_copy.get("area", [])
@@ -685,8 +751,8 @@ class HuiduController:
                                 # Copy file to resources/custom/images with encoded name
                                 copied_file_path = self._copy_file_to_resources(str(file_path), "image")
                                 if copied_file_path:
-                                    # Send XML request with copied file
-                                    xml_response = self._send_add_files_xml_request(copied_file_path, "image", device_ids)
+                                    # Send XML request with copied file (async)
+                                    xml_response = await self._send_add_files_xml_request(copied_file_path, "image", device_ids)
                                     try:
                                         if xml_response.get("message") == "ok":
                                             # Update item with file information from response if available
@@ -710,8 +776,8 @@ class HuiduController:
                                 # Copy file to resources/custom/videos with encoded name
                                 copied_file_path = self._copy_file_to_resources(str(file_path), "video")
                                 if copied_file_path:
-                                    # Upload the copied file instead of the original
-                                    xml_response = self._send_add_files_xml_request(copied_file_path, "video", device_ids)
+                                    # Upload the copied file instead of the original (async)
+                                    xml_response = await self._send_add_files_xml_request(copied_file_path, "video", device_ids)
                                     try:
                                         if xml_response.get("message") == "ok":
                                             # Update item with file information from response if available
@@ -952,12 +1018,12 @@ class HuiduController:
         
         return program_xml
     
-    def update_program(self, program: Optional[List[Dict[str, str | bool | int | List[Dict[str, str | bool | int]]]]] = None, device_ids: Optional[List[str]] = None) -> Dict:
+    async def update_program(self, program: Optional[List[Dict[str, str | bool | int | List[Dict[str, str | bool | int]]]]] = None, device_ids: Optional[List[str]] = None) -> Dict:
         try:
             if not program:
                 return {"message": "error", "data": "No program data provided"}
             
-            updated_program = self._upload_files(program, device_ids)
+            updated_program = await self._upload_files(program, device_ids)
             
             device_id_str = ",".join(device_ids) if device_ids else ""
             url = f"{self.host}/raw/{device_id_str}"
@@ -1024,12 +1090,12 @@ class HuiduController:
             logger.error(f"Error updating program: {e}")
             return {"message": "error", "data": str(e)}
 
-    def add_program(self, program: Optional[List[Dict[str, str | bool | int | List[Dict[str, str | bool | int]]]]] = None, device_ids: Optional[List[str]] = None) -> Dict:
+    async def add_program(self, program: Optional[List[Dict[str, str | bool | int | List[Dict[str, str | bool | int]]]]] = None, device_ids: Optional[List[str]] = None) -> Dict:
         try:
             if not program:
                 return {"message": "error", "data": "No program data provided"}
             
-            updated_program = self._upload_files(program, device_ids)
+            updated_program = await self._upload_files(program, device_ids)
             
             device_id_str = ",".join(device_ids) if device_ids else ""
             body = {

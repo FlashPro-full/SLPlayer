@@ -1,4 +1,5 @@
 import sys
+import asyncio
 from datetime import datetime
 from PyQt5 import QtWidgets
 from PyQt5.QtCore import Qt, QTimer
@@ -167,7 +168,14 @@ class MainWindow(QtWidgets.QMainWindow):
             sdk_program = ProgramConverter.soo_to_sdk(program_dict, "huidu")
             sdk_program_list = [sdk_program]
             
-            response = huidu_controller.update_program(sdk_program_list, [controller_id])
+            # Run async update_program
+            try:
+                loop = asyncio.get_event_loop()
+            except RuntimeError:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+            
+            response = loop.run_until_complete(huidu_controller.update_program(sdk_program_list, [controller_id]))
             
             if response.get("message") == "ok":
                 QMessageBox.information(self, "Success", f"Program sent successfully.")
@@ -218,7 +226,14 @@ class MainWindow(QtWidgets.QMainWindow):
             sdk_program = ProgramConverter.soo_to_sdk(program_dict, "huidu")
             sdk_program_list = [sdk_program]
             
-            response = huidu_controller.add_program(sdk_program_list, [controller_id])
+            # Run async add_program
+            try:
+                loop = asyncio.get_event_loop()
+            except RuntimeError:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+            
+            response = loop.run_until_complete(huidu_controller.add_program(sdk_program_list, [controller_id]))
             
             if response.get("message") == "ok":
                 QMessageBox.information(self, "Success", f"Program added successfully.")
