@@ -17,7 +17,7 @@ class XMLToJSONConverter:
                 return {"#text": result}
             return result
         except ET.ParseError as e:
-            logger.error(f"Error parsing XML: {e}")
+            logger.error(f"Error parsing XML: {str}")
             return None
         except Exception as e:
             logger.error(f"Error converting XML to JSON: {e}")
