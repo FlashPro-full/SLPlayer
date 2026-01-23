@@ -17,6 +17,30 @@ from pathlib import Path
 
 logger = get_logger(__name__)
 
+# #region agent log
+def _debug_log(location: str, message: str, data: dict, hypothesis_id: str = ""):
+    try:
+        import json as json_lib
+        import os
+        log_path = r"e:\Work\Projects\SLPlayer(Python)\.cursor\debug.log"
+        log_dir = os.path.dirname(log_path)
+        os.makedirs(log_dir, exist_ok=True)
+        entry = {
+            "sessionId": "debug-session",
+            "runId": "run1",
+            "hypothesisId": hypothesis_id,
+            "location": location,
+            "message": message,
+            "data": data,
+            "timestamp": int(time.time() * 1000)
+        }
+        with open(log_path, "a", encoding="utf-8") as f:
+            f.write(json_lib.dumps(entry) + "\n")
+    except Exception as e:
+        # Fallback to regular logger if debug log fails
+        logger.warning(f"Debug log failed: {e}")
+# #endregion
+
 DEFAULT_SDK_KEY = "a718fbe8aaa8aeef"
 DEFAULT_SDK_SECRET = "8fd529ef3f88986d40e6ef8d4d7f2d0c"
 DEFAULT_HOST = "http://127.0.0.1:30080"
@@ -603,10 +627,22 @@ class HuiduController:
         Returns:
             Response dictionary from the API
         """
+        # #region agent log
+        _debug_log("huidu.py:_send_add_files_xml_request:entry", "Async function entry", {
+            "file_path": file_path,
+            "file_type": file_type,
+            "device_ids": device_ids,
+            "event_loop_running": asyncio.get_event_loop().is_running() if asyncio.get_event_loop() else False,
+            "current_task": str(asyncio.current_task()) if asyncio.current_task() else None
+        }, "A,C")
+        # #endregion
         try:
             # Calculate file info
             file_info = self._calculate_file_info(file_path)
             if not file_info:
+                # #region agent log
+                _debug_log("huidu.py:_send_add_files_xml_request:error", "Failed to calculate file info", {"file_path": file_path}, "D")
+                # #endregion
                 return {"message": "error", "data": "Failed to calculate file info"}
             
             file_size = file_info["size"]
@@ -642,6 +678,13 @@ class HuiduController:
             
             # Use asyncio.to_thread for the blocking requests call
             loop = asyncio.get_event_loop()
+            # #region agent log
+            _debug_log("huidu.py:_send_add_files_xml_request:before_request", "Before HTTP request", {
+                "url": url,
+                "has_event_loop": loop is not None,
+                "loop_running": loop.is_running() if loop else False
+            }, "A")
+            # #endregion
             response = await loop.run_in_executor(
                 None, 
                 lambda: requests.post(url, data=body, headers=headers)
@@ -650,9 +693,27 @@ class HuiduController:
             response_text = response.text
             logger.info(f"SDK API Response Body: {response_text}")
             
+            # #region agent log
+            _debug_log("huidu.py:_send_add_files_xml_request:after_request", "After HTTP request", {
+                "status_code": response.status_code,
+                "response_length": len(response_text),
+                "response_preview": response_text[:200]
+            }, "A")
+            # #endregion
+            
             # Parse XML response
             json_data = XMLToJSONConverter.convert(response_text)
+            # #region agent log
+            _debug_log("huidu.py:_send_add_files_xml_request:after_parse", "After XML parse", {
+                "json_data_type": type(json_data).__name__,
+                "json_data_keys": list(json_data.keys()) if isinstance(json_data, dict) else None,
+                "has_out": "out" in json_data if isinstance(json_data, dict) else False
+            }, "E")
+            # #endregion
             if not json_data:
+                # #region agent log
+                _debug_log("huidu.py:_send_add_files_xml_request:parse_error", "Failed to parse XML", {"response_text": response_text[:500]}, "E")
+                # #endregion
                 return {"message": "error", "data": "Failed to parse XML response"}
             
             # Check for result in out element
@@ -662,15 +723,37 @@ class HuiduController:
                     result_attr = out_element.get("@attributes", {})
                     if isinstance(result_attr, dict):
                         result_value = result_attr.get("result", "")
+                        # #region agent log
+                        _debug_log("huidu.py:_send_add_files_xml_request:status_check", "Status value extracted", {
+                            "result_value": result_value,
+                            "out_element_keys": list(out_element.keys()),
+                            "result_attr_keys": list(result_attr.keys())
+                        }, "E")
+                        # #endregion
                         
                         # If status is kDownloadingFile, poll until completion
                         if result_value == "kDownloadingFile":
+                            # #region agent log
+                            _debug_log("huidu.py:_send_add_files_xml_request:polling_start", "Starting polling loop", {
+                                "file_name": file_name,
+                                "max_attempts": 300,
+                                "poll_interval": 1.0
+                            }, "B")
+                            # #endregion
                             logger.info(f"File upload in progress for {file_name}, polling for completion...")
                             max_poll_attempts = 300  # Maximum 5 minutes (300 * 1 second)
                             poll_interval = 1.0  # Poll every 1 second
                             
                             for attempt in range(max_poll_attempts):
                                 await asyncio.sleep(poll_interval)
+                                
+                                # #region agent log
+                                _debug_log("huidu.py:_send_add_files_xml_request:poll_attempt", "Polling attempt", {
+                                    "attempt": attempt + 1,
+                                    "max_attempts": max_poll_attempts,
+                                    "file_name": file_name
+                                }, "B")
+                                # #endregion
                                 
                                 # Poll status by sending another request or checking status
                                 # For now, we'll check the same endpoint - you may need to adjust this
@@ -684,6 +767,15 @@ class HuiduController:
                                     poll_response_text = poll_response.text
                                     poll_json_data = XMLToJSONConverter.convert(poll_response_text)
                                     
+                                    # #region agent log
+                                    _debug_log("huidu.py:_send_add_files_xml_request:poll_response", "Poll response received", {
+                                        "attempt": attempt + 1,
+                                        "status_code": poll_response.status_code,
+                                        "response_preview": poll_response_text[:200],
+                                        "has_json_data": poll_json_data is not None
+                                    }, "B")
+                                    # #endregion
+                                    
                                     if isinstance(poll_json_data, dict):
                                         poll_out = poll_json_data.get("out", {})
                                         if isinstance(poll_out, dict):
@@ -691,7 +783,20 @@ class HuiduController:
                                             if isinstance(poll_result_attr, dict):
                                                 poll_result = poll_result_attr.get("result", "")
                                                 
+                                                # #region agent log
+                                                _debug_log("huidu.py:_send_add_files_xml_request:poll_status", "Poll status extracted", {
+                                                    "attempt": attempt + 1,
+                                                    "poll_result": poll_result
+                                                }, "B")
+                                                # #endregion
+                                                
                                                 if poll_result == "kSuccess":
+                                                    # #region agent log
+                                                    _debug_log("huidu.py:_send_add_files_xml_request:success", "Upload completed", {
+                                                        "file_name": file_name,
+                                                        "attempts": attempt + 1
+                                                    }, "B")
+                                                    # #endregion
                                                     logger.info(f"File upload completed successfully for {file_name}")
                                                     return {"message": "ok", "data": "File added successfully"}
                                                 elif poll_result == "kDownloadingFile":
@@ -702,25 +807,69 @@ class HuiduController:
                                                 else:
                                                     # Error or other status
                                                     error_msg = poll_result or "Unknown error"
+                                                    # #region agent log
+                                                    _debug_log("huidu.py:_send_add_files_xml_request:poll_error", "Poll returned error status", {
+                                                        "poll_result": poll_result,
+                                                        "error_msg": error_msg,
+                                                        "attempt": attempt + 1
+                                                    }, "B")
+                                                    # #endregion
                                                     logger.error(f"File upload failed for {file_name}: {error_msg}")
                                                     return {"message": "error", "data": f"AddFiles failed: {error_msg}"}
                                 except Exception as poll_error:
+                                    # #region agent log
+                                    _debug_log("huidu.py:_send_add_files_xml_request:poll_exception", "Exception during polling", {
+                                        "attempt": attempt + 1,
+                                        "error": str(poll_error),
+                                        "error_type": type(poll_error).__name__
+                                    }, "D")
+                                    # #endregion
                                     logger.warning(f"Error polling upload status: {poll_error}")
                                     # Continue polling despite error
                                 
                             # Timeout after max attempts
+                            # #region agent log
+                            _debug_log("huidu.py:_send_add_files_xml_request:timeout", "Polling timeout", {
+                                "file_name": file_name,
+                                "max_attempts": max_poll_attempts
+                            }, "B")
+                            # #endregion
                             logger.error(f"File upload timeout for {file_name} after {max_poll_attempts} attempts")
                             return {"message": "error", "data": "File upload timeout"}
                         
                         elif result_value == "kSuccess":
+                            # #region agent log
+                            _debug_log("huidu.py:_send_add_files_xml_request:immediate_success", "Immediate success (no polling)", {
+                                "file_name": file_name,
+                                "result_value": result_value
+                            }, "B")
+                            # #endregion
                             return {"message": "ok", "data": "File added successfully"}
                         else:
                             error_msg = result_value or "Unknown error"
+                            # #region agent log
+                            _debug_log("huidu.py:_send_add_files_xml_request:unknown_status", "Unknown status value", {
+                                "result_value": result_value,
+                                "error_msg": error_msg
+                            }, "E")
+                            # #endregion
                             return {"message": "error", "data": f"AddFiles failed: {error_msg}"}
             
             # Fallback if structure is unexpected
+            # #region agent log
+            _debug_log("huidu.py:_send_add_files_xml_request:fallback", "Unexpected structure, using fallback", {
+                "json_data_type": type(json_data).__name__
+            }, "E")
+            # #endregion
             return {"message": "ok", "data": response_text}
         except Exception as e:
+            # #region agent log
+            _debug_log("huidu.py:_send_add_files_xml_request:exception", "Exception caught", {
+                "error": str(e),
+                "error_type": type(e).__name__,
+                "traceback": str(e.__traceback__) if hasattr(e, "__traceback__") else None
+            }, "D")
+            # #endregion
             logger.error(f"Error sending AddFiles XML request: {e}")
             return {"message": "error", "data": str(e)}
     
@@ -734,6 +883,13 @@ class HuiduController:
         Returns:
             Updated program list
         """
+        # #region agent log
+        _debug_log("huidu.py:_upload_files:entry", "Async upload_files entry", {
+            "program_count": len(program),
+            "device_ids": device_ids,
+            "event_loop_running": asyncio.get_event_loop().is_running() if asyncio.get_event_loop() else False
+        }, "C")
+        # #endregion
         for prog in program:
             prog_copy = json.loads(json.dumps(prog))
             areas = prog_copy.get("area", [])
@@ -752,7 +908,20 @@ class HuiduController:
                                 copied_file_path = self._copy_file_to_resources(str(file_path), "image")
                                 if copied_file_path:
                                     # Send XML request with copied file (async)
+                                    # #region agent log
+                                    _debug_log("huidu.py:_upload_files:before_await_image", "Before awaiting image upload", {
+                                        "copied_file_path": copied_file_path,
+                                        "file_type": "image"
+                                    }, "C")
+                                    # #endregion
                                     xml_response = await self._send_add_files_xml_request(copied_file_path, "image", device_ids)
+                                    # #region agent log
+                                    _debug_log("huidu.py:_upload_files:after_await_image", "After awaiting image upload", {
+                                        "copied_file_path": copied_file_path,
+                                        "response_message": xml_response.get("message"),
+                                        "response_data": str(xml_response.get("data", ""))[:100]
+                                    }, "C")
+                                    # #endregion
                                     try:
                                         if xml_response.get("message") == "ok":
                                             # Update item with file information from response if available
@@ -777,7 +946,20 @@ class HuiduController:
                                 copied_file_path = self._copy_file_to_resources(str(file_path), "video")
                                 if copied_file_path:
                                     # Upload the copied file instead of the original (async)
+                                    # #region agent log
+                                    _debug_log("huidu.py:_upload_files:before_await_video", "Before awaiting video upload", {
+                                        "copied_file_path": copied_file_path,
+                                        "file_type": "video"
+                                    }, "C")
+                                    # #endregion
                                     xml_response = await self._send_add_files_xml_request(copied_file_path, "video", device_ids)
+                                    # #region agent log
+                                    _debug_log("huidu.py:_upload_files:after_await_video", "After awaiting video upload", {
+                                        "copied_file_path": copied_file_path,
+                                        "response_message": xml_response.get("message"),
+                                        "response_data": str(xml_response.get("data", ""))[:100]
+                                    }, "C")
+                                    # #endregion
                                     try:
                                         if xml_response.get("message") == "ok":
                                             # Update item with file information from response if available
@@ -1019,11 +1201,26 @@ class HuiduController:
         return program_xml
     
     async def update_program(self, program: Optional[List[Dict[str, str | bool | int | List[Dict[str, str | bool | int]]]]] = None, device_ids: Optional[List[str]] = None) -> Dict:
+        # #region agent log
+        _debug_log("huidu.py:update_program:entry", "Async update_program entry", {
+            "program_count": len(program) if program else 0,
+            "device_ids": device_ids,
+            "event_loop_running": asyncio.get_event_loop().is_running() if asyncio.get_event_loop() else False
+        }, "A,C")
+        # #endregion
         try:
             if not program:
                 return {"message": "error", "data": "No program data provided"}
             
+            # #region agent log
+            _debug_log("huidu.py:update_program:before_upload", "Before awaiting _upload_files", {}, "C")
+            # #endregion
             updated_program = await self._upload_files(program, device_ids)
+            # #region agent log
+            _debug_log("huidu.py:update_program:after_upload", "After awaiting _upload_files", {
+                "updated_program_count": len(updated_program) if updated_program else 0
+            }, "C")
+            # #endregion
             
             device_id_str = ",".join(device_ids) if device_ids else ""
             url = f"{self.host}/raw/{device_id_str}"
