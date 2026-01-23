@@ -642,6 +642,13 @@ class HuiduController:
             response.raise_for_status()
             response_text = response.text
             logger.info(f"SDK API Response Body: {response_text}")
+
+            
+            logger.info(f"SDK API Response Body: {response_text}")
+            try:
+                return json.loads(response_text)
+            except json.JSONDecodeError:
+                return {"message": "ok", "data": response_text}
             
             # Parse XML response (converter handles both direct XML and JSON-wrapped XML)
             json_data = XMLToJSONConverter.convert(response_text)
