@@ -645,6 +645,8 @@ class HuiduController:
             
             # Parse XML response (converter handles both direct XML and JSON-wrapped XML)
             json_data = XMLToJSONConverter.convert(response_text)
+
+            logger.info(f"SDK API Response JSON: {json_data}")
             if not json_data:
                 return {"message": "error", "data": "Failed to parse XML response"}
             
@@ -1035,13 +1037,13 @@ class HuiduController:
                 programs_xml += self._program_dict_to_xml(prog)
             
             body = f"""<?xml version='1.0' encoding='utf-8'?>
-<sdk guid="##GUID">
-    <in method="UpdateProgram">
-        <screen timeStamps="0">
-            {programs_xml}
-        </screen>
-    </in>
-</sdk>"""
+                        <sdk guid="##GUID">
+                            <in method="UpdateProgram">
+                                <screen timeStamps="0">
+                                    {programs_xml}
+                                </screen>
+                            </in>
+                        </sdk>"""
             
             result = self._sign_header(headers, body, url)
             if isinstance(result, str):
