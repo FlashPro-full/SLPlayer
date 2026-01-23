@@ -616,13 +616,13 @@ class HuiduController:
             local_file_path = str(file_path).replace('\\', '/')
             
             body = f"""<?xml version='1.0' encoding='utf-8'?>
-<sdk guid="##GUID">
-    <in method="AddFiles">
-        <files>
-            <file remote="{local_file_path}" size="{file_size}" md5="{file_md5}" type="{file_type}" name="{file_name}"/>
-        </files>
-    </in>
-</sdk>"""
+                        <sdk guid="##GUID">
+                            <in method="AddFiles">
+                                <files>
+                                    <file remote="{local_file_path}" size="{file_size}" md5="{file_md5}" type="{file_type}" name="{file_name}"/>
+                                </files>
+                            </in>
+                        </sdk>"""
             
             # Send request
             device_id_str = ",".join(device_ids) if device_ids else ""
@@ -711,17 +711,19 @@ class HuiduController:
                                 copied_file_path = self._copy_file_to_resources(str(file_path), "video")
                                 if copied_file_path:
                                     # Upload the copied file instead of the original
-                                    file_response = self._file(copied_file_path)
+                                    xml_response = self._send_add_files_xml_request(copied_file_path, "video", device_ids)
                                     try:
-                                        file_data = json.loads(file_response)
-                                        if file_data.get("message") == "ok" and file_data.get("data"):
-                                            file_info = file_data["data"][0]
-                                            if file_info.get("message") == "ok":
-                                                item["file"] = file_info.get("data", copied_file_path)
-                                                item["fileSize"] = int(file_info.get("size", 0))
+                                        if xml_response.get("message") == "ok":
+                                            # Update item with file information from response if available
+                                            file_info = self._calculate_file_info(copied_file_path)
+                                            if file_info:
+                                                item["fileSize"] = file_info.get("size", 0)
                                                 item["fileMd5"] = file_info.get("md5", "")
+                                            logger.info(f"Successfully sent AddFiles XML request for video: {copied_file_path}")
+                                        else:
+                                            logger.error(f"AddFiles XML request failed: {xml_response.get('data', 'Unknown error')}")
                                     except Exception as e:
-                                        logger.error(f"Error processing video file upload response: {e}")
+                                        logger.error(f"Error processing AddFiles XML response: {e}")
                                 else:
                                     logger.error(f"Failed to copy video file to resources/custom: {file_path}")
             
