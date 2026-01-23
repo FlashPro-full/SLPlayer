@@ -7,6 +7,7 @@ import shutil
 from typing import Optional, Dict, List
 from datetime import datetime, timezone
 from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
+from xml.sax.saxutils import escape as xml_escape
 from utils.logger import get_logger
 from utils.xml_converter import XMLToJSONConverter
 import requests # type: ignore
@@ -666,8 +667,7 @@ class HuiduController:
             logger.error(f"Error sending AddFiles XML request: {e}")
             return {"message": "error", "data": str(e)}
     
-    def _upload_files_and_update_program(self, program: List[Dict], device_ids: Optional[List[str]] = None) -> List[Dict]:
-        updated_program = []
+    def _upload_files(self, program: List[Dict], device_ids: Optional[List[str]] = None) -> List[Dict]:
         for prog in program:
             prog_copy = json.loads(json.dumps(prog))
             areas = prog_copy.get("area", [])
@@ -726,9 +726,7 @@ class HuiduController:
                                         logger.error(f"Error processing AddFiles XML response: {e}")
                                 else:
                                     logger.error(f"Failed to copy video file to resources/custom: {file_path}")
-            
-            updated_program.append(prog_copy)
-        return updated_program
+        return program
     
     def _is_url(self, path: str) -> bool:
         return path.startswith(("http://", "https://"))
@@ -801,40 +799,227 @@ class HuiduController:
             logger.error(f"Error copying file to resources/custom: {e}", exc_info=True)
             return None
     
-    def replace_program(self, program: Optional[List[Dict[str, str | bool | int | List[Dict[str, str | bool | int]]]]] = None, device_ids: Optional[List[str]] = None) -> Dict:
-        try:
-            if not program:
-                return {"message": "error", "data": "No program data provided"}
+    def _escape_xml_attr(self, value: str) -> str:
+        """Escape XML attribute value (escapes &, <, >, and quotes)."""
+        if not isinstance(value, str):
+            value = str(value)
+        # Escape XML special characters
+        value = value.replace("&", "&amp;")
+        value = value.replace("<", "&lt;")
+        value = value.replace(">", "&gt;")
+        value = value.replace('"', "&quot;")
+        return value
+    
+    def _program_dict_to_xml(self, program: Dict) -> str:
+        """Convert program dictionary to XML format for UpdateProgram request.
+        
+        Args:
+            program: Program dictionary with name, type, uuid, area, playControl, etc.
             
-            updated_program = self._upload_files_and_update_program(program, device_ids)
+        Returns:
+            XML string for the program element
+        """
+        program_type = program.get("type", "normal")
+        program_id = program.get("id", "0")
+        program_name = self._escape_xml_attr(program.get("name", ""))
+        program_guid = program.get("uuid", "") or program.get("guid", "")
+        # Convert uuid to guid format if needed (remove curly braces, ensure UUID format)
+        if program_guid:
+            # Remove curly braces if present
+            program_guid = program_guid.strip("{}")
+            # Format as GUID: add dashes if needed
+            if len(program_guid) == 12:
+                # Convert to full UUID format
+                program_guid = f"{program_guid[:8]}-{program_guid[8:12]}-{uuid.uuid4().hex[:4]}-{uuid.uuid4().hex[:4]}-{uuid.uuid4().hex[:12]}"
+            elif len(program_guid) == 32 and "-" not in program_guid:
+                # Format as UUID with dashes
+                program_guid = f"{program_guid[:8]}-{program_guid[8:12]}-{program_guid[12:16]}-{program_guid[16:20]}-{program_guid[20:]}"
+        else:
+            # Generate new UUID if not provided
+            program_guid = str(uuid.uuid4())
+        
+        # Build backgroundMusic element
+        background_music_xml = "<backgroundMusic></backgroundMusic>"
+        properties = program.get("_properties", {})
+        if properties:
+            bg_music = properties.get("background_music", {})
+            if bg_music and bg_music.get("enabled", False):
+                file_path = self._escape_xml_attr(bg_music.get("file", ""))
+                volume = bg_music.get("volume", 0)
+                background_music_xml = f'<backgroundMusic file="{file_path}" volume="{volume}"></backgroundMusic>'
+        
+        # Build playControl element
+        play_control_xml = '<playControl disabled="false" count="1"/>'
+        play_control = program.get("playControl", {})
+        if play_control:
+            disabled = "true" if play_control.get("disabled", False) else "false"
+            count = play_control.get("count", 1)
+            play_control_xml = f'<playControl disabled="{disabled}" count="{count}"/>'
+        
+        # Build areas XML
+        areas_xml = ""
+        areas = program.get("area", [])
+        for area in areas:
+            area_guid = area.get("guid", "") or area.get("uuid", "")
+            if not area_guid:
+                area_guid = str(uuid.uuid4())
+            # Remove curly braces if present (request format doesn't use braces)
+            area_guid = area_guid.strip("{}")
+            # Ensure UUID format with dashes
+            if len(area_guid) == 32 and "-" not in area_guid:
+                area_guid = f"{area_guid[:8]}-{area_guid[8:12]}-{area_guid[12:16]}-{area_guid[16:20]}-{area_guid[20:]}"
             
-            device_id_str = ",".join(device_ids) if device_ids else ""
-            body = {
-                "method": "replace",
-                "data": updated_program,
-                "id": device_id_str
-            }
-            response = self._post(f"{self.host}/api/program", json.dumps(body))
-            return json.loads(response)
-        except Exception as e:
-            logger.error(f"Error replacing program: {e}")
-            return {"message": "error", "data": str(e)}
+            alpha = area.get("alpha", 255)
+            x = area.get("x", 0)
+            y = area.get("y", 0)
+            width = area.get("width", 0)
+            height = area.get("height", 0)
+            
+            # Build rectangle element
+            rectangle_xml = f'<rectangle x="{x}" y="{y}" width="{width}" height="{height}"/>'
+            
+            # Build resource elements from items
+            resource_xml = ""
+            items = area.get("item", [])
+            for item in items:
+                item_type = item.get("type", "")
+                item_guid = item.get("guid", "") or item.get("uuid", "")
+                if not item_guid:
+                    item_guid = str(uuid.uuid4())
+                # Remove curly braces if present (request format doesn't use braces)
+                item_guid = item_guid.strip("{}")
+                # Ensure UUID format with dashes
+                if len(item_guid) == 32 and "-" not in item_guid:
+                    item_guid = f"{item_guid[:8]}-{item_guid[8:12]}-{item_guid[12:16]}-{item_guid[16:20]}-{item_guid[20:]}"
+                
+                if item_type == "image":
+                    file_name = self._escape_xml_attr(item.get("file", "") or item.get("name", ""))
+                    effect_in = item.get("effect", {}).get("in", 0) if isinstance(item.get("effect"), dict) else 0
+                    effect_out = item.get("effect", {}).get("out", 20) if isinstance(item.get("effect"), dict) else 20
+                    effect_in_speed = item.get("effect", {}).get("inSpeed", 4) if isinstance(item.get("effect"), dict) else 4
+                    effect_out_speed = item.get("effect", {}).get("outSpeed", 0) if isinstance(item.get("effect"), dict) else 0
+                    effect_duration = item.get("effect", {}).get("duration", 50) if isinstance(item.get("effect"), dict) else 50
+                    
+                    resource_xml += f"""
+                        <resource>
+                            <image guid="{item_guid}">
+                                <file name="{file_name}"/>
+                                <effect in="{effect_in}" out="{effect_out}" inSpeed="{effect_in_speed}" outSpeed="{effect_out_speed}" duration="{effect_duration}"/>
+                            </image>
+                        </resource>"""
+                elif item_type == "video":
+                    file_name = self._escape_xml_attr(item.get("file", "") or item.get("name", ""))
+                    effect_in = item.get("effect", {}).get("in", 0) if isinstance(item.get("effect"), dict) else 0
+                    effect_out = item.get("effect", {}).get("out", 20) if isinstance(item.get("effect"), dict) else 20
+                    effect_in_speed = item.get("effect", {}).get("inSpeed", 4) if isinstance(item.get("effect"), dict) else 4
+                    effect_out_speed = item.get("effect", {}).get("outSpeed", 0) if isinstance(item.get("effect"), dict) else 0
+                    effect_duration = item.get("effect", {}).get("duration", 50) if isinstance(item.get("effect"), dict) else 50
+                    
+                    resource_xml += f"""
+                        <resource>
+                            <video guid="{item_guid}">
+                                <file name="{file_name}"/>
+                                <effect in="{effect_in}" out="{effect_out}" inSpeed="{effect_in_speed}" outSpeed="{effect_out_speed}" duration="{effect_duration}"/>
+                            </video>
+                        </resource>"""
+                elif item_type in ["text", "singleline_text"]:
+                    text_content = xml_escape(item.get("text", "") or item.get("content", ""))
+                    font_family = self._escape_xml_attr(item.get("font", {}).get("family", "Arial") if isinstance(item.get("font"), dict) else item.get("fontFamily", "Arial"))
+                    font_size = item.get("font", {}).get("size", 24) if isinstance(item.get("font"), dict) else item.get("fontSize", 24)
+                    font_color = self._escape_xml_attr(item.get("font", {}).get("color", "#000000") if isinstance(item.get("font"), dict) else item.get("fontColor", "#000000"))
+                    
+                    resource_xml += f"""
+                        <resource>
+                            <text guid="{item_guid}">
+                                <content>{text_content}</content>
+                                <font family="{font_family}" size="{font_size}" color="{font_color}"/>
+                            </text>
+                        </resource>"""
+            
+            if resource_xml:
+                areas_xml += f"""
+                <area guid="{area_guid}" alpha="{alpha}">
+                    {rectangle_xml}
+                    {resource_xml}
+                </area>"""
+        
+        # Build complete program XML
+        program_xml = f"""<program type="{program_type}" id="{program_id}" name="{program_name}" guid="{program_guid}">
+                {background_music_xml}
+                {play_control_xml}
+                {areas_xml}
+            </program>"""
+        
+        return program_xml
     
     def update_program(self, program: Optional[List[Dict[str, str | bool | int | List[Dict[str, str | bool | int]]]]] = None, device_ids: Optional[List[str]] = None) -> Dict:
         try:
             if not program:
                 return {"message": "error", "data": "No program data provided"}
             
-            updated_program = self._upload_files_and_update_program(program, device_ids)
+            updated_program = self._upload_files(program, device_ids)
             
             device_id_str = ",".join(device_ids) if device_ids else ""
-            body = {
-                "method": "update",
-                "data": updated_program,
-                "id": device_id_str
+            url = f"{self.host}/raw/{device_id_str}"
+            headers = {
+                'Content-Type': 'application/xml',
+                'sdkKey': self.sdk_key,
             }
-            response = self._post(f"{self.host}/api/program", json.dumps(body))
-            return json.loads(response)
+            
+            # Build XML body from program list
+            programs_xml = ""
+            for prog in updated_program:
+                programs_xml += self._program_dict_to_xml(prog)
+            
+            body = f"""<?xml version='1.0' encoding='utf-8'?>
+<sdk guid="##GUID">
+    <in method="UpdateProgram">
+        <screen timeStamps="0">
+            {programs_xml}
+        </screen>
+    </in>
+</sdk>"""
+            
+            result = self._sign_header(headers, body, url)
+            if isinstance(result, str):
+                url = result
+            logger.info(f"SDK API Request: POST {url}")
+            logger.info(f"SDK API Request Body: {body}")
+            response = requests.post(url, data=body, headers=headers)
+            response.raise_for_status()
+            response_text = response.text
+            logger.info(f"SDK API Response Body: {response_text}")
+            
+            # Parse XML response
+            try:
+                json_data = XMLToJSONConverter.convert(response_text)
+                if json_data:
+                    # Check for result in out element (response format: <sdk><out method="UpdateProgram" result="kSuccess"/></sdk>)
+                    if isinstance(json_data, dict):
+                        # Try direct access first
+                        out_element = json_data.get("out", {})
+                        # If not found, try accessing through sdk wrapper
+                        if not out_element and "sdk" in json_data:
+                            sdk_element = json_data.get("sdk", {})
+                            if isinstance(sdk_element, dict):
+                                out_element = sdk_element.get("out", {})
+                        
+                        if isinstance(out_element, dict):
+                            result_attr = out_element.get("@attributes", {})
+                            if isinstance(result_attr, dict):
+                                result_value = result_attr.get("result", "")
+                                if result_value == "kSuccess":
+                                    return {"message": "ok", "data": "Program updated successfully"}
+                                else:
+                                    error_msg = result_value or "Unknown error"
+                                    return {"message": "error", "data": f"UpdateProgram failed: {error_msg}"}
+                    # Fallback: return parsed JSON
+                    return {"message": "ok", "data": json_data}
+                else:
+                    return {"message": "ok", "data": response_text}
+            except Exception as parse_error:
+                logger.warning(f"Failed to parse XML response, returning raw text: {parse_error}")
+                return {"message": "ok", "data": response_text}
         except Exception as e:
             logger.error(f"Error updating program: {e}")
             return {"message": "error", "data": str(e)}
@@ -844,7 +1029,7 @@ class HuiduController:
             if not program:
                 return {"message": "error", "data": "No program data provided"}
             
-            updated_program = self._upload_files_and_update_program(program, device_ids)
+            updated_program = self._upload_files(program, device_ids)
             
             device_id_str = ",".join(device_ids) if device_ids else ""
             body = {

@@ -167,7 +167,7 @@ class MainWindow(QtWidgets.QMainWindow):
             sdk_program = ProgramConverter.soo_to_sdk(program_dict, "huidu")
             sdk_program_list = [sdk_program]
             
-            response = huidu_controller.replace_program(sdk_program_list, [controller_id])
+            response = huidu_controller.update_program(sdk_program_list, [controller_id])
             
             if response.get("message") == "ok":
                 QMessageBox.information(self, "Success", f"Program sent successfully.")
