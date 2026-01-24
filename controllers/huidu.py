@@ -740,6 +740,7 @@ class HuiduController:
             return {"message": "error", "data": str(e)}
     
     def _upload_files(self, program: List[Dict], device_ids: Optional[List[str]] = None) -> List[Dict]:
+        updated_program: List[Dict] = []
         for prog in program:
             prog_copy = json.loads(json.dumps(prog))
             areas = prog_copy.get("area", [])
@@ -755,13 +756,16 @@ class HuiduController:
                             local_path = Path(file_path)
                             if local_path.exists() and not self._is_url(str(file_path)):
                                 # Copy file to resources/custom/images with encoded name
-                                copied_file_path = self._copy_file_to_resources(str(file_path), "image")
-                                if copied_file_path:
+                                copied_info = self._copy_file_to_resources(str(file_path), "image")
+                                if copied_info:
+                                    copied_file_path = copied_info["target_path"]
+                                    encoded_filename = copied_info["encoded_filename"]
                                     # Send XML request with copied file
                                     xml_response = self._send_add_files_xml_request(copied_file_path, "image", device_ids)
                                     try:
                                         if xml_response.get("message") == "ok":
-                                            # Update item with file information from response if available
+                                            item["file"] = encoded_filename
+                                            item["localPath"] = copied_file_path
                                             file_info = self._calculate_file_info(copied_file_path)
                                             if file_info:
                                                 item["fileSize"] = file_info.get("size", 0)
@@ -780,13 +784,17 @@ class HuiduController:
                             local_path = Path(file_path)
                             if local_path.exists() and not self._is_url(str(file_path)):
                                 # Copy file to resources/custom/videos with encoded name
-                                copied_file_path = self._copy_file_to_resources(str(file_path), "video")
+                                copied_info = self._copy_file_to_resources(str(file_path), "video")
+                                if copied_info:
+                                    copied_file_path = copied_info["target_path"]
+                                    encoded_filename = copied_info["encoded_filename"]
                                 if copied_file_path:
                                     # Upload the copied file instead of the original
                                     xml_response = self._send_add_files_xml_request(copied_file_path, "video", device_ids)
                                     try:
                                         if xml_response.get("message") == "ok":
-                                            # Update item with file information from response if available
+                                            item["file"] = encoded_filename
+                                            item["localPath"] = copied_file_path
                                             file_info = self._calculate_file_info(copied_file_path)
                                             if file_info:
                                                 item["fileSize"] = file_info.get("size", 0)
@@ -798,7 +806,8 @@ class HuiduController:
                                         logger.error(f"Error processing AddFiles XML response: {e}")
                                 else:
                                     logger.error(f"Failed to copy video file to resources/custom: {file_path}")
-        return program
+            updated_program.append(prog_copy)
+        return updated_program
     
     def _is_url(self, path: str) -> bool:
         return path.startswith(("http://", "https://"))
@@ -866,7 +875,7 @@ class HuiduController:
             shutil.copy2(source_path, target_path)
             logger.info(f"Copied file from {file_path} to {target_path}")
             
-            return str(target_path)
+            return {"target_path": str(target_path), "encoded_filename": encoded_filename}
         except Exception as e:
             logger.error(f"Error copying file to resources/custom: {e}", exc_info=True)
             return None
@@ -939,7 +948,7 @@ class HuiduController:
             area_guid = area_guid.strip("{}")
             # Ensure UUID format with dashes
             if len(area_guid) == 32 and "-" not in area_guid:
-                area_guid = f"{area_guid[:8]}-{area_guid[8:12]}-{area_guid[12:16]}-{area_guid[16:20]}-{area_guid[20:]}"
+                area_guid = f"{area_guid}"
             
             alpha = area.get("alpha", 255)
             x = area.get("x", 0)
@@ -962,7 +971,7 @@ class HuiduController:
                 item_guid = item_guid.strip("{}")
                 # Ensure UUID format with dashes
                 if len(item_guid) == 32 and "-" not in item_guid:
-                    item_guid = f"{item_guid[:8]}-{item_guid[8:12]}-{item_guid[12:16]}-{item_guid[16:20]}-{item_guid[20:]}"
+                    item_guid = f"{item_guid}"
                 
                 if item_type == "image":
                     file_name = self._escape_xml_attr(item.get("file", "") or item.get("name", ""))
