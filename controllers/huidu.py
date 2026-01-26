@@ -841,7 +841,7 @@ class HuiduController:
         hash_value = hashlib.md5(hash_input.encode('utf-8')).hexdigest()[:12]
         
         # Generate distinct filename: hash_timestamp_originalname.ext
-        encoded_name = f"{hash_value}"
+        encoded_name = f"{hash_value}{original_suffix}"
         
         return encoded_name
     
