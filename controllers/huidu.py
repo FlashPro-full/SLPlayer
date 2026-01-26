@@ -639,16 +639,10 @@ class HuiduController:
             logger.info(f"SDK API Request: POST {url}")
             logger.info(f"SDK API Request Body: {body}")
             response = requests.post(url, data=body, headers=headers)
+            
             response.raise_for_status()
             response_text = response.text
             logger.info(f"SDK API Response Body: {response_text}")
-
-            
-            logger.info(f"SDK API Response Body: {response_text}")
-            try:
-                return json.loads(response_text)
-            except json.JSONDecodeError:
-                return {"message": "ok", "data": response_text}
             
             # Parse XML response (converter handles both direct XML and JSON-wrapped XML)
             json_data = XMLToJSONConverter.convert(response_text)
@@ -665,8 +659,8 @@ class HuiduController:
                     if isinstance(result_attr, dict):
                         result_value = result_attr.get("result", "")
                         
-                        # If we get kDownloadingFile, poll until we get kSuccess or an error
-                        if result_value == "kDownloadingFile":
+                        # If we get kDownloading or kDownloadingFile, poll until we get kSuccess or an error
+                        if result_value in ("kDownloading", "kDownloadingFile"):
                             logger.info(f"File download in progress, waiting for completion...")
                             max_wait_time = 300  # Maximum wait time in seconds (5 minutes)
                             poll_interval = 2  # Poll every 2 seconds
@@ -712,7 +706,7 @@ class HuiduController:
                                                 if status_result_value == "kSuccess":
                                                     logger.info(f"File upload completed successfully after {elapsed_time} seconds")
                                                     return {"message": "ok", "data": "File added successfully"}
-                                                elif status_result_value == "kDownloadingFile":
+                                                elif status_result_value in ("kDownloading", "kDownloadingFile"):
                                                     logger.debug(f"Still downloading... ({elapsed_time}s elapsed)")
                                                     continue
                                                 else:
