@@ -759,6 +759,7 @@ class HuiduController:
                                     try:
                                         if xml_response.get("message") == "ok":
                                             item["file"] = encoded_filename
+                                            item["name"] = encoded_filename
                                             item["localPath"] = copied_file_path
                                             file_info = self._calculate_file_info(copied_file_path)
                                             if file_info:
@@ -788,6 +789,7 @@ class HuiduController:
                                     try:
                                         if xml_response.get("message") == "ok":
                                             item["file"] = encoded_filename
+                                            item["name"] = encoded_filename
                                             item["localPath"] = copied_file_path
                                             file_info = self._calculate_file_info(copied_file_path)
                                             if file_info:
