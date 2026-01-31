@@ -733,6 +733,70 @@ class HuiduController:
             logger.error(f"Error sending AddFiles XML request: {e}")
             return {"message": "error", "data": str(e)}
     
+    def _send_add_files_json_request(self, file_path: str, file_type: str, device_ids: Optional[List[str]] = None) -> Dict:
+        """Send AddFiles via JSON file API: POST form-data to /api/file, get URL from JSON response.
+
+        Args:
+            file_path: Path to the file to upload
+            file_type: Type of file ('image' or 'video')
+            device_ids: Optional list of device IDs (first one used for URL path if needed)
+
+        Returns:
+            Dict with message, data (file URL on success), and file info
+        """
+        try:
+            path = Path(file_path)
+            if not path.exists():
+                return {"message": "error", "data": f"File not found: {file_path}"}
+
+            file_name = path.name
+            file_id = device_ids[0] if device_ids else "0"
+            url = f"{self.host}/api/file/{file_id}"
+
+            with open(file_path, "rb") as f:
+                multipart_data = MultipartEncoder(
+                    fields={"data": (file_name, f, "application/octet-stream")}
+                )
+                headers = {
+                    "Content-Type": multipart_data.content_type,
+                    "sdkKey": self.sdk_key,
+                }
+                self._sign_header(headers, None, url)
+
+                logger.info(f"File API Request: POST {url} (form-data)")
+                response = requests.post(url, data=multipart_data, headers=headers)
+                response.raise_for_status()
+                response_json = response.json()
+
+            if response_json.get("message") != "ok":
+                return {
+                    "message": "error",
+                    "data": response_json.get("data", response_json.get("message", "Unknown error")),
+                }
+
+            data_list = response_json.get("data", [])
+            if not data_list or data_list[0].get("message") != "ok":
+                return {
+                    "message": "error",
+                    "data": "Invalid file API response",
+                }
+
+            file_data = data_list[0]
+            file_url = file_data.get("data", "")
+            return {
+                "message": "ok",
+                "data": file_url,
+                "name": file_data.get("name", file_name),
+                "md5": file_data.get("md5", ""),
+                "size": file_data.get("size", "0"),
+            }
+        except requests.RequestException as e:
+            logger.error(f"File API request error: {e}")
+            return {"message": "error", "data": str(e)}
+        except Exception as e:
+            logger.error(f"Error sending AddFiles JSON request: {e}", exc_info=True)
+            return {"message": "error", "data": str(e)}
+
     def _upload_files(self, program: List[Dict], device_ids: Optional[List[str]] = None) -> List[Dict]:
         updated_program: List[Dict] = []
         for prog in program:
@@ -743,7 +807,6 @@ class HuiduController:
                 items = area.get("item", [])
                 for item in items:
                     item_type = item.get("type", "")
-                    
                     if item_type == "image":
                         file_path = item.get("file", "") or item.get("localPath", "")
                         if file_path:
@@ -754,22 +817,26 @@ class HuiduController:
                                 if copied_info:
                                     copied_file_path = copied_info["target_path"]
                                     encoded_filename = copied_info["encoded_filename"]
-                                    # Send XML request with copied file
-                                    xml_response = self._send_add_files_xml_request(copied_file_path, "image", device_ids)
+                                    # Send JSON file API request (form-data POST)
+                                    json_response = self._send_add_files_json_request(copied_file_path, "image", device_ids)
                                     try:
-                                        if xml_response.get("message") == "ok":
-                                            item["file"] = encoded_filename
-                                            item["name"] = encoded_filename
+                                        if json_response.get("message") == "ok":
+                                            file_url = json_response.get("data", "")
+                                            item["file"] = file_url or encoded_filename
+                                            item["name"] = json_response.get("name", encoded_filename)
                                             item["localPath"] = copied_file_path
-                                            file_info = self._calculate_file_info(copied_file_path)
-                                            if file_info:
-                                                item["fileSize"] = file_info.get("size", 0)
-                                                item["fileMd5"] = file_info.get("md5", "")
-                                            logger.info(f"Successfully sent AddFiles XML request for image: {copied_file_path}")
+                                            item["fileSize"] = int(json_response.get("size", 0) or 0)
+                                            item["fileMd5"] = json_response.get("md5", "")
+                                            if not item["fileMd5"]:
+                                                file_info = self._calculate_file_info(copied_file_path)
+                                                if file_info:
+                                                    item["fileSize"] = file_info.get("size", 0)
+                                                    item["fileMd5"] = file_info.get("md5", "")
+                                            logger.info(f"Successfully sent AddFiles JSON request for image: {copied_file_path}")
                                         else:
-                                            logger.error(f"AddFiles XML request failed: {xml_response.get('data', 'Unknown error')}")
+                                            logger.error(f"AddFiles JSON request failed: {json_response.get('data', 'Unknown error')}")
                                     except Exception as e:
-                                        logger.error(f"Error processing AddFiles XML response: {e}")
+                                        logger.error(f"Error processing AddFiles JSON response: {e}")
                                 else:
                                     logger.error(f"Failed to copy image file to resources/custom: {file_path}")
                     
@@ -783,23 +850,26 @@ class HuiduController:
                                 if copied_info:
                                     copied_file_path = copied_info["target_path"]
                                     encoded_filename = copied_info["encoded_filename"]
-                                if copied_file_path:
-                                    # Upload the copied file instead of the original
-                                    xml_response = self._send_add_files_xml_request(copied_file_path, "video", device_ids)
+                                    # Send JSON file API request (form-data POST)
+                                    json_response = self._send_add_files_json_request(copied_file_path, "video", device_ids)
                                     try:
-                                        if xml_response.get("message") == "ok":
-                                            item["file"] = encoded_filename
-                                            item["name"] = encoded_filename
+                                        if json_response.get("message") == "ok":
+                                            file_url = json_response.get("data", "")
+                                            item["file"] = file_url or encoded_filename
+                                            item["name"] = json_response.get("name", encoded_filename)
                                             item["localPath"] = copied_file_path
-                                            file_info = self._calculate_file_info(copied_file_path)
-                                            if file_info:
-                                                item["fileSize"] = file_info.get("size", 0)
-                                                item["fileMd5"] = file_info.get("md5", "")
-                                            logger.info(f"Successfully sent AddFiles XML request for video: {copied_file_path}")
+                                            item["fileSize"] = int(json_response.get("size", 0) or 0)
+                                            item["fileMd5"] = json_response.get("md5", "")
+                                            if not item["fileMd5"]:
+                                                file_info = self._calculate_file_info(copied_file_path)
+                                                if file_info:
+                                                    item["fileSize"] = file_info.get("size", 0)
+                                                    item["fileMd5"] = file_info.get("md5", "")
+                                            logger.info(f"Successfully sent AddFiles JSON request for video: {copied_file_path}")
                                         else:
-                                            logger.error(f"AddFiles XML request failed: {xml_response.get('data', 'Unknown error')}")
+                                            logger.error(f"AddFiles JSON request failed: {json_response.get('data', 'Unknown error')}")
                                     except Exception as e:
-                                        logger.error(f"Error processing AddFiles XML response: {e}")
+                                        logger.error(f"Error processing AddFiles JSON response: {e}")
                                 else:
                                     logger.error(f"Failed to copy video file to resources/custom: {file_path}")
             updated_program.append(prog_copy)
