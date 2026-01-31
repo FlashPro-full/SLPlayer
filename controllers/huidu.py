@@ -750,8 +750,7 @@ class HuiduController:
                 return {"message": "error", "data": f"File not found: {file_path}"}
 
             file_name = path.name
-            file_id = device_ids[0] if device_ids else "0"
-            url = f"{self.host}/api/file/{file_id}"
+            url = f"{self.host}/api/file/{file_name}"
 
             with open(file_path, "rb") as f:
                 multipart_data = MultipartEncoder(
@@ -767,6 +766,7 @@ class HuiduController:
                 response = requests.post(url, data=multipart_data, headers=headers)
                 response.raise_for_status()
                 response_json = response.json()
+                logger.info(f"File API Response: {response_json}")
 
             if response_json.get("message") != "ok":
                 return {
